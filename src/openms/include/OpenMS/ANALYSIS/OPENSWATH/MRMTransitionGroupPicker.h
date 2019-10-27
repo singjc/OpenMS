@@ -192,6 +192,8 @@ public:
           break;
         }
       }
+	
+	std::cout << "Features: \n";
 
       // Check for completely overlapping features
       for (Size i = 0; i < features.size(); i++)
