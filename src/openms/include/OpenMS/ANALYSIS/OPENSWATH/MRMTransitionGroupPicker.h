@@ -425,7 +425,20 @@ public:
         {
           for (typename SpectrumT::const_iterator it = chromatogram.begin(); it != chromatogram.end(); it++)
           {
-            total_xic += it->getIntensity();
+            /*
+              TODO: Need to look deeper into why, chromatogram extractor extracts a RT POS with INT inf
+              This causes further downstream issues with the total_xic being evaluated to inf which causes an error when writing to OSW sql database.
+              Currently handling this by setting this specific RT POS that has an INT of inf to 0 when summing transition_total_xic
+              A better way would be to set this permanentaly to 0 in the chrom extractor, or figure out why it's inf in the first place
+            */
+            if ( std::isinf( it->getIntensity() ) ){
+                std::cout << "WARNING: transition native_id " << transition_group.getTransitions()[k].getNativeID() << " has a RT POS INT that is inf!!" << std::endl;
+                std::cout << " -> Will set this intensity to 0, for adding to transition_total_xic" << std::endl;
+                //it->setIntensity(0);
+                transition_total_xic += 0;
+            } else {
+                transition_total_xic += it->getIntensity();
+            }
           }
         }
 
