@@ -49,6 +49,9 @@
 #include <boost/shared_ptr.hpp>
 #include <boost/make_shared.hpp>
 
+// Interfaces
+#include <OpenMS/INTERFACES/IMSDataConsumer.h>
+
 namespace OpenMS
 {
   /** @brief A class that calls the scoring routines
@@ -178,6 +181,7 @@ namespace OpenMS
      * @param mzerror_ppm m/z and mass error (in ppm) for all transitions
      * @param drift_lower Drift time lower extraction boundary
      * @param drift_upper Drift time upper extraction boundary
+     * @param mobiConsumer Comsumer object for writing out computed aligned mobilograms to disk
      *
     */
     void calculateDIAScores(OpenSwath::IMRMFeature* imrmfeature,
@@ -190,7 +194,8 @@ namespace OpenMS
                             std::vector<double>& mzerror_ppm,
                             const double drift_lower,
                             const double drift_upper,
-                            const double drift_target);
+                            const double drift_target,
+                            Interfaces::IMSDataConsumer * mobiConsumer);
 
     /** @brief Score a single chromatographic feature using the precursor map.
      *

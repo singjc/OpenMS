@@ -223,6 +223,13 @@ public:
       void writeChromatograms(const std::vector<MSChromatogram>& chroms);
 
       /**
+          @brief Writes a set of mobilograms to disk
+
+          @param mobilograms The mobilograms to write
+      */
+      void writeMobilograms(const std::vector<MSChromatogram>& mobis);
+
+      /**
           @brief Write the run-level information for an experiment into tables
 
           @note This is a low level function, do not call this function unless you know what you are doing!

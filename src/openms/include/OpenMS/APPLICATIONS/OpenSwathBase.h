@@ -273,6 +273,12 @@ protected:
         bool lossy_compression = true;
         *chromatogramConsumer = new MSDataSqlConsumer(out_chrom, run_id, 500, full_meta, lossy_compression);
       }
+      else if (tmp.toLower().hasSuffix(".sqmobi")) // TODO: Should this just be separated into a separate prepareMobiOutout method?
+      {
+        bool full_meta = false; // can lead to very large files in memory
+        bool lossy_compression = false; // TODO: Need to test which compression would be best for IM values
+        *chromatogramConsumer = new MSDataSqlConsumer(out_chrom, run_id, 500, full_meta, lossy_compression);
+      }
       else
       {
         PlainMSDataWritingConsumer * chromConsumer = new PlainMSDataWritingConsumer(out_chrom);

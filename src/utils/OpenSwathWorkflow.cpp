@@ -188,6 +188,10 @@ using namespace OpenMS;
   In addition, the extracted chromatograms can be written out using the
   @p -out_chrom parameter.
 
+  In addition, the extracted mobilograms (aligned to a grid based on all
+  profiles (ms1 and transition/fragments) can be written out using the
+  @p -out_mobi parameter.
+
   <h4> Feature list output format </h4>
 
   The tab-separated feature output contains the following information:
@@ -471,6 +475,9 @@ protected:
     registerOutputFile_("out_chrom", "<file>", "", "Also output all computed chromatograms output in mzML (chrom.mzML) or sqMass (SQLite format)", false, true);
     setValidFormats_("out_chrom", ListUtils::create<String>("mzML,sqMass"));
 
+    registerOutputFile_("out_mobi", "<file>", "", "Also output all computed mobilograms output in mzML (mobi.mzML) or sqMobi (SQLite format)", false, true);
+    setValidFormats_("out_mobi", ListUtils::create<String>("mzML,sqMobi"));
+
     // additional QC data
     registerOutputFile_("out_qc", "<file>", "", "Optional QC meta data (charge distribution in MS1). Only works with mzML input files.", false, true);
     setValidFormats_("out_qc", ListUtils::create<String>("json"));
@@ -683,6 +690,7 @@ protected:
     String swath_windows_file = getStringOption_("swath_windows_file");
 
     String out_chrom = getStringOption_("out_chrom");
+    String out_mobi = getStringOption_("out_mobi");
     bool split_file = getFlag_("split_file_input");
     bool use_emg_score = getFlag_("use_elution_model_score");
     bool force = getFlag_("force");
@@ -940,6 +948,13 @@ protected:
     OpenSwathOSWWriter oswwriter(out_osw, run_id, file_list[0], use_ms1_traces, sonar, enable_uis_scoring); // only active if filename not empty
 
     ///////////////////////////////////
+    // Set up mobilogram output
+    // Either use mobi.mzML or sqliteDB (sqMobi)
+    ///////////////////////////////////
+    Interfaces::IMSDataConsumer* mobilogramConsumer;
+    prepareChromOutput(&mobilogramConsumer, exp_meta, transition_exp, out_mobi, run_id);
+
+    ///////////////////////////////////
     // Extract and score
     ///////////////////////////////////
     if (sonar)
@@ -954,7 +969,7 @@ protected:
       OpenSwathWorkflow wf(use_ms1_traces, use_ms1_im, prm, pasef, outer_loop_threads);
       wf.setLogType(log_type_);
       wf.performExtraction(swath_maps, trafo_rtnorm, cp, cp_ms1, feature_finder_param, transition_exp,
-          out_featureFile, !out.empty(), tsvwriter, oswwriter, chromatogramConsumer, batchSize, ms1_isotopes, load_into_memory);
+          out_featureFile, !out.empty(), tsvwriter, oswwriter, chromatogramConsumer, mobilogramConsumer, batchSize, ms1_isotopes, load_into_memory);
     }
 
     if (!out.empty())
@@ -965,6 +980,8 @@ protected:
     }
 
     delete chromatogramConsumer;
+
+    delete mobilogramConsumer;
 
     return EXECUTION_OK;
   }

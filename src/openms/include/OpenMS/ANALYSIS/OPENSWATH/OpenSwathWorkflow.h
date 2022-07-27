@@ -444,6 +444,7 @@ protected:
      * @param result_tsv TSV Writer object to store identified features in csv format (set store_features to false if using this option)
      * @param result_osw OSW Writer object to store identified features in SQLite format (set store_features to false if using this option)
      * @param result_chromatograms Chromatogram consumer object to store the extracted chromatograms
+     * @param result_mobilograms Mobilogram consumer object to store the extracted mobilograms
      * @param batchSize Size of the batches which should be extracted and scored
      * @param int ms1_isotopes Number of MS1 isotopes to extract (zero means only monoisotopic peak)
      * @param load_into_memory Whether to cache the current SWATH map in memory
@@ -465,6 +466,7 @@ protected:
                            OpenSwathTSVWriter & result_tsv,
                            OpenSwathOSWWriter & result_osw,
                            Interfaces::IMSDataConsumer * result_chromatograms,
+                           Interfaces::IMSDataConsumer * result_mobilograms,
                            int batchSize,
                            int ms1_isotopes,
                            bool load_into_memory);
@@ -525,6 +527,7 @@ protected:
      * @param output Output map
      * @param tsv_writer TSV writer for storing output (on the fly)
      * @param osw_writer OSW Writer object to store identified features in SQLite format
+     * @param mobiliConsumer Mobilogram consumer object to store the extracted mobilograms
      * @param ms1only If true, will only score on MS1 level and ignore MS2 level
      *
     */
@@ -539,6 +542,7 @@ protected:
         FeatureMap& output,
         OpenSwathTSVWriter & tsv_writer,
         OpenSwathOSWWriter & osw_writer,
+        Interfaces::IMSDataConsumer * mobiliConsumer = NULL, //TODO: Should this be assigned NULL or something more appropriate? Don't want it to be a required parameter, since it SONAR extraction uses this method, and may not have ion mobility data?
         int nr_ms1_isotopes = 0,
         bool ms1only = false) const;
 

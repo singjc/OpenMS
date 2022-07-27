@@ -99,6 +99,7 @@ namespace OpenMS
       PSQ,                ///< NCBI binary blast db
       MRM,                ///< SpectraST MRM List
       SQMASS,             ///< SqLite format for mass and chromatograms, see SqMassFile
+      SQMOBI,             ///< SqLite format for mass and mobilograms, see SqMobiFile
       PQP,                ///< OpenSWATH Peptide Query Parameter (PQP) SQLite DB, see TransitionPQPFile
       MS,                 ///< SIRIUS file format (.ms)
       OSW,                ///< OpenSWATH OpenSWATH report (OSW) SQLite DB

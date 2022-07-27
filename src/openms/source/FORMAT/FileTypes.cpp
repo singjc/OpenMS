@@ -101,6 +101,7 @@ namespace OpenMS
     TypeNameBinding(FileTypes::PSQ, "psq", "NCBI binary blast db"),
     TypeNameBinding(FileTypes::MRM, "mrm", "SpectraST MRM list"),
     TypeNameBinding(FileTypes::SQMASS, "sqMass", "SQLite format for mass and chromatograms"),
+    TypeNameBinding(FileTypes::SQMOBI, "sqMobi", "SQLite format for mass and mobilograms"),
     TypeNameBinding(FileTypes::PQP, "pqp", "pqp file"),
     TypeNameBinding(FileTypes::MS, "ms", "SIRIUS file"),
     TypeNameBinding(FileTypes::OSW, "osw", "OpenSwath output files"),

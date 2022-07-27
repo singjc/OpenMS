@@ -41,6 +41,8 @@
 #include <OpenMS/FORMAT/SqliteConnector.h>
 #include <OpenMS/FORMAT/ZlibCompression.h>
 
+#include <OpenMS/FORMAT/FileHandler.h>
+
 #include <QtCore/QFileInfo>
 
 // #include <type_traits> // for template arg detection
@@ -888,8 +890,87 @@ namespace OpenMS::Internal
 
       SqliteConnector conn(filename_);
 
-      // Create SQL structure
-      char const *create_sql =
+      auto ft = FileHandler::getTypeByFileName(filename_);
+
+      // Write out different table column names depending if writing to sqMass or sqMobi
+      if (ft == FileTypes::SQMOBI)
+      {
+        // Create SQL structure
+        char const *create_sql =
+
+        // spectrum table
+        "CREATE TABLE SPECTRUM(" \
+        "ID INT PRIMARY KEY NOT NULL," \
+        "RUN_ID INT," \
+        "MSLEVEL INT NULL," \
+        "RETENTION_TIME REAL NULL," \
+        "SCAN_POLARITY INT NULL," \
+        "NATIVE_ID TEXT NOT NULL" \
+        ");" \
+
+        // mobilogram table
+        //  - compression is one of 0 = no, 1 = zlib, 2 = np-linear, 3 = np-slof, 4 = np-pic, 5 = np-linear + zlib, 6 = np-slof + zlib, 7 = np-pic + zlib
+        //  - data_type is one of 0 = mz, 1 = int, 2 = im // TODO: Should an addition data_type be added for im instead of replacing rt?
+        //  - data contains the raw (blob) data for a single data array
+        "CREATE TABLE DATA(" \
+        "SPECTRUM_ID INT," \
+        "MOBILOGRAM_ID INT," \
+        "COMPRESSION INT," \
+        "DATA_TYPE INT," \
+        "DATA BLOB NOT NULL" \
+        ");" \
+
+        // ms-run table
+        "CREATE TABLE RUN(" \
+        "ID INT PRIMARY KEY NOT NULL," \
+        "FILENAME TEXT NOT NULL, " \
+        "NATIVE_ID TEXT NOT NULL" \
+        ");" \
+
+        // ms-run extra table
+        "CREATE TABLE RUN_EXTRA(" \
+        "RUN_ID INT," \
+        "DATA BLOB NOT NULL" \
+        ");" \
+
+        // mobilogram table
+        "CREATE TABLE MOBILOGRAM(" \
+        "ID INT PRIMARY KEY NOT NULL," \
+        "RUN_ID INT," \
+        "NATIVE_ID TEXT NOT NULL" \
+        ");" \
+
+        // product table
+        "CREATE TABLE PRODUCT(" \
+        "SPECTRUM_ID INT," \
+        "MOBILOGRAM_ID INT," \
+        "CHARGE INT NULL," \
+        "ISOLATION_TARGET REAL NULL," \
+        "ISOLATION_LOWER REAL NULL," \
+        "ISOLATION_UPPER REAL NULL" \
+        ");" \
+
+        // precursor table
+        "CREATE TABLE PRECURSOR(" \
+        "SPECTRUM_ID INT," \
+        "MOBILOGRAM_ID INT," \
+        "CHARGE INT NULL," \
+        "PEPTIDE_SEQUENCE TEXT NULL," \
+        "DRIFT_TIME REAL NULL," \
+        "ACTIVATION_METHOD INT NULL," \
+        "ACTIVATION_ENERGY REAL NULL," \
+        "ISOLATION_TARGET REAL NULL," \
+        "ISOLATION_LOWER REAL NULL," \
+        "ISOLATION_UPPER REAL NULL" \
+        ");";
+        // Execute SQL statement
+        conn.executeStatement(create_sql);
+        createIndices_();
+      }
+      else
+      {
+        // Create SQL structure
+        char const *create_sql =
 
         // data table
         //  - compression is one of 0 = no, 1 = zlib, 2 = np-linear, 3 = np-slof, 4 = np-pic, 5 = np-linear + zlib, 6 = np-slof + zlib, 7 = np-pic + zlib
@@ -957,15 +1038,45 @@ namespace OpenMS::Internal
         "ISOLATION_UPPER REAL NULL" \
         ");";
 
-      // Execute SQL statement
-      conn.executeStatement(create_sql);
-      createIndices_();
+        // Execute SQL statement
+        conn.executeStatement(create_sql);
+        createIndices_();
+      }
     }
 
     void MzMLSqliteHandler::createIndices_()
     {
-      // Create SQL structure
-      char const *create_sql =
+      auto ft = FileHandler::getTypeByFileName(filename_);
+      // Write out different indices depending if writing to sqMass or sqMobi
+      if (ft == FileTypes::SQMOBI) {
+        // Create SQL structure
+        char const *create_sql =
+
+        // data table
+        "CREATE INDEX data_sp_idx ON DATA(SPECTRUM_ID);" \
+        "CREATE INDEX data_mobi_idx ON DATA(MOBILOGRAM_ID);" \
+
+        "CREATE INDEX spec_rt_idx ON SPECTRUM(RETENTION_TIME);" \
+        "CREATE INDEX spec_mslevel_idx ON SPECTRUM(MSLEVEL);" \
+        "CREATE INDEX spec_run_idx ON SPECTRUM(RUN_ID);" \
+
+        "CREATE INDEX run_extra_idx ON RUN_EXTRA(RUN_ID);" \
+
+        "CREATE INDEX mobi_run_idx ON MOBILOGRAM(RUN_ID);" \
+
+        "CREATE INDEX product_sp_idx ON DATA(SPECTRUM_ID);" \
+        "CREATE INDEX product_mobi_idx ON DATA(MOBILOGRAM_ID);" \
+
+        "CREATE INDEX precursor_sp_idx ON DATA(SPECTRUM_ID);" \
+        "CREATE INDEX precursor_mobi_idx ON DATA(MOBILOGRAM_ID);";
+        // Execute SQL statement
+        SqliteConnector conn(filename_);
+        conn.executeStatement(create_sql);
+      }
+      else
+      {
+        // Create SQL structure
+        char const *create_sql =
 
         // data table
         "CREATE INDEX data_chr_idx ON DATA(CHROMATOGRAM_ID);" \
@@ -985,9 +1096,10 @@ namespace OpenMS::Internal
         "CREATE INDEX precursor_chr_idx ON DATA(CHROMATOGRAM_ID);" \
         "CREATE INDEX precursor_sp_idx ON DATA(SPECTRUM_ID);";
 
-      // Execute SQL statement
-      SqliteConnector conn(filename_);
-      conn.executeStatement(create_sql);
+        // Execute SQL statement
+        SqliteConnector conn(filename_);
+        conn.executeStatement(create_sql);
+      }
     }
 
     void MzMLSqliteHandler::writeSpectra(const std::vector<MSSpectrum>& spectra)
@@ -1411,6 +1523,201 @@ namespace OpenMS::Internal
 
       conn.executeStatement("BEGIN TRANSACTION");
       conn.executeStatement(insert_chrom_sql.str());
+      conn.executeStatement(insert_precursor_sql.str());
+      conn.executeStatement(insert_product_sql.str());
+      conn.executeStatement("END TRANSACTION");
+    }
+
+    void MzMLSqliteHandler::writeMobilograms(const std::vector<MSChromatogram >& mobis)
+    {
+      // prevent writing of empty data which would throw an SQL exception
+      if (mobis.empty())
+      {
+        return;
+      }
+      SqliteConnector conn(filename_);
+
+      // prepare streams and set required precision (default is 6 digits)
+      std::stringstream insert_mobi_sql;
+      std::stringstream insert_precursor_sql;
+      std::stringstream insert_product_sql;
+
+      insert_mobi_sql.precision(11);
+      insert_precursor_sql.precision(11);
+      insert_product_sql.precision(11);
+
+      // Encoding options
+      MSNumpressCoder::NumpressConfig npconfig_mz;
+      npconfig_mz.estimate_fixed_point = true; // critical
+      npconfig_mz.numpressErrorTolerance = -1.0; // skip check, faster
+      npconfig_mz.setCompression("linear");
+      npconfig_mz.linear_fp_mass_acc = 0.05; // set the desired RT accuracy (0.05 seconds)
+      MSNumpressCoder::NumpressConfig npconfig_int;
+      npconfig_int.estimate_fixed_point = true; // critical
+      npconfig_int.numpressErrorTolerance = -1.0; // skip check, faster
+      npconfig_int.setCompression("slof");
+
+      String prepare_statement = "INSERT INTO DATA (MOBILOGRAM_ID, DATA_TYPE, COMPRESSION, DATA) VALUES ";
+      int sql_it = 1;
+
+      // Perform encoding in parallel
+      std::vector<String> encoded_strings_rt(mobis.size());
+      std::vector<String> encoded_strings_int(mobis.size());
+#ifdef _OPENMP
+#pragma omp parallel for
+#endif
+      for (SignedSize k = 0; k < (SignedSize)mobis.size(); k++)
+      {
+        const MSChromatogram& chrom = mobis[k];
+        // encode retention time data (zlib or np-linear + zlib)
+        {
+          std::vector<double> data_to_encode;
+          data_to_encode.resize(chrom.size());
+          for (Size p = 0; p < chrom.size(); ++p)
+          {
+            data_to_encode[p] = chrom[p].getRT();
+          }
+
+          String uncompressed_str;
+          String encoded_string;
+          if (use_lossy_compression_)//TODO: Figure out which compression is best for ion mobilitiy values, as the current RT compression would round the IM values too much
+          {
+            MSNumpressCoder().encodeNPRaw(data_to_encode, uncompressed_str, npconfig_mz);
+            OpenMS::ZlibCompression::compressString(uncompressed_str, encoded_string);
+            encoded_strings_rt[k] = encoded_string;
+          }
+          else
+          {
+            std::string str_data = std::string((const char*) (&data_to_encode[0]), data_to_encode.size() * sizeof(double));
+            OpenMS::ZlibCompression::compressString(str_data, encoded_string);
+            encoded_strings_rt[k] = encoded_string;
+          }
+        }
+
+        // encode intensity data (zlib or np-slof + zlib)
+        {
+          std::vector<double> data_to_encode;
+          data_to_encode.resize(chrom.size());
+          for (Size p = 0; p < chrom.size(); ++p)
+          {
+            data_to_encode[p] = chrom[p].getIntensity();
+          }
+
+          String uncompressed_str;
+          String encoded_string;
+          if (use_lossy_compression_)
+          {
+            MSNumpressCoder().encodeNPRaw(data_to_encode, uncompressed_str, npconfig_int);
+            OpenMS::ZlibCompression::compressString(uncompressed_str, encoded_string);
+            encoded_strings_int[k] = encoded_string;
+          }
+          else
+          {
+            std::string str_data = std::string((const char*) (&data_to_encode[0]), data_to_encode.size() * sizeof(double));
+            OpenMS::ZlibCompression::compressString(str_data, encoded_string);
+            encoded_strings_int[k] = encoded_string;
+          }
+        }
+      }
+
+      std::vector<String> data;
+      for (Size k = 0; k < mobis.size(); k++)
+      {
+        const MSChromatogram& chrom = mobis[k];
+        insert_mobi_sql << "INSERT INTO MOBILOGRAM (ID, RUN_ID, NATIVE_ID) VALUES (" << chrom_id_ << "," << run_id_ << ",'" << chrom.getNativeID() << "'); ";
+
+        OpenMS::Precursor prec = chrom.getPrecursor();
+        // see src/openms/include/OpenMS/METADATA/Precursor.h for activation modes
+        int activation_method = -1;
+        if (!prec.getActivationMethods().empty() )
+        {
+          activation_method = *prec.getActivationMethods().begin();
+        }
+        String pepseq;
+        if (prec.metaValueExists("peptide_sequence"))
+        {
+          pepseq = prec.getMetaValue("peptide_sequence");
+          insert_precursor_sql << "INSERT INTO PRECURSOR (MOBILOGRAM_ID, CHARGE, ISOLATION_TARGET, " <<
+            "ISOLATION_LOWER, ISOLATION_UPPER, DRIFT_TIME, ACTIVATION_ENERGY, " <<
+            "ACTIVATION_METHOD, PEPTIDE_SEQUENCE) VALUES (" <<
+            chrom_id_ << "," << prec.getCharge() << "," << prec.getMZ() <<
+            "," << prec.getIsolationWindowLowerOffset() << "," << prec.getIsolationWindowUpperOffset() <<
+            "," << prec.getDriftTime() <<
+            "," << prec.getActivationEnergy() <<
+            "," << activation_method << ",'" << pepseq << "'" << "); ";
+        }
+        else
+        {
+          insert_precursor_sql << "INSERT INTO PRECURSOR (MOBILOGRAM_ID, CHARGE, ISOLATION_TARGET, " <<
+            "ISOLATION_LOWER, ISOLATION_UPPER, DRIFT_TIME, ACTIVATION_ENERGY, ACTIVATION_METHOD) VALUES (" <<
+            chrom_id_ << "," << prec.getCharge() << "," << prec.getMZ() <<
+            "," << prec.getIsolationWindowLowerOffset() << "," << prec.getIsolationWindowUpperOffset() <<
+            "," << prec.getDriftTime() <<
+            "," << prec.getActivationEnergy() <<
+            "," << activation_method << "); ";
+        }
+
+        OpenMS::Product prod = chrom.getProduct();
+        insert_product_sql << "INSERT INTO PRODUCT (MOBILOGRAM_ID, CHARGE, ISOLATION_TARGET, " <<
+          "ISOLATION_LOWER, ISOLATION_UPPER) VALUES (" <<
+          chrom_id_ << "," << 0 << "," << prod.getMZ() <<
+          "," << prod.getIsolationWindowLowerOffset() << "," << prod.getIsolationWindowUpperOffset() << "); ";
+
+        //  data_type is one of 0 = mz, 1 = int, 2 = rt
+        //  compression is one of 0 = no, 1 = zlib, 2 = np-linear, 3 = np-slof, 4 = np-pic, 5 = np-linear + zlib, 6 = np-slof + zlib, 7 = np-pic + zlib
+
+        // encode retention time data (zlib or np-linear + zlib)
+        {
+          data.push_back(encoded_strings_rt[k]);
+          if (use_lossy_compression_) // TODO: Figure out best compression encoding for IM
+          {
+            prepare_statement += String("(") + chrom_id_ + ", 2, 6, ?" + sql_it++ + " ),";
+          }
+          else
+          {
+            prepare_statement += String("(") + chrom_id_ + ", 2, 1, ?" + sql_it++ + " ),";
+          }
+        }
+
+        // encode intensity data (zlib or np-slof + zlib)
+        {
+          data.push_back(encoded_strings_int[k]);
+          if (use_lossy_compression_)
+          {
+            prepare_statement += String("(") + chrom_id_ + ", 1, 6, ?" + sql_it++ + " ),";
+          }
+          else
+          {
+            prepare_statement += String("(") + chrom_id_ + ", 1, 1, ?" + sql_it++ + " ),";
+          }
+        }
+        chrom_id_++;
+
+        if (sql_it > sql_batch_size_) // flush as sqlite can only handle so many bind_blob statements
+        {
+          // prevent writing of empty data which would throw an SQL exception
+          if (!data.empty())
+          {
+            prepare_statement.resize( prepare_statement.size() -1 ); // remove last ","
+            conn.executeBindStatement(prepare_statement, data);
+          }
+
+          data.clear();
+          prepare_statement = "INSERT INTO DATA (MOBILOGRAM_ID, DATA_TYPE, COMPRESSION, DATA) VALUES ";
+          sql_it = 1;
+        }
+
+      }
+
+      // prevent writing of empty data which would throw an SQL exception
+      if (!data.empty())
+      {
+        prepare_statement.resize(prepare_statement.size() -1); // remove last ","
+        conn.executeBindStatement(prepare_statement, data);
+      }
+
+      conn.executeStatement("BEGIN TRANSACTION");
+      conn.executeStatement(insert_mobi_sql.str());
       conn.executeStatement(insert_precursor_sql.str());
       conn.executeStatement(insert_product_sql.str());
       conn.executeStatement("END TRANSACTION");

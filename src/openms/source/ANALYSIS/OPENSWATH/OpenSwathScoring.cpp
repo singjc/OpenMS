@@ -49,6 +49,9 @@
 #include <OpenMS/MATH/STATISTICS/StatisticFunctions.h>
 #include <OpenMS/ANALYSIS/OPENSWATH/SpectrumAddition.h>
 
+// Interfaces
+#include <OpenMS/INTERFACES/IMSDataConsumer.h>
+
 namespace OpenMS
 {
 
@@ -135,7 +138,8 @@ namespace OpenMS
                                             std::vector<double>& masserror_ppm,
                                             const double drift_lower,
                                             const double drift_upper,
-                                            const double drift_target)
+                                            const double drift_target,
+                                            Interfaces::IMSDataConsumer * mobiConsumer)
   {
     OPENMS_PRECONDITION(imrmfeature != nullptr, "Feature to be scored cannot be null");
     OPENMS_PRECONDITION(transitions.size() > 0, "There needs to be at least one transition.");
@@ -227,10 +231,12 @@ namespace OpenMS
         IonMobilityScoring::driftScoringMS1( fetchSpectrumSwath(ms1_map, imrmfeature->getRT(), add_up_spectra_, drift_lower_used, drift_upper_used),
             transitions, scores, drift_lower, drift_upper, drift_target, dia_extract_window_, dia_extraction_ppm_, false, im_drift_extra_pcnt_);
 
+        // TODO: Should the mobilograms be saved from this function call? Since it extracts both MS1 and transition/fragment traces
+        // TODO: Currently im_drift_extra_pcnt_ is constantly set to 0, make it a main argument in OpenSwathWorkflow to extract a larger window for visualization?
         IonMobilityScoring::driftScoringMS1Contrast(
             fetchSpectrumSwath(used_swath_maps, imrmfeature->getRT(), add_up_spectra_, drift_lower_used, drift_upper_used),
             fetchSpectrumSwath(ms1_map, imrmfeature->getRT(), add_up_spectra_, drift_lower, drift_upper),
-            transitions, scores, drift_lower, drift_upper, dia_extract_window_, dia_extraction_ppm_, im_drift_extra_pcnt_);
+            transitions, scores, drift_lower, drift_upper, dia_extract_window_, dia_extraction_ppm_, im_drift_extra_pcnt_, mobiConsumer);
       }
     }
 

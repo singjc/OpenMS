@@ -478,8 +478,9 @@ namespace OpenMS
   void MRMFeatureFinderScoring::scorePeakgroups(MRMTransitionGroupType& transition_group,
                                                 const TransformationDescription& trafo, 
                                                 const std::vector<OpenSwath::SwathMap>& swath_maps,
-                                                FeatureMap& output, 
-                                                bool ms1only) const
+                                                FeatureMap& output,
+                                                bool ms1only,
+                                                Interfaces::IMSDataConsumer * mobiConsumer ) const
   {
     if (PeptideRefMap_.empty())
     {
@@ -704,7 +705,7 @@ namespace OpenMS
           scorer.calculateDIAScores(imrmfeature,
                                     transition_group_detection.getTransitions(),
                                     swath_maps, ms1_map_, diascoring_, *pep, scores, masserror_ppm,
-                                    drift_lower, drift_upper, drift_target);
+                                    drift_lower, drift_upper, drift_target, mobiConsumer); // Save mobilograms
           mrmfeature.setMetaValue("masserror_ppm", masserror_ppm);
         }
         if (sonar_present && su_.use_sonar_scores)

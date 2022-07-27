@@ -52,6 +52,7 @@ namespace OpenMS
   */
   class OPENMS_DLLAPI OpenSwathDataAccessHelper
   {
+    typedef OpenSwath::LightTransition TransitionType;
 public:
     /// Convert a SpectrumPtr to an OpenMS Spectrum
     static void convertToOpenMSSpectrum(const OpenSwath::SpectrumPtr sptr, OpenMS::MSSpectrum & spectrum);
@@ -82,6 +83,12 @@ public:
     /// convert from the LightCompound to an OpenMS AASequence (with correct modifications)
     static void convertPeptideToAASequence(const OpenSwath::LightCompound & peptide, AASequence & aa_sequence);
 
+    /// Convert vectors of intensity and ion mobility values to an OpenMS Chromatogram
+    static void convertMobilogramArraysToMSChromatogram(const std::vector< std::vector< double > > int_list,
+                                                        const std::vector< std::vector< double > > im_list,
+                                                        std::vector<OpenMS::MSChromatogram > & output_mobilograms,
+                                                        const std::vector<TransitionType> & transitions,
+                                                        bool ms1 = false);
   };
 
 } //end namespace OpenMS

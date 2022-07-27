@@ -145,6 +145,7 @@ namespace OpenMS
       @param dia_extraction_ppm_ Whether m/z extraction width is in ppm
       @param use_spline Whether to use spline for fitting
       @param drift_extra Extra extraction to use for drift time (in percent)
+      @param mobiConsumer consumer object for writing out computed aligned mobilograms to disk
 
       @return Populates additional scores in the @p scores object
 
@@ -156,7 +157,8 @@ namespace OpenMS
                                         const double drift_upper,
                                         const double dia_extract_window_,
                                         const bool dia_extraction_ppm_,
-                                        const double drift_extra);
+                                        const double drift_extra,
+                                        Interfaces::IMSDataConsumer * mobiConsumer);
   };
 }
 

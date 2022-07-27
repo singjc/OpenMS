@@ -35,6 +35,7 @@
 #include <OpenMS/FORMAT/DATAACCESS/MSDataSqlConsumer.h>
 
 #include <OpenMS/FORMAT/HANDLERS/MzMLSqliteHandler.h>
+#include <include/OpenMS/FORMAT/FileHandler.h>
 
 namespace OpenMS
 {
@@ -74,7 +75,16 @@ namespace OpenMS
 
     if (!chromatograms_.empty() ) 
     {
-      handler_->writeChromatograms(chromatograms_);
+      auto ft = FileHandler::getTypeByFileName(filename_);
+      // Depending on what is being written out, call appropriate method for writing chromatograms or mobilograms
+      if (ft == FileTypes::SQMOBI)
+      {
+        handler_->writeMobilograms(chromatograms_);
+      }
+      else
+      {
+        handler_->writeChromatograms(chromatograms_);
+      }
       chromatograms_.clear();
       chromatograms_.reserve(flush_after_);
     }

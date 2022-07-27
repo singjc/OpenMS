@@ -450,6 +450,7 @@ namespace OpenMS
     OpenSwathTSVWriter & tsv_writer,
     OpenSwathOSWWriter & osw_writer,
     Interfaces::IMSDataConsumer * chromConsumer,
+    Interfaces::IMSDataConsumer * mobiConsumer,
     int batchSize,
     int ms1_isotopes,
     bool load_into_memory)
@@ -495,7 +496,7 @@ namespace OpenMS
       OpenSwath::LightTargetedExperiment transition_exp_used = transition_exp;
       scoreAllChromatograms_(std::vector<MSChromatogram>(), ms1_chromatograms, swath_maps, transition_exp_used,
                             feature_finder_param, trafo,
-                            cp.rt_extraction_window, featureFile, tsv_writer, osw_writer, ms1_isotopes, true);
+                            cp.rt_extraction_window, featureFile, tsv_writer, osw_writer, mobiConsumer, ms1_isotopes, true);
 
       // write features to output if so desired
       std::vector< OpenMS::MSChromatogram > chromatograms;
@@ -755,11 +756,12 @@ namespace OpenMS
 
 
             // Step 3: score these extracted transitions
+            // Pass a consumer object to write out the computed aligned moliograms to disk during DIAScoring
             FeatureMap featureFile;
             std::vector< OpenSwath::SwathMap > tmp = {swath_maps[i]};
             tmp.back().sptr = current_swath_map_inner;
             scoreAllChromatograms_(chrom_exp.getChromatograms(), ms1_chromatograms, tmp, transition_exp_used,
-                feature_finder_param, trafo, cp.rt_extraction_window, featureFile, tsv_writer, osw_writer, ms1_isotopes);
+                feature_finder_param, trafo, cp.rt_extraction_window, featureFile, tsv_writer, osw_writer, mobiConsumer, ms1_isotopes);
 
             // Step 4: write all chromatograms and features out into an output object / file
             // (this needs to be done in a critical section since we only have one
@@ -871,6 +873,7 @@ namespace OpenMS
     FeatureMap& output,
     OpenSwathTSVWriter & tsv_writer,
     OpenSwathOSWWriter & osw_writer,
+    Interfaces::IMSDataConsumer * mobiliConsumer,
     int nr_ms1_isotopes,
     bool ms1only) const
   {
@@ -1007,8 +1010,9 @@ namespace OpenMS
       }
 
       // 3. / 4. Process the MRMTransitionGroup: find peakgroups and score them
+      //         Write out computed aligned mobilograms during DIAScoring
       trgroup_picker.pickTransitionGroup(transition_group);
-      featureFinder.scorePeakgroups(transition_group, trafo, swath_maps, output, ms1only);
+      featureFinder.scorePeakgroups(transition_group, trafo, swath_maps, output, ms1only, mobiliConsumer);
 
       // Ensure that a detection transition is used to derive features for output
       if (detection_assay_it == nullptr && !output.empty())

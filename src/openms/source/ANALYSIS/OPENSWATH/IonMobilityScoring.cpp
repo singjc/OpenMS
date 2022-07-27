@@ -47,6 +47,8 @@
 #include <OpenMS/MATH/STATISTICS/StatisticFunctions.h>
 #include <OpenMS/ANALYSIS/OPENSWATH/SpectrumAddition.h>
 #include <OpenMS/ANALYSIS/OPENSWATH/DIAHelper.h>
+#include <include/OpenMS/ANALYSIS/OPENSWATH/OpenSwathHelper.h>
+#include <include/OpenMS/ANALYSIS/OPENSWATH/ChromatogramExtractor.h>
 
 // #define DEBUG_IMSCORING
 
@@ -249,7 +251,8 @@ namespace OpenMS
                                                    const double drift_upper,
                                                    const double dia_extract_window_,
                                                    const bool dia_extraction_ppm_,
-                                                   const double drift_extra)
+                                                   const double drift_extra,
+                                                   Interfaces::IMSDataConsumer * mobiConsumer)
   {
     OPENMS_PRECONDITION(spectrum != nullptr, "Spectrum cannot be null");
     OPENMS_PRECONDITION(!transitions.empty(), "Need at least one transition");
@@ -295,17 +298,59 @@ namespace OpenMS
 
     // Step 3: Align the IonMobilogram vectors to the grid
     std::vector< std::vector< double > > aligned_mobilograms;
+    std::vector< std::vector< double > > aligned_mobilograms_im; // Store the aligned ion mobility array as well
     for (const auto & mobilogram : mobilograms) 
     {
       std::vector< double > arrInt, arrIM;
       Size max_peak_idx = 0;
       alignToGrid(mobilogram, im_grid, arrInt, arrIM, eps, max_peak_idx);
       aligned_mobilograms.push_back(arrInt);
+      aligned_mobilograms_im.push_back(arrIM);
     }
 
     std::vector< double > ms1_int_values, ms1_im_values;
     Size max_peak_idx = 0;
     alignToGrid(ms1_profile, im_grid, ms1_int_values, ms1_im_values, eps, max_peak_idx);
+
+    // Store the aligned intensity and mobility values of the MS profile in a list vector
+    std::vector< std::vector< double > > aligned_ms1_mobilograms_int;
+    std::vector< std::vector< double > > aligned_ms1_mobilograms_im;
+    aligned_ms1_mobilograms_int.push_back(ms1_int_values); // TODO: This is the mobilogram we would want to return for fragment traces
+    aligned_ms1_mobilograms_im.push_back(ms1_im_values);
+
+    // Output vector of MSChromatograms to store MS1 mobilograms
+    std::vector< OpenMS::MSChromatogram > ms1_mobilogram;
+    OpenSwathDataAccessHelper::convertMobilogramArraysToMSChromatogram(aligned_ms1_mobilograms_int, aligned_ms1_mobilograms_im, ms1_mobilogram, transitions, true);
+
+    #ifdef _OPENMP
+    #pragma omp critical (osw_write_out)
+    #endif
+    {
+          // write MS1 chromatograms to disk
+          for (Size mobi_idx = 0; mobi_idx < ms1_mobilogram.size(); ++mobi_idx)
+          {
+              if (!ms1_mobilogram[mobi_idx].empty()) {
+                  mobiConsumer->consumeChromatogram(ms1_mobilogram[mobi_idx]);
+              }
+          }
+    }
+
+    // Output vector of MSChromatograms to store MS2 mobilograms
+    std::vector< OpenMS::MSChromatogram > transition_mobilograms;
+    OpenSwathDataAccessHelper::convertMobilogramArraysToMSChromatogram(aligned_mobilograms, aligned_mobilograms_im, transition_mobilograms, transitions, false);
+
+    #ifdef _OPENMP
+    #pragma omp critical (osw_write_out)
+    #endif
+    {
+          // write fragment molbilograms to disk
+          for (Size mobi_idx = 0; mobi_idx < transition_mobilograms.size(); ++mobi_idx)
+          {
+              if (!transition_mobilograms[mobi_idx].empty()) {
+                  mobiConsumer->consumeChromatogram(transition_mobilograms[mobi_idx]);
+              }
+          }
+    }
 
     // Step 4: MS1 contrast scores
     {

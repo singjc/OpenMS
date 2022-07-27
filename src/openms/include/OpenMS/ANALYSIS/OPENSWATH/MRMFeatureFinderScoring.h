@@ -36,6 +36,9 @@
 
 #define USE_SP_INTERFACE
 
+// Interfaces
+#include <OpenMS/INTERFACES/IMSDataConsumer.h>
+
 // Actual scoring
 #include <OpenMS/ANALYSIS/OPENSWATH/OpenSwathScoring.h>
 
@@ -180,13 +183,15 @@ public:
      * @param output The output features with corresponding scores (the found
      *               features will be added to this FeatureMap).
      * @param ms1only Whether to only do MS1 scoring and skip all MS2 scoring
+     * @param mobiConsumer comsumer object for writing out computed aligned mobilograms
      *
     */
     void scorePeakgroups(MRMTransitionGroupType& transition_group,
                          const TransformationDescription & trafo,
                          const std::vector<OpenSwath::SwathMap>& swath_maps,
                          FeatureMap& output,
-                         bool ms1only = false) const;
+                         bool ms1only = false,
+                         Interfaces::IMSDataConsumer * mobiConsumer = NULL) const;
 
     /** @brief Set the flag for strict mapping
     */

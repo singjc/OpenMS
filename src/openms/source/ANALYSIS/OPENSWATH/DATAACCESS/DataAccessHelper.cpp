@@ -35,6 +35,9 @@
 #include <OpenMS/ANALYSIS/OPENSWATH/DATAACCESS/DataAccessHelper.h>
 
 #include <OpenMS/CHEMISTRY/ModificationsDB.h>
+#include <include/OpenMS/ANALYSIS/OPENSWATH/OpenSwathHelper.h>
+
+#include <OpenMS/CONCEPT/LogStream.h>
 
 namespace OpenMS
 {
@@ -144,7 +147,7 @@ namespace OpenMS
       transition_exp.compounds.push_back(p);
     }
 
-    //copy compounds and store as compounds 
+    //copy compounds and store as compounds
     for (Size i = 0; i < transition_exp_.getCompounds().size(); i++)
     {
       OpenSwath::LightCompound c;
@@ -332,4 +335,52 @@ namespace OpenMS
     }
   }
 
+  void OpenSwathDataAccessHelper::convertMobilogramArraysToMSChromatogram(const std::vector< std::vector< double > > int_list,
+                                                                          const std::vector< std::vector< double > > im_list,
+                                                                          std::vector<OpenMS::MSChromatogram > & output_mobilograms,
+                                                                          const std::vector<TransitionType> & transitions,
+                                                                          bool ms1)
+  {
+  for (Size i = 0; i < int_list.size(); i++) {
+      std::vector< double > im_values = im_list[i];
+      std::vector< double > int_values = int_list[i];
+      std::vector<double>::const_iterator rt_it = im_values.begin();
+      std::vector<double>::const_iterator int_it = int_values.begin();
+
+      OpenMS::MSChromatogram mobilogram;
+      //if (!mobilogram.empty()) mobilogram.clear(false);
+
+      ChromatogramPeak peak;
+      mobilogram.reserve(im_values.size());
+      for (; rt_it != im_values.end(); ++rt_it, ++int_it) {
+          peak.setRT(*rt_it);
+          peak.setIntensity(*int_it);
+          mobilogram.push_back(peak);
+      }
+      if (ms1) {
+          //OPENMS_LOG_DEBUG << "Consuming ms1 mobilogram: peptideRef=" << transitions[i].getPeptideRef() << std::endl;
+          mobilogram.setNativeID(transitions[0].getPeptideRef() + "_Precursor");
+      } else {
+          //OPENMS_LOG_DEBUG << "Consuming transition mobilograms: peptideRef=" << transitions[i].getPeptideRef() << " with transition nativeID=" << transitions[i].getNativeID() << std::endl;
+          mobilogram.setNativeID(transitions[i].getNativeID());
+      }
+
+      // TODO: Currently data for PRECURSOR and PRODUCT tables are going to be empty, since we only pass a light transition object
+      Precursor prec;
+      prec.setMZ(transitions[i].precursor_mz);
+      mobilogram.setChromatogramType(ChromatogramSettings::BASEPEAK_CHROMATOGRAM);
+
+      // extract compound / peptide id from transition and store in
+      // more-or-less default field
+      String transition_group_id = OpenSwathHelper::computeTransitionGroupId(transitions[i].peptide_ref);
+      /**if (!transition_group_id.empty())
+      {
+        int prec_charge = 0;
+        String r = ChromatogramExtractor::extract_id_(transitions[0], transition_group_id, prec_charge);
+        prec.setCharge(prec_charge);
+        prec.setMetaValue("peptide_sequence", r);
+      }*/
+      output_mobilograms.push_back(mobilogram);
+  }
+  }
 }
