@@ -195,7 +195,7 @@ namespace OpenMS
                             const double drift_lower,
                             const double drift_upper,
                             const double drift_target,
-                            Interfaces::IMSDataConsumer * mobiConsumer);
+                            Interfaces::IMSDataConsumer * mobiConsumer = NULL); // TODO: Should this be set to NULL? Is there a more appropriate default value to set it to?
 
     /** @brief Score a single chromatographic feature using the precursor map.
      *

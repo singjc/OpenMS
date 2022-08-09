@@ -191,7 +191,7 @@ public:
                          const std::vector<OpenSwath::SwathMap>& swath_maps,
                          FeatureMap& output,
                          bool ms1only = false,
-                         Interfaces::IMSDataConsumer * mobiConsumer = NULL) const;
+                         Interfaces::IMSDataConsumer * mobiConsumer = NULL) const; // TODO: Should this be set to NULL? Is there a more appropriate default value to set it to?
 
     /** @brief Set the flag for strict mapping
     */

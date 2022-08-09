@@ -79,7 +79,8 @@ namespace OpenMS
     db = conn.getDB();
 
     // Count transitions
-    SqliteConnector::prepareStatement(db, &cntstmt, "SELECT COUNT(*) FROM TRANSITION;");
+    // SqliteConnector::prepareStatement(db, &cntstmt, "SELECT COUNT(*) FROM TRANSITION;"); // Takes 6459ms for 59953332 rows in TRANSITION
+    SqliteConnector::prepareStatement(db, &cntstmt, "SELECT MAX(_ROWID_) FROM TRANSITION LIMIT 1;;"); // Takes 0ms for 59953332 rows in TRANSITION
     sqlite3_step( cntstmt );
     int num_transitions = sqlite3_column_int(cntstmt, 0);
     sqlite3_finalize(cntstmt);
