@@ -41,387 +41,369 @@
 #include <unordered_set>
 #include <map>
 
+#include <omp.h>
+
 using namespace std;
 
-namespace OpenMS
-{
-  MRMAssay::MRMAssay()
-  {
-  }
-
-  MRMAssay::~MRMAssay()
-  {
-  }
-
-  std::vector<std::string> MRMAssay::getMatchingPeptidoforms_(const double fragment_ion,
-                                                              const FragmentSeqMap& ions,
-                                                              const double mz_threshold)
-  {
-    std::vector<std::string> isoforms;
-
-    for (const auto& i_it : ions) // map: "fragment m/z" -> "modified sequence"
-    {
-      if (i_it.first - mz_threshold <= fragment_ion && i_it.first + mz_threshold >= fragment_ion)
-      {
-        isoforms.push_back(i_it.second);
-      }
+namespace OpenMS {
+    MRMAssay::MRMAssay() {
     }
 
-    std::sort(isoforms.begin(), isoforms.end());
-    isoforms.erase(std::unique(isoforms.begin(), isoforms.end()), isoforms.end());
-
-    return isoforms;
-  }
-
-  int MRMAssay::getSwath_(const std::vector<std::pair<double, double> >& swathes, const double precursor_mz)
-  {
-    int swath = -1;
-
-    // we go through all swaths in ascending order and if the transitions falls
-    // in overlap, only the upper swath will be used and checked.
-    for (auto it = swathes.begin(); it != swathes.end(); ++it)
-    {
-      if (precursor_mz >= it->first && precursor_mz <= it->second)
-      {
-        swath = it - swathes.begin();
-      }
+    MRMAssay::~MRMAssay() {
     }
 
-    if (swath != -1)
-    {
-      return swath;
-    }
-    else
-    {
-      return -1;
-    }
-  }
+    std::vector<std::string> MRMAssay::getMatchingPeptidoforms_(const double fragment_ion,
+                                                                const FragmentSeqMap &ions,
+                                                                const double mz_threshold) {
+        std::vector<std::string> isoforms;
 
-  bool MRMAssay::isInSwath_(const std::vector<std::pair<double, double> >& swathes, const double precursor_mz, const double product_mz)
-  {
-    int swath_idx = getSwath_(swathes, precursor_mz);
-
-    if (swath_idx == -1) { return true; } // remove all transitions that are not in swath range
-    else
-    {
-      std::pair<double, double> swath = swathes[getSwath_(swathes, precursor_mz)];
-
-      if (product_mz >= swath.first && product_mz <= swath.second)
-      {
-        return true;
-      }
-      else
-      { 
-        return false;
-      }
-    }
-  }
-
-  std::string MRMAssay::getRandomSequence_(size_t sequence_size, boost::variate_generator<boost::mt19937&, boost::uniform_int<> >
-                                           pseudoRNG)
-  {
-    std::string aa[] =
-    {
-      "A", "N", "D", "C", "E", "Q", "G", "H", "I", "L", "M", "F", "S", "T", "W",
-      "Y", "V"
-    };
-    size_t aa_size = 17;
-
-    std::string peptide_sequence = "";
-
-    for (size_t i = 0; i < sequence_size; ++i)
-    {
-      size_t pos = (pseudoRNG() % aa_size);
-      peptide_sequence += aa[pos];
-    }
-
-    return peptide_sequence;
-  }
-
-  std::vector<std::vector<size_t> > MRMAssay::nchoosekcombinations_(const std::vector<size_t>& n, size_t k)
-  {
-    std::vector<std::vector<size_t> > combinations;
-
-    std::string bitmask(k, 1);
-    bitmask.resize(n.size(), 0);
-
-    do
-    {
-      std::vector<size_t> combination;
-      for (size_t i = 0; i < n.size(); ++i)
-      {
-        if (bitmask[i])
+        for (const auto &i_it : ions) // map: "fragment m/z" -> "modified sequence"
         {
-          combination.push_back(n[i]);
-        }
-      }
-      combinations.push_back(combination);
-    } while (std::prev_permutation(bitmask.begin(), bitmask.end()));
-
-    return combinations;
-  }
-
-  std::vector<OpenMS::AASequence> MRMAssay::addModificationsSequences_(const std::vector<OpenMS::AASequence>& sequences, const std::vector<std::vector<size_t> >& mods_combs, const OpenMS::String& modification)
-  {
-    std::vector<OpenMS::AASequence> modified_sequences;
-    bool multi_mod_switch = false;
-    bool skip_invalid_mod_seq = false;
-
-    OpenMS::ModificationsDB* ptr = ModificationsDB::getInstance();
-    std::set<const ResidueModification*> modifiable_nterm;
-    ptr->searchModifications(modifiable_nterm, modification, "", ResidueModification::N_TERM);
-    std::set<const ResidueModification*> modifiable_cterm;
-    ptr->searchModifications(modifiable_cterm, modification, "", ResidueModification::C_TERM);
-    for (std::vector<OpenMS::AASequence>::const_iterator sq_it = sequences.begin(); sq_it != sequences.end(); ++sq_it)
-    {
-      for (std::vector<std::vector<size_t> >::const_iterator mc_it = mods_combs.begin(); mc_it != mods_combs.end(); ++mc_it)
-      {
-        multi_mod_switch = false;
-        skip_invalid_mod_seq = false;
-        OpenMS::AASequence temp_sequence = *sq_it;
-        for (std::vector<size_t>::const_iterator pos_it = mc_it->begin(); pos_it != mc_it->end(); ++pos_it)
-        {
-          if (*pos_it == 0)
-          {
-            // Check first to make sure ending residue is NTerm modifiable
-            if ( !modifiable_nterm.empty() && (temp_sequence[0].getOneLetterCode() == OpenMS::String((*modifiable_nterm.begin())->getOrigin()) || (*modifiable_nterm.begin())->getOrigin() == 'X') ) 
-            {
-              temp_sequence.setNTerminalModification(modification);
-            } 
-            else 
-            {
-              OPENMS_LOG_DEBUG << "[addModificationsSequences_] Skipping addition of N-Term " << OpenMS::String((*modifiable_nterm.begin())->getId()) <<
-                                   " to last residue (" << temp_sequence[temp_sequence.size() - 1].getOneLetterCode() << ") of peptide " << temp_sequence.toUniModString() << 
-                                   " , because it does not match viable N-Term residue specificity (" <<
-                                   OpenMS::String((*modifiable_nterm.begin())->getOrigin()) << ") in ModificationDB." << std::endl;
-              skip_invalid_mod_seq = true;
+            if (i_it.first - mz_threshold <= fragment_ion && i_it.first + mz_threshold >= fragment_ion) {
+                isoforms.push_back(i_it.second);
             }
-          }
-          else if (*pos_it == temp_sequence.size() + 1)
-          {
-            // Check first to make sure ending residue is CTerm modifiable
-            if ( !modifiable_cterm.empty() && (temp_sequence.toUnmodifiedString().back() == (*modifiable_cterm.begin())->getOrigin() || (*modifiable_cterm.begin())->getOrigin() == 'X') )
-            {
-              temp_sequence.setCTerminalModification(modification);
-            } 
-            else 
-            {
-              OPENMS_LOG_DEBUG << "[addModificationsSequences_] Skipping addition of C-Term " << OpenMS::String((*modifiable_cterm.begin())->getId()) <<
-                                   " to last residue (" << temp_sequence.toUnmodifiedString().back() << ") of peptide " << temp_sequence.toUniModString() << 
-                                   " , because it does not match viable C-Term residue specificity (" <<
-                                   OpenMS::String((*modifiable_cterm.begin())->getOrigin()) << ") in ModificationDB." << std::endl;
-              skip_invalid_mod_seq = true;
+        }
+
+        std::sort(isoforms.begin(), isoforms.end());
+        isoforms.erase(std::unique(isoforms.begin(), isoforms.end()), isoforms.end());
+
+        return isoforms;
+    }
+
+    int MRMAssay::getSwath_(const std::vector<std::pair<double, double> > &swathes, const double precursor_mz) {
+        int swath = -1;
+
+        // we go through all swaths in ascending order and if the transitions falls
+        // in overlap, only the upper swath will be used and checked.
+        for (auto it = swathes.begin(); it != swathes.end(); ++it) {
+            if (precursor_mz >= it->first && precursor_mz <= it->second) {
+                swath = it - swathes.begin();
             }
-          }
-          else
-          {
-            if (!temp_sequence[*pos_it - 1].isModified())
-            {
-              temp_sequence.setModification(*pos_it - 1, modification);
+        }
+
+        if (swath != -1) {
+            return swath;
+        } else {
+            return -1;
+        }
+    }
+
+    bool MRMAssay::isInSwath_(const std::vector<std::pair<double, double> > &swathes, const double precursor_mz,
+                              const double product_mz) {
+        int swath_idx = getSwath_(swathes, precursor_mz);
+
+        if (swath_idx == -1) { return true; } // remove all transitions that are not in swath range
+        else {
+            std::pair<double, double> swath = swathes[getSwath_(swathes, precursor_mz)];
+
+            if (product_mz >= swath.first && product_mz <= swath.second) {
+                return true;
+            } else {
+                return false;
             }
-            else
-            {
-              multi_mod_switch = true;
+        }
+    }
+
+    std::string
+    MRMAssay::getRandomSequence_(size_t sequence_size, boost::variate_generator<boost::mt19937 &, boost::uniform_int<> >
+    pseudoRNG) {
+        std::string aa[] =
+                {
+                        "A", "N", "D", "C", "E", "Q", "G", "H", "I", "L", "M", "F", "S", "T", "W",
+                        "Y", "V"
+                };
+        size_t aa_size = 17;
+
+        std::string peptide_sequence = "";
+
+        for (size_t i = 0; i < sequence_size; ++i) {
+            size_t pos = (pseudoRNG() % aa_size);
+            peptide_sequence += aa[pos];
+        }
+
+        return peptide_sequence;
+    }
+
+    std::vector<std::vector<size_t> > MRMAssay::nchoosekcombinations_(const std::vector<size_t> &n, size_t k) {
+        std::vector<std::vector<size_t> > combinations;
+
+        std::string bitmask(k, 1);
+        bitmask.resize(n.size(), 0);
+
+        do {
+            std::vector<size_t> combination;
+            for (size_t i = 0; i < n.size(); ++i) {
+                if (bitmask[i]) {
+                    combination.push_back(n[i]);
+                }
             }
-          }
-        }
-        if (skip_invalid_mod_seq) { continue; }
-        if (!multi_mod_switch) { modified_sequences.push_back(temp_sequence); }
-      }
+            combinations.push_back(combination);
+        } while (std::prev_permutation(bitmask.begin(), bitmask.end()));
+
+        return combinations;
     }
 
-    return modified_sequences;
-  }
+    std::vector<OpenMS::AASequence>
+    MRMAssay::addModificationsSequences_(const std::vector<OpenMS::AASequence> &sequences,
+                                         const std::vector<std::vector<size_t> > &mods_combs,
+                                         const OpenMS::String &modification) {
+        std::vector<OpenMS::AASequence> modified_sequences;
+        bool multi_mod_switch = false;
+        bool skip_invalid_mod_seq = false;
 
-  std::vector<OpenMS::AASequence> MRMAssay::generateTheoreticalPeptidoforms_(const OpenMS::AASequence& sequence)
-  {
-    std::map<OpenMS::String, size_t> mods;
-    std::vector<OpenMS::AASequence> sequences = {AASequence::fromString(sequence.toUnmodifiedString())};
-
-    OpenMS::ModificationsDB* ptr = ModificationsDB::getInstance();
-
-    if (sequence.hasNTerminalModification())
-    {
-      mods[sequence.getNTerminalModificationName()] += 1;
-    }
-
-    if (sequence.hasCTerminalModification())
-    {
-      mods[sequence.getCTerminalModificationName()] += 1;
-    }
-
-    for (size_t i = 0; i < sequence.size(); ++i)
-    {
-      if (sequence[i].isModified())
-      {
-        mods[sequence.getResidue(i).getModificationName()] += 1;
-      }
-    }
-
-    // For each modification, create all (n choose k) theoretical peptidoforms
-    for (const auto& mod_it : mods)
-    {
-      std::vector<size_t> mods_res;
-
-      std::set<const ResidueModification*> modifiable_nterm;
-      ptr->searchModifications(modifiable_nterm, mod_it.first, "", ResidueModification::N_TERM);
-      if (!modifiable_nterm.empty())
-      {
-        mods_res.push_back(0);
-      }
-
-      std::set<const ResidueModification*> modifiable_cterm;
-      ptr->searchModifications(modifiable_cterm, mod_it.first, "", ResidueModification::C_TERM);
-      if (!modifiable_cterm.empty())
-      {
-        mods_res.push_back(sequence.size() + 1);
-      }
-
-      for (size_t i = 0; i < sequence.size(); ++i)
-      {
-        std::set<const ResidueModification*> modifiable_residues;
-        ptr->searchModifications(modifiable_residues, mod_it.first, sequence.getResidue(i).getOneLetterCode(), ResidueModification::ANYWHERE);
-        if (!modifiable_residues.empty())
-        {
-          mods_res.push_back(i + 1);
-        }
-      }
-      std::vector<std::vector<size_t> > mods_combs = nchoosekcombinations_(mods_res, mod_it.second);
-      sequences = addModificationsSequences_(sequences, mods_combs, mod_it.first);
-    }
-    return sequences;
-  }
-
-  std::vector<OpenMS::AASequence> MRMAssay::generateTheoreticalPeptidoformsDecoy_(const OpenMS::AASequence& sequence, const OpenMS::AASequence& decoy_sequence)
-  {
-    std::map<OpenMS::String, size_t> mods;
-    std::vector<OpenMS::AASequence> decoy_sequences;
-    decoy_sequences.push_back(AASequence::fromString(decoy_sequence.toUnmodifiedString()));
-
-    OpenMS::ModificationsDB* ptr = ModificationsDB::getInstance();
-
-    if (sequence.hasNTerminalModification())
-    {
-      mods[sequence.getNTerminalModificationName()] += 1;
-    }
-
-    if (sequence.hasCTerminalModification())
-    {
-      mods[sequence.getCTerminalModificationName()] += 1;
-    }
-
-    for (size_t i = 0; i < sequence.size(); ++i)
-    {
-      if (sequence[i].isModified())
-      {
-        mods[sequence.getResidue(i).getModificationName()] += 1;
-      }
-    }
-
-    for (const auto& mod_it : mods)
-    {
-      std::vector<size_t> mods_res;
-
-      std::set<const ResidueModification*> modifiable_nterm;
-      ptr->searchModifications(modifiable_nterm, mod_it.first, "", ResidueModification::N_TERM);
-      if (!modifiable_nterm.empty())
-      {
-        mods_res.push_back(0);
-      }
-
-      std::set<const ResidueModification*> modifiable_cterm;
-      ptr->searchModifications(modifiable_cterm, mod_it.first, "", ResidueModification::C_TERM);
-      if (!modifiable_cterm.empty())
-      {
-        mods_res.push_back(sequence.size() + 1);
-      }
-
-      for (size_t i = 0; i < sequence.size(); ++i)
-      {
-        std::set<const ResidueModification*> modifiable_residues;
-        ptr->searchModifications(modifiable_residues, mod_it.first, sequence.getResidue(i).getOneLetterCode(), ResidueModification::ANYWHERE);
-        if (!modifiable_residues.empty())
-        {
-          mods_res.push_back(i + 1);
-        }
-      }
-      std::vector<std::vector<size_t> > mods_combs = nchoosekcombinations_(mods_res, mod_it.second);
-      decoy_sequences = addModificationsSequences_(decoy_sequences, mods_combs, mod_it.first);
-    }
-    return decoy_sequences;
-  }
-
-  void MRMAssay::generateTargetInSilicoMap_(const OpenMS::TargetedExperiment& exp,
-                                            const std::vector<String>& fragment_types,
-                                            const std::vector<size_t>& fragment_charges,
-                                            bool enable_specific_losses,
-                                            bool enable_unspecific_losses,
-                                            bool enable_ms2_precursors,
-                                            const std::vector<std::pair<double, double> >& swathes,
-                                            int round_decPow,
-                                            size_t max_num_alternative_localizations,
-                                            SequenceMapT & TargetSequenceMap,
-                                            IonMapT & TargetIonMap,
-                                            PeptideMapT& TargetPeptideMap)
-  {
-    OpenMS::MRMIonSeries mrmis;
-
-    // Step 1: Generate target in silico peptide map containing theoretical transitions
-    Size progress = 0;
-    startProgress(0, exp.getPeptides().size(), "Generation of target in silico peptide map");
-    for (size_t i = 0; i < exp.getPeptides().size(); ++i)
-    {
-      setProgress(progress++);
-
-      TargetedExperiment::Peptide peptide = exp.getPeptides()[i];
-      OpenMS::AASequence peptide_sequence = TargetedExperimentHelper::getAASequence(peptide);
-      int precursor_charge = 1;
-      if (peptide.hasCharge()) 
-      {
-        precursor_charge = peptide.getChargeState();
-      }
-      double precursor_mz = peptide_sequence.getMZ(precursor_charge);
-      int precursor_swath = getSwath_(swathes, precursor_mz);
-
-      // Compute all alternative peptidoforms compatible with ModificationsDB
-      const vector<AASequence> alternative_peptide_sequences = generateTheoreticalPeptidoforms_(peptide_sequence);  
-
-      // Some permutations might be too complex, skip if threshold is reached
-      if (alternative_peptide_sequences.size() > max_num_alternative_localizations)
-      {
-        OPENMS_LOG_DEBUG << "[uis] Peptide skipped (too many permutations possible): " << peptide.id << std::endl;
-        continue;
-      }
-
-      // Iterate over all peptidoforms
-      for (const auto& alt_aa : alternative_peptide_sequences)
-      { 
-        // Append peptidoform to index
-        TargetSequenceMap[precursor_swath][alt_aa.toUnmodifiedString()].insert(alt_aa.toString());
-        // Generate theoretical ion series
-        auto ionseries = mrmis.getIonSeries(alt_aa, precursor_charge,
-            fragment_types, fragment_charges, enable_specific_losses,
-            enable_unspecific_losses);
-
-        if (enable_ms2_precursors)
-        {
-          // Add precursor to theoretical transitions
-          double prec_mz = Math::roundDecimal(precursor_mz, round_decPow);
-          TargetIonMap[precursor_swath][alt_aa.toUnmodifiedString()].emplace_back(prec_mz, alt_aa.toString());
-          TargetPeptideMap[peptide.id].emplace_back("MS2_Precursor_i0", prec_mz);
+        OpenMS::ModificationsDB *ptr = ModificationsDB::getInstance();
+        std::set<const ResidueModification *> modifiable_nterm;
+        ptr->searchModifications(modifiable_nterm, modification, "", ResidueModification::N_TERM);
+        std::set<const ResidueModification *> modifiable_cterm;
+        ptr->searchModifications(modifiable_cterm, modification, "", ResidueModification::C_TERM);
+        for (std::vector<OpenMS::AASequence>::const_iterator sq_it = sequences.begin();
+             sq_it != sequences.end(); ++sq_it) {
+            for (std::vector<std::vector<size_t> >::const_iterator mc_it = mods_combs.begin();
+                 mc_it != mods_combs.end(); ++mc_it) {
+                multi_mod_switch = false;
+                skip_invalid_mod_seq = false;
+                OpenMS::AASequence temp_sequence = *sq_it;
+                for (std::vector<size_t>::const_iterator pos_it = mc_it->begin(); pos_it != mc_it->end(); ++pos_it) {
+                    if (*pos_it == 0) {
+                        // Check first to make sure ending residue is NTerm modifiable
+                        if (!modifiable_nterm.empty() && (temp_sequence[0].getOneLetterCode() ==
+                                                          OpenMS::String((*modifiable_nterm.begin())->getOrigin()) ||
+                                                          (*modifiable_nterm.begin())->getOrigin() == 'X')) {
+                            temp_sequence.setNTerminalModification(modification);
+                        } else {
+                            OPENMS_LOG_DEBUG << "[addModificationsSequences_] Skipping addition of N-Term "
+                                             << OpenMS::String((*modifiable_nterm.begin())->getId()) <<
+                                             " to last residue ("
+                                             << temp_sequence[temp_sequence.size() - 1].getOneLetterCode()
+                                             << ") of peptide " << temp_sequence.toUniModString() <<
+                                             " , because it does not match viable N-Term residue specificity (" <<
+                                             OpenMS::String((*modifiable_nterm.begin())->getOrigin())
+                                             << ") in ModificationDB." << std::endl;
+                            skip_invalid_mod_seq = true;
+                        }
+                    } else if (*pos_it == temp_sequence.size() + 1) {
+                        // Check first to make sure ending residue is CTerm modifiable
+                        if (!modifiable_cterm.empty() &&
+                            (temp_sequence.toUnmodifiedString().back() == (*modifiable_cterm.begin())->getOrigin() ||
+                             (*modifiable_cterm.begin())->getOrigin() == 'X')) {
+                            temp_sequence.setCTerminalModification(modification);
+                        } else {
+                            OPENMS_LOG_DEBUG << "[addModificationsSequences_] Skipping addition of C-Term "
+                                             << OpenMS::String((*modifiable_cterm.begin())->getId()) <<
+                                             " to last residue (" << temp_sequence.toUnmodifiedString().back()
+                                             << ") of peptide " << temp_sequence.toUniModString() <<
+                                             " , because it does not match viable C-Term residue specificity (" <<
+                                             OpenMS::String((*modifiable_cterm.begin())->getOrigin())
+                                             << ") in ModificationDB." << std::endl;
+                            skip_invalid_mod_seq = true;
+                        }
+                    } else {
+                        if (!temp_sequence[*pos_it - 1].isModified()) {
+                            temp_sequence.setModification(*pos_it - 1, modification);
+                        } else {
+                            multi_mod_switch = true;
+                        }
+                    }
+                }
+                if (skip_invalid_mod_seq) { continue; }
+                if (!multi_mod_switch) { modified_sequences.push_back(temp_sequence); }
+            }
         }
 
-        // Iterate over all theoretical transitions
-        for (const auto& im_it : ionseries)
-        {
-          // Append transition to indices to find interfering transitions
-          double fragment_mz = Math::roundDecimal(im_it.second, round_decPow);
-          TargetIonMap[precursor_swath][alt_aa.toUnmodifiedString()].emplace_back(fragment_mz, alt_aa.toString());
-          TargetPeptideMap[peptide.id].emplace_back(im_it.first, fragment_mz);
-        }
-      }
+        return modified_sequences;
     }
-    endProgress();
+
+    std::vector<OpenMS::AASequence> MRMAssay::generateTheoreticalPeptidoforms_(const OpenMS::AASequence &sequence) {
+        std::map<OpenMS::String, size_t> mods;
+        std::vector<OpenMS::AASequence> sequences = {AASequence::fromString(sequence.toUnmodifiedString())};
+
+        OpenMS::ModificationsDB *ptr = ModificationsDB::getInstance();
+
+        if (sequence.hasNTerminalModification()) {
+            mods[sequence.getNTerminalModificationName()] += 1;
+        }
+
+        if (sequence.hasCTerminalModification()) {
+            mods[sequence.getCTerminalModificationName()] += 1;
+        }
+
+        for (size_t i = 0; i < sequence.size(); ++i) {
+            if (sequence[i].isModified()) {
+                mods[sequence.getResidue(i).getModificationName()] += 1;
+            }
+        }
+
+        // For each modification, create all (n choose k) theoretical peptidoforms
+        for (const auto &mod_it : mods) {
+            std::vector<size_t> mods_res;
+
+            std::set<const ResidueModification *> modifiable_nterm;
+            ptr->searchModifications(modifiable_nterm, mod_it.first, "", ResidueModification::N_TERM);
+            if (!modifiable_nterm.empty()) {
+                mods_res.push_back(0);
+            }
+
+            std::set<const ResidueModification *> modifiable_cterm;
+            ptr->searchModifications(modifiable_cterm, mod_it.first, "", ResidueModification::C_TERM);
+            if (!modifiable_cterm.empty()) {
+                mods_res.push_back(sequence.size() + 1);
+            }
+
+            for (size_t i = 0; i < sequence.size(); ++i) {
+                std::set<const ResidueModification *> modifiable_residues;
+                ptr->searchModifications(modifiable_residues, mod_it.first, sequence.getResidue(i).getOneLetterCode(),
+                                         ResidueModification::ANYWHERE);
+                if (!modifiable_residues.empty()) {
+                    mods_res.push_back(i + 1);
+                }
+            }
+            std::vector<std::vector<size_t> > mods_combs = nchoosekcombinations_(mods_res, mod_it.second);
+            sequences = addModificationsSequences_(sequences, mods_combs, mod_it.first);
+        }
+        return sequences;
+    }
+
+    std::vector<OpenMS::AASequence> MRMAssay::generateTheoreticalPeptidoformsDecoy_(const OpenMS::AASequence &sequence,
+                                                                                    const OpenMS::AASequence &decoy_sequence) {
+        std::map<OpenMS::String, size_t> mods;
+        std::vector<OpenMS::AASequence> decoy_sequences;
+        decoy_sequences.push_back(AASequence::fromString(decoy_sequence.toUnmodifiedString()));
+
+        OpenMS::ModificationsDB *ptr = ModificationsDB::getInstance();
+
+        if (sequence.hasNTerminalModification()) {
+            mods[sequence.getNTerminalModificationName()] += 1;
+        }
+
+        if (sequence.hasCTerminalModification()) {
+            mods[sequence.getCTerminalModificationName()] += 1;
+        }
+
+        for (size_t i = 0; i < sequence.size(); ++i) {
+            if (sequence[i].isModified()) {
+                mods[sequence.getResidue(i).getModificationName()] += 1;
+            }
+        }
+
+        for (const auto &mod_it : mods) {
+            std::vector<size_t> mods_res;
+
+            std::set<const ResidueModification *> modifiable_nterm;
+            ptr->searchModifications(modifiable_nterm, mod_it.first, "", ResidueModification::N_TERM);
+            if (!modifiable_nterm.empty()) {
+                mods_res.push_back(0);
+            }
+
+            std::set<const ResidueModification *> modifiable_cterm;
+            ptr->searchModifications(modifiable_cterm, mod_it.first, "", ResidueModification::C_TERM);
+            if (!modifiable_cterm.empty()) {
+                mods_res.push_back(sequence.size() + 1);
+            }
+
+            for (size_t i = 0; i < sequence.size(); ++i) {
+                std::set<const ResidueModification *> modifiable_residues;
+                ptr->searchModifications(modifiable_residues, mod_it.first, sequence.getResidue(i).getOneLetterCode(),
+                                         ResidueModification::ANYWHERE);
+                if (!modifiable_residues.empty()) {
+                    mods_res.push_back(i + 1);
+                }
+            }
+            std::vector<std::vector<size_t> > mods_combs = nchoosekcombinations_(mods_res, mod_it.second);
+            decoy_sequences = addModificationsSequences_(decoy_sequences, mods_combs, mod_it.first);
+        }
+        return decoy_sequences;
+    }
+
+    void MRMAssay::generateTargetInSilicoMap_(const OpenMS::TargetedExperiment &exp,
+                                              const std::vector<String> &fragment_types,
+                                              const std::vector<size_t> &fragment_charges,
+                                              bool enable_specific_losses,
+                                              bool enable_unspecific_losses,
+                                              bool enable_ms2_precursors,
+                                              const std::vector<std::pair<double, double> > &swathes,
+                                              int round_decPow,
+                                              size_t max_num_alternative_localizations,
+                                              SequenceMapT &TargetSequenceMap,
+                                              IonMapT &TargetIonMap,
+                                              PeptideMapT &TargetPeptideMap,
+                                              int threads) {
+        OpenMS::MRMIonSeries mrmis;
+
+        // Step 1: Generate target in silico peptide map containing theoretical transitions
+        Size progress = 0;
+        this->startProgress(0, exp.getPeptides().size(), "Generation of target in silico peptide map");
+        #ifdef _OPENMP
+        omp_set_num_threads(threads); // TODO: set number of threads in "parallel" blocks
+        #pragma omp parallel for
+        #endif
+        for (size_t i = 0; i < exp.getPeptides().size(); ++i) {
+            //setProgress(progress++);
+            #pragma omp critical (progress)
+            this->setProgress(++progress);
+
+            TargetedExperiment::Peptide peptide = exp.getPeptides()[i];
+            OpenMS::AASequence peptide_sequence = TargetedExperimentHelper::getAASequence(peptide);
+            int precursor_charge = 1;
+            if (peptide.hasCharge()) {
+                precursor_charge = peptide.getChargeState();
+            }
+            double precursor_mz = peptide_sequence.getMZ(precursor_charge);
+            int precursor_swath = getSwath_(swathes, precursor_mz);
+
+            // Compute all alternative peptidoforms compatible with ModificationsDB
+            const vector<AASequence> alternative_peptide_sequences = generateTheoreticalPeptidoforms_(peptide_sequence);
+
+            // Some permutations might be too complex, skip if threshold is reached
+            if (alternative_peptide_sequences.size() > max_num_alternative_localizations) {
+                OPENMS_LOG_DEBUG << "[uis] Peptide skipped (too many permutations possible): " << peptide.id
+                                 << std::endl;
+                continue;
+            }
+
+            // Iterate over all peptidoforms
+            for (const auto &alt_aa : alternative_peptide_sequences) {
+                #pragma omp critical (TargetSequenceMap)
+                {
+                    // Append peptidoform to index
+                    TargetSequenceMap[precursor_swath][alt_aa.toUnmodifiedString()].insert(alt_aa.toString());
+                }
+                // Generate theoretical ion series
+                auto ionseries = mrmis.getIonSeries(alt_aa, precursor_charge,
+                                                    fragment_types, fragment_charges, enable_specific_losses,
+                                                    enable_unspecific_losses);
+
+                if (enable_ms2_precursors) {
+                    // Add precursor to theoretical transitions
+                    double prec_mz = Math::roundDecimal(precursor_mz, round_decPow);
+                    #pragma omp critical (TargetIonMap)
+                    {
+                        TargetIonMap[precursor_swath][alt_aa.toUnmodifiedString()].emplace_back(prec_mz,
+                                                                                                alt_aa.toString());
+                    }
+                    #pragma omp critical (TargetPeptideMap)
+                    {
+                        TargetPeptideMap[peptide.id].emplace_back("MS2_Precursor_i0", prec_mz);
+                    }
+                }
+
+                // Iterate over all theoretical transitions
+                for (const auto &im_it : ionseries) {
+                    // Append transition to indices to find interfering transitions
+                    double fragment_mz = Math::roundDecimal(im_it.second, round_decPow);
+                    #pragma omp critical (TargetIonMap)
+                    {
+                        TargetIonMap[precursor_swath][alt_aa.toUnmodifiedString()].emplace_back(fragment_mz,
+                                                                                                alt_aa.toString());
+                    }
+                    #pragma omp critical (TargetPeptideMap)
+                    {
+                        TargetPeptideMap[peptide.id].emplace_back(im_it.first, fragment_mz);
+                    }
+                }
+            }
+        }
+    //endProgress();
+    this->endProgress();
   }
 
   void MRMAssay::generateDecoySequences_(const SequenceMapT& TargetSequenceMap,
@@ -448,42 +430,39 @@ namespace OpenMS
       // Iterate over each unmodified peptide sequence in current SWATH
       for (const auto& ta_it : sm_it.second)
       {
-        // Get a random unmodified peptide sequence as base for later modification
-        if (DecoySequenceMap[ta_it.first].empty())
-        {
-          decoy_peptide_string = getRandomSequence_(ta_it.first.size(), pseudoRNG);
-        }
-        else
-        {
-          decoy_peptide_string = DecoySequenceMap[ta_it.first];
-        }
-
-        // Iterate over all target peptidoforms for the current unmodified
-        // peptide sequence and replace decoy residues with modified target
-        // residues
-        for (const auto & se_it : ta_it.second)
-        {
-          OpenMS::AASequence seq = AASequence::fromString(se_it);
-
-          if (seq.hasNTerminalModification())
-          {
-            decoy_peptide_string = decoy_peptide_string.replace(0, 1, seq.getSubsequence(0, 1).toUnmodifiedString());
+          // Get a random unmodified peptide sequence as base for later modification
+          if (DecoySequenceMap[ta_it.first].empty()) {
+              decoy_peptide_string = getRandomSequence_(ta_it.first.size(), pseudoRNG);
+          } else {
+              decoy_peptide_string = DecoySequenceMap[ta_it.first];
           }
 
-          if (seq.hasCTerminalModification())
-          {
-            decoy_peptide_string = decoy_peptide_string.replace(decoy_peptide_string.size() - 1, 1, seq.getSubsequence(decoy_peptide_string.size() - 1, 1).toUnmodifiedString());
-          }
+          // Iterate over all target peptidoforms for the current unmodified
+          // peptide sequence and replace decoy residues with modified target
+          // residues
+          for (const auto &se_it : ta_it.second) {
+              OpenMS::AASequence seq = AASequence::fromString(se_it);
 
-          for (size_t i = 0; i < seq.size(); ++i)
-          {
-            if (seq[i].isModified())
-            {
-              decoy_peptide_string = decoy_peptide_string.replace(i, 1, seq.getSubsequence(i, 1).toUnmodifiedString());
-            }
+              if (seq.hasNTerminalModification()) {
+                  decoy_peptide_string = decoy_peptide_string.replace(0, 1, seq.getSubsequence(0,
+                                                                                               1).toUnmodifiedString());
+              }
+
+              if (seq.hasCTerminalModification()) {
+                  decoy_peptide_string = decoy_peptide_string.replace(decoy_peptide_string.size() - 1, 1,
+                                                                      seq.getSubsequence(
+                                                                              decoy_peptide_string.size() - 1,
+                                                                              1).toUnmodifiedString());
+              }
+
+              for (size_t i = 0; i < seq.size(); ++i) {
+                  if (seq[i].isModified()) {
+                      decoy_peptide_string = decoy_peptide_string.replace(i, 1, seq.getSubsequence(i,
+                                                                                                   1).toUnmodifiedString());
+                  }
+              }
+              DecoySequenceMap[ta_it.first] = decoy_peptide_string;
           }
-          DecoySequenceMap[ta_it.first] = decoy_peptide_string;
-        }
       }
     }
     endProgress();
@@ -507,10 +486,16 @@ namespace OpenMS
 
     // Step 2b: Generate decoy in silico peptide map containing theoretical transitions
     Size progress = 0;
-    startProgress(0, exp.getPeptides().size(), "Generation of decoy in silico peptide map");
+    this->startProgress(0, exp.getPeptides().size(), "Generation of decoy in silico peptide map");
+    #ifdef _OPENMP
+    omp_set_num_threads(1); // TODO: set number of threads in "parallel" blocks
+    #pragma omp parallel for
+    #endif
     for (size_t i = 0; i < exp.getPeptides().size(); ++i)
     {
-      setProgress(progress++);
+      //setProgress(progress++);
+      #pragma omp critical (progress)
+      this->setProgress(++progress);
 
       TargetedExperiment::Peptide peptide = exp.getPeptides()[i];
       int precursor_charge = 1;
@@ -518,7 +503,6 @@ namespace OpenMS
       {
         precursor_charge = peptide.getChargeState();
       }
-
       // Skip if target peptide is not in map, e.g. permutation threshold was reached
       if (TargetPeptideMap.find(peptide.id) == TargetPeptideMap.end())
       {
@@ -531,7 +515,10 @@ namespace OpenMS
 
       // Copy properties of target peptide to decoy and get sequence from map
       TargetedExperiment::Peptide decoy_peptide = peptide;
-      decoy_peptide.sequence = DecoySequenceMap[peptide.sequence];
+      #pragma omp critical (DecoyIonMap)
+      {
+        decoy_peptide.sequence = DecoySequenceMap[peptide.sequence];
+      }
 
       TargetDecoyMap[peptide.id] = decoy_peptide;
       OpenMS::AASequence decoy_peptide_sequence = TargetedExperimentHelper::getAASequence(decoy_peptide);
@@ -551,8 +538,14 @@ namespace OpenMS
         {
           // Add precursor to theoretical transitions
           double prec_mz = Math::roundDecimal(precursor_mz, round_decPow);
-          DecoyIonMap[precursor_swath][alt_aa.toUnmodifiedString()].emplace_back(prec_mz, alt_aa.toString());
-          DecoyPeptideMap[peptide.id].emplace_back("MS2_Precursor_i0", prec_mz);
+          #pragma omp critical (DecoyIonMap)
+          {
+              DecoyIonMap[precursor_swath][alt_aa.toUnmodifiedString()].emplace_back(prec_mz, alt_aa.toString());
+          }
+          #pragma omp critical (DecoyPeptideMap)
+          {
+              DecoyPeptideMap[peptide.id].emplace_back("MS2_Precursor_i0", prec_mz);
+          }
         }
 
         // Iterate over all theoretical transitions
@@ -560,12 +553,19 @@ namespace OpenMS
         {
           // Append transition to indices to find interfering transitions
           double fragment_mz = Math::roundDecimal(im_it.second, round_decPow);
-          DecoyIonMap[precursor_swath][alt_aa.toUnmodifiedString()].emplace_back(fragment_mz, alt_aa.toString());
-          DecoyPeptideMap[decoy_peptide.id].emplace_back(im_it.first, fragment_mz);
+          #pragma omp critical (DecoyPeptideMap)
+          {
+            DecoyIonMap[precursor_swath][alt_aa.toUnmodifiedString()].emplace_back(fragment_mz, alt_aa.toString());
+          }
+          #pragma omp critical (DecoyPeptideMap)
+          {
+            DecoyPeptideMap[decoy_peptide.id].emplace_back(im_it.first, fragment_mz);
+          }
         }
       }
     }
-    endProgress();
+    //endProgress();
+    this->endProgress();
   }
 
  void MRMAssay::generateTargetAssays_(const OpenMS::TargetedExperiment& exp,
@@ -574,16 +574,16 @@ namespace OpenMS
                                       const std::vector<std::pair<double, double> >& swathes,
                                       int round_decPow,
                                       const PeptideMapT& TargetPeptideMap,
-                                      const IonMapT & TargetIonMap)
+                                      const IonMapT & TargetIonMap,
+                                      int threads)
   {
     MRMIonSeries mrmis;
 
     // Step 3: Generate target identification transitions
     Size progress = 0;
     startProgress(0, TargetPeptideMap.size(), "Generation of target identification transitions");
-
-    // Iterate over all target peptides
     int transition_index = 0;
+    // Iterate over all target peptides
     for (const auto& pep_it : TargetPeptideMap)
     { 
       setProgress(progress++);
@@ -602,6 +602,11 @@ namespace OpenMS
       std::sort(transition_vector.begin(), transition_vector.end());
       auto tr_vec_end = std::unique(transition_vector.begin(), transition_vector.end());
 
+      // Use OpenMP if multithreading requested
+      #ifdef _OPENMP
+      omp_set_num_threads(threads); // TODO: set number of threads in "parallel" blocks
+      #pragma omp parallel for
+      #endif
       // Iterate over all transitions
       for (auto tr_it = transition_vector.begin(); tr_it != tr_vec_end; ++tr_it)
       { 
@@ -634,7 +639,10 @@ namespace OpenMS
           OPENMS_LOG_DEBUG << "[uis] Transition " << trn.getNativeID() << std::endl;
 
           // Append transition
-          transitions.push_back(trn);
+          #pragma omp critical (transitions)
+          {
+            transitions.push_back(trn);
+          }
         }
         transition_index++;
       }
@@ -672,7 +680,7 @@ namespace OpenMS
       }
       AASequence target_peptide_sequence = TargetedExperimentHelper::getAASequence(target_peptide);
       int target_precursor_swath = getSwath_(swathes, target_peptide_sequence.getMZ(precursor_charge));
-
+      // std::cout << "HERE0" << std::endl;
       TargetedExperiment::Peptide decoy_peptide = TargetDecoyMap[decoy_pep_it.first];
       OpenMS::AASequence decoy_peptide_sequence = TargetedExperimentHelper::getAASequence(decoy_peptide);
 
@@ -681,13 +689,19 @@ namespace OpenMS
       std::sort(transition_vector.begin(), transition_vector.end());
       auto tr_vec_end = std::unique(transition_vector.begin(), transition_vector.end());
 
+      #ifdef _OPENMP
+      omp_set_num_threads(1); // TODO: set number of threads in "parallel" blocks
+      #pragma omp parallel for
+      #endif
+
       // Iterate over all transitions
       for (auto decoy_tr_it = transition_vector.begin(); decoy_tr_it != tr_vec_end; ++decoy_tr_it)
       {
+        // std::cout << "HERE1" << std::endl;
         // Check mapping of transitions to other peptidoforms
         vector<string> decoy_isoforms = getMatchingPeptidoforms_(
-            decoy_tr_it->second, DecoyIonMap.at(target_precursor_swath).at(decoy_peptide_sequence.toUnmodifiedString()), mz_threshold);
-
+            decoy_tr_it->second, DecoyIonMap.at(target_precursor_swath).at(decoy_peptide_sequence.toUnmodifiedString()), mz_threshold); // TODO: Seems to fail here due to key issue in the unordered map when parallelizing
+        // std::cout << "HERE2" << std::endl;
         // Check that transition maps to at least one peptidoform
         if (!decoy_isoforms.empty())
         {
@@ -724,8 +738,11 @@ namespace OpenMS
           }
           else
           {
-            // Append transition
-            transitions.push_back(trn);
+            #pragma omp critical (DecoyPeptideMap)
+            {
+                // Append transition
+                transitions.push_back(trn);
+            }
           }
         }
         transition_index++;
@@ -1013,7 +1030,8 @@ namespace OpenMS
                       int round_decPow,
                       size_t max_num_alternative_localizations,
                       int shuffle_seed,
-                      bool disable_decoy_transitions)
+                      bool disable_decoy_transitions,
+                      int threads)
   {
     OpenMS::MRMIonSeries mrmis;
 
@@ -1030,10 +1048,10 @@ namespace OpenMS
     boost::unordered_map<String, TargetedExperiment::Peptide> TargetDecoyMap;
 
     // Step 1: Generate target in silico peptide map containing theoretical transitions
-    generateTargetInSilicoMap_(exp, fragment_types, fragment_charges, enable_specific_losses, enable_unspecific_losses, enable_ms2_precursors, swathes, round_decPow, max_num_alternative_localizations, TargetSequenceMap, TargetIonMap, TargetPeptideMap);
+    generateTargetInSilicoMap_(exp, fragment_types, fragment_charges, enable_specific_losses, enable_unspecific_losses, enable_ms2_precursors, swathes, round_decPow, max_num_alternative_localizations, TargetSequenceMap, TargetIonMap, TargetPeptideMap, threads);
 
     // Step 2: Generate target identification transitions
-    generateTargetAssays_(exp, transitions, mz_threshold, swathes, round_decPow, TargetPeptideMap, TargetIonMap);
+    generateTargetAssays_(exp, transitions, mz_threshold, swathes, round_decPow, TargetPeptideMap, TargetIonMap, threads);
 
     if (!disable_decoy_transitions)
     {
@@ -1047,7 +1065,7 @@ namespace OpenMS
       generateDecoyAssays_(exp, transitions, mz_threshold, swathes, round_decPow, DecoyPeptideMap, TargetDecoyMap, DecoyIonMap, TargetIonMap);
     }
 
-    exp.setTransitions(transitions);
+    exp.setTransitions(transitions); // TODO: Use std::move here like #PR5611?
   }
 
   void MRMAssay::filterMinMaxTransitionsCompound(OpenMS::TargetedExperiment& exp, int min_transitions, int max_transitions)

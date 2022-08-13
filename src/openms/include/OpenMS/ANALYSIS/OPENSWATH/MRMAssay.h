@@ -185,7 +185,8 @@ public:
                         int round_decPow = -4,
                         size_t max_num_alternative_localizations = 20,
                         int shuffle_seed = -1,
-                        bool disable_decoy_transitions = false);
+                        bool disable_decoy_transitions = false,
+                        int threads = 1);
 
     /**
     @brief Filters target and decoy transitions by intensity, only keeping the top N transitions
@@ -337,7 +338,8 @@ protected:
                                     size_t max_num_alternative_localizations,
                                     SequenceMapT& TargetSequenceMap,
                                     IonMapT& TargetIonMap,
-                                    PeptideMapT& TargetPeptideMap);
+                                    PeptideMapT& TargetPeptideMap,
+                                    int threads);
 
     /**
       @brief Generate decoy sequences
@@ -401,7 +403,8 @@ protected:
                               const std::vector<std::pair<double, double> >& swathes,
                               int round_decPow,
                               const PeptideMapT& TargetPeptideMap,
-                              const IonMapT& TargetIonMap);
+                              const IonMapT& TargetIonMap,
+                              int threads);
 
     /**
       @brief Generate decoy assays

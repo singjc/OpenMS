@@ -213,6 +213,10 @@ protected:
     String unimod_file = getStringOption_("unimod_file");
     bool is_test = getFlag_("test");
 
+    int cv_threads = getIntOption_("threads"); // pass-through of OpenMS thread parameter
+
+    std::cout << "Threads: " << cv_threads << std::endl;
+
     // Set specific seed for test mode
     int uis_seed = -1;
     bool disable_decoy_transitions = false;
@@ -329,7 +333,7 @@ protected:
       }
       
       OPENMS_LOG_INFO << "Generating identifying transitions for IPF" << std::endl;
-      assays.uisTransitions(targeted_exp, allowed_fragment_types, allowed_fragment_charges, enable_identification_specific_losses, enable_identification_unspecific_losses, enable_identification_ms2_precursors, product_mz_threshold, uis_swathes, -4, max_num_alternative_localizations, uis_seed, disable_decoy_transitions);
+      assays.uisTransitions(targeted_exp, allowed_fragment_types, allowed_fragment_charges, enable_identification_specific_losses, enable_identification_unspecific_losses, enable_identification_ms2_precursors, product_mz_threshold, uis_swathes, -4, max_num_alternative_localizations, uis_seed, disable_decoy_transitions, cv_threads);
       std::vector<std::pair<double, double> > empty_swathes;
       assays.restrictTransitions(targeted_exp, product_lower_mz_limit, product_upper_mz_limit, empty_swathes);
     }
