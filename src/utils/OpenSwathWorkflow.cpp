@@ -673,7 +673,7 @@ protected:
 
     if (tr_type == FileTypes::UNKNOWN)
     {
-      writeLog_("Error: Could not determine input file type for '-tr' !");
+      writeLogError_("Error: Could not determine input file type for '-tr' !");
       return PARSE_ERROR;
     }
 
