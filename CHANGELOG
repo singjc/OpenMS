@@ -18,8 +18,10 @@ UTIL - An executable, just like a TOPP tool, but usually experimental or of less
 ------------------------------------------------------------------------------------------
 
 - full release
+<<<<<<< HEAD
 - OpenSwath: Add support for diaPASEF data with overlapping m/z and IM windows
 - OpenSwath: Add option (-out_mobi) to write out computed aligned mobilograms to file (sqMobi filetype)
+- OpenSwath: Add support for diaPASEF data with overlapping m/z and IM windows, and add new outputs on ion mobility features (delta_im)
 - TOPPView: TheoreticalSpectrumGenerationDialog now supports generation of isotope patterns for metabolites
 - pyopenms: pyopenms-extra is renamed to pyopenms-docs.
 - Add extractSpectra to TargetedSpectraExtractor with support of MS1 features
