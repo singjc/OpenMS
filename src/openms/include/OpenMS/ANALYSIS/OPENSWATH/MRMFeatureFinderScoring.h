@@ -271,12 +271,14 @@ private:
      * @return a struct of type OpenSwath_Ind_Scores containing either target or decoy values
     */
     OpenSwath_Ind_Scores scoreIdentification_(MRMTransitionGroupType& transition_group_identification,
+                                              MRMTransitionGroupType& transition_group_detection,
                                               OpenSwathScoring& scorer,
                                               const size_t feature_idx,
                                               const std::vector<std::string> & native_ids_detection,
                                               const double det_intensity_ratio_score,
                                               const double det_mi_ratio_score,
-                                              const std::vector<OpenSwath::SwathMap>& swath_maps) const;
+                                              const std::vector<OpenSwath::SwathMap>& swath_maps,
+                                              const double drift_target) const;
 
     void prepareFeatureOutput_(OpenMS::MRMFeature& mrmfeature, bool ms1only, int charge) const;
 

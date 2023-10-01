@@ -168,7 +168,14 @@ namespace OpenMS
       "VAR_MI_SCORE REAL NULL," \
       "VAR_MI_RATIO_SCORE REAL NULL," \
       "VAR_ISOTOPE_CORRELATION_SCORE REAL NULL," \
-      "VAR_ISOTOPE_OVERLAP_SCORE REAL NULL);";
+      "VAR_ISOTOPE_OVERLAP_SCORE REAL NULL," \
+      "EXP_IM REAL NULL," \
+      "DELTA_IM REAL NULL," \
+      "VAR_IM_DELTA_SCORE REAL NULL,"
+      "VAR_IM_XCORR_COELUTION_CONTRAST, "
+      "VAR_IM_XCORR_SHAPE_CONTRAST, "
+      "VAR_IM_XCORR_COELUTION_COMBINED, "
+      "VAR_IM_XCORR_SHAPE_COMBINED);";
 
     // Execute SQL create statement
     conn.executeStatement(create_sql);
@@ -388,6 +395,15 @@ namespace OpenMS
         auto id_target_ind_isotope_correlation = getSeparateScore(feature_it, "id_target_ind_isotope_correlation");
         auto id_target_ind_isotope_overlap = getSeparateScore(feature_it, "id_target_ind_isotope_overlap");
 
+        auto id_target_ind_im_drift = getSeparateScore(feature_it, "id_target_ind_im_drift");
+        auto id_target_ind_im_delta = getSeparateScore(feature_it, "id_target_ind_im_delta");
+        auto id_target_ind_im_delta_score = getSeparateScore(feature_it, "id_target_ind_im_delta_score");
+        auto id_target_ind_im_det_contrast_coelution = getSeparateScore(feature_it, "id_target_ind_im_det_contrast_coelution");
+        auto id_target_ind_im_det_contrast_shape = getSeparateScore(feature_it, "id_target_ind_im_det_contrast_shape");
+        auto id_target_ind_im_det_sum_contrast_coelution = getSeparateScore(feature_it, "id_target_ind_im_det_sum_contrast_coelution");
+        auto id_target_ind_im_det_sum_contrast_shape = getSeparateScore(feature_it, "id_target_ind_im_det_sum_contrast_shape");
+
+
         if (feature_it.metaValueExists("id_target_num_transitions"))
         {
           int id_target_num_transitions = feature_it.getMetaValue("id_target_num_transitions");
@@ -399,7 +415,9 @@ namespace OpenMS
               " APEX_INTENSITY, TOTAL_MI, VAR_INTENSITY_SCORE, VAR_INTENSITY_RATIO_SCORE, "\
               " VAR_LOG_INTENSITY, VAR_XCORR_COELUTION, VAR_XCORR_SHAPE, VAR_LOG_SN_SCORE, "\
               " VAR_MASSDEV_SCORE, VAR_MI_SCORE, VAR_MI_RATIO_SCORE, "\
-              " VAR_ISOTOPE_CORRELATION_SCORE, VAR_ISOTOPE_OVERLAP_SCORE "\
+              " VAR_ISOTOPE_CORRELATION_SCORE, VAR_ISOTOPE_OVERLAP_SCORE, "\
+              " EXP_IM, DELTA_IM, VAR_IM_DELTA_SCORE, "\
+              " VAR_IM_XCORR_COELUTION_CONTRAST, VAR_IM_XCORR_SHAPE_CONTRAST, VAR_IM_XCORR_COELUTION_COMBINED, VAR_IM_XCORR_SHAPE_COMBINED "\
               ") VALUES ("
                                         << feature_id << ", "
                                         << id_target_transition_names[i] << ", "
@@ -417,7 +435,14 @@ namespace OpenMS
                                         << id_target_ind_mi_score[i] << ", "
                                         << id_target_ind_mi_ratio_score[i] << ", "
                                         << id_target_ind_isotope_correlation[i] << ", "
-                                        << id_target_ind_isotope_overlap[i] << "); ";
+                                        << id_target_ind_isotope_overlap[i] << ", "
+                                        << id_target_ind_im_drift[i] << ", "
+                                        << id_target_ind_im_delta[i] << ", "
+                                        << id_target_ind_im_delta_score[i] << ", "
+                                        << id_target_ind_im_det_contrast_coelution[i] << ", "
+                                        << id_target_ind_im_det_contrast_shape[i] << ", "
+                                        << id_target_ind_im_det_sum_contrast_coelution[i] << ", "
+                                        << id_target_ind_im_det_sum_contrast_shape[i] << "); ";
           }
         }
 
@@ -438,6 +463,14 @@ namespace OpenMS
         auto id_decoy_ind_isotope_correlation = getSeparateScore(feature_it, "id_decoy_ind_isotope_correlation");
         auto id_decoy_ind_isotope_overlap = getSeparateScore(feature_it, "id_decoy_ind_isotope_overlap");
 
+        auto id_decoy_ind_im_drift = getSeparateScore(feature_it, "id_decoy_ind_im_drift");
+        auto id_decoy_ind_im_delta = getSeparateScore(feature_it, "id_decoy_ind_im_delta");
+        auto id_decoy_ind_ind_im_delta_score = getSeparateScore(feature_it, "id_decoy_ind_im_delta_score");
+        auto id_decoy_ind_im_det_contrast_coelution = getSeparateScore(feature_it, "id_decoy_ind_im_det_contrast_coelution");
+        auto id_decoy_ind_im_det_contrast_shape = getSeparateScore(feature_it, "id_decoy_ind_im_det_contrast_shape");
+        auto id_decoy_ind_im_det_sum_contrast_coelution = getSeparateScore(feature_it, "id_decoy_ind_im_det_sum_contrast_coelution");
+        auto id_decoy_ind_im_det_sum_contrast_shape = getSeparateScore(feature_it, "id_decoy_ind_im_det_sum_contrast_shape");
+
         if (feature_it.metaValueExists("id_decoy_num_transitions"))
         {
           int id_decoy_num_transitions = feature_it.getMetaValue("id_decoy_num_transitions");
@@ -449,8 +482,10 @@ namespace OpenMS
                 " APEX_INTENSITY, TOTAL_MI, VAR_INTENSITY_SCORE, VAR_INTENSITY_RATIO_SCORE, "\
                 " VAR_LOG_INTENSITY, VAR_XCORR_COELUTION, VAR_XCORR_SHAPE, VAR_LOG_SN_SCORE, "\
                 " VAR_MASSDEV_SCORE, VAR_MI_SCORE, VAR_MI_RATIO_SCORE, "\
-                " VAR_ISOTOPE_CORRELATION_SCORE, VAR_ISOTOPE_OVERLAP_SCORE) "\
-                "VALUES ("
+                " VAR_ISOTOPE_CORRELATION_SCORE, VAR_ISOTOPE_OVERLAP_SCORE, "\
+                " EXP_IM, DELTA_IM, VAR_IM_DELTA_SCORE, "\
+                " VAR_IM_XCORR_COELUTION_CONTRAST, VAR_IM_XCORR_SHAPE_CONTRAST, VAR_IM_XCORR_COELUTION_COMBINED, VAR_IM_XCORR_SHAPE_COMBINED "\
+                ") VALUES ("
                                         << feature_id << ", "
                                         << id_decoy_transition_names[i] << ", "
                                         << id_decoy_area_intensity[i] << ", "
@@ -467,7 +502,14 @@ namespace OpenMS
                                         << id_decoy_ind_mi_score[i] << ", "
                                         << id_decoy_ind_mi_ratio_score[i] << ", "
                                         << id_decoy_ind_isotope_correlation[i] << ", "
-                                        << id_decoy_ind_isotope_overlap[i] << "); ";
+                                        << id_decoy_ind_isotope_overlap[i] << ", "
+                                        << id_decoy_ind_im_drift[i] << ", "
+                                        << id_decoy_ind_im_delta[i] << ", "
+                                        << id_decoy_ind_ind_im_delta_score[i] << ", "
+                                        << id_decoy_ind_im_det_contrast_coelution[i] << ", "
+                                        << id_decoy_ind_im_det_contrast_shape[i] << ", "
+                                        << id_decoy_ind_im_det_sum_contrast_coelution[i] << ", "
+                                        << id_decoy_ind_im_det_sum_contrast_shape[i] << "); ";
           }
         }
       }

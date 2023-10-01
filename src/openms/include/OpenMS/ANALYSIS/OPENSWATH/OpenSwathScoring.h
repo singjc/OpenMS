@@ -41,6 +41,10 @@
 #include <OpenMS/OPENSWATHALGO/DATAACCESS/TransitionExperiment.h>
 #include <OpenMS/OPENSWATHALGO/DATAACCESS/SwathMap.h>
 
+// Kernel classes
+#include <OpenMS/KERNEL/MRMTransitionGroup.h>
+#include <OpenMS/KERNEL/MSChromatogram.h>
+
 // scoring
 #include <OpenMS/ANALYSIS/OPENSWATH/OpenSwathScores.h>
 #include <OpenMS/ANALYSIS/OPENSWATH/DIAScoring.h>
@@ -60,6 +64,7 @@ namespace OpenMS
   {
     typedef OpenSwath::LightCompound CompoundType;
     typedef OpenSwath::LightTransition TransitionType;
+    typedef MRMTransitionGroup< MSChromatogram, TransitionType> MRMTransitionGroupType;
 
     double rt_normalization_factor_;
     double spacing_for_spectra_resampling_;
@@ -229,11 +234,13 @@ namespace OpenMS
     */
     void calculateDIAIdScores(OpenSwath::IMRMFeature* imrmfeature,
                               const TransitionType & transition,
+                              MRMTransitionGroupType& transition_group_detection,
                               const std::vector<OpenSwath::SwathMap>& swath_maps,
                               const OpenMS::DIAScoring & diascoring,
                               OpenSwath_Scores & scores,
                               double drift_lower,
-                              double drift_upper);
+                              double drift_upper,
+                              const double drift_target);
 
     /** @brief Computing the normalized library intensities from the transition objects
      *

@@ -128,6 +128,7 @@ namespace OpenMS::DIAHelpers
         {
           intensity += (*int_it);
           im += (*int_it) * (*im_it);
+
         }
       }
 

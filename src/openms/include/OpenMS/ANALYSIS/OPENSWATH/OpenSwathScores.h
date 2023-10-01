@@ -214,6 +214,15 @@ namespace OpenMS
     std::vector<double> ind_mi_ratio;
     std::vector<double> ind_mi_score;
 
+    std::vector<double>  ind_im_drift;
+    std::vector<double>  ind_im_delta;
+    std::vector<double>  ind_im_delta_score;
+    std::vector<double>  ind_im_det_contrast_coelution;
+    std::vector<double>  ind_im_det_contrast_shape;
+    std::vector<double>  ind_im_det_sum_contrast_coelution;
+    std::vector<double>  ind_im_det_sum_contrast_shape;
+
+
     OpenSwath_Ind_Scores() = default;
 
   };

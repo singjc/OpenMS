@@ -183,6 +183,14 @@ namespace OpenMS
     setMetaValue(id + "ind_massdev_score", idscores.ind_massdev_score);
     setMetaValue(id + "ind_mi_score", idscores.ind_mi_score);
     setMetaValue(id + "ind_mi_ratio_score", idscores.ind_mi_ratio);
+
+    setMetaValue(id + "ind_im_drift", idscores.ind_im_drift);
+    setMetaValue(id + "ind_im_delta", idscores.ind_im_delta);
+    setMetaValue(id + "ind_im_delta_score", idscores.ind_im_delta_score);
+    setMetaValue(id + "ind_im_det_contrast_coelution", idscores.ind_im_det_contrast_coelution);
+    setMetaValue(id + "ind_im_det_contrast_shape", idscores.ind_im_det_contrast_shape);
+    setMetaValue(id + "ind_im_det_sum_contrast_coelution", idscores.ind_im_det_sum_contrast_coelution);
+    setMetaValue(id + "ind_im_det_sum_contrast_shape", idscores.ind_im_det_sum_contrast_shape);
   }
 }
 
