@@ -1072,7 +1072,6 @@ namespace OpenMS
       if (osw_writer.isActive() && !output.empty()) // implies that detection_assay_it was set
       {
         const OpenSwath::LightCompound pep;
-        std::cout << "Writing scored peakgroups to osw file" << std::endl;
         to_osw_output.push_back(osw_writer.prepareLine(OpenSwath::LightCompound(), // not used currently: transition_exp.getCompounds()[ assay_peptide_map[id] ],
                                                        nullptr, // not used currently: detection_assay_it,
                                                        output,

@@ -756,21 +756,17 @@ namespace OpenMS
         // Unique Ion Signature (UIS) scores
         if (su_.use_uis_scores && !transition_group_identification.getTransitions().empty())
         {
-          std::cout << "Scoring target identifications" << std::endl;
           OpenSwath_Ind_Scores idscores = scoreIdentification_(transition_group_identification, transition_group_detection, scorer, feature_idx,
                                                                native_ids_detection, det_intensity_ratio_score,
                                                                det_mi_ratio_score, swath_maps, drift_target);
           mrmfeature.IDScoresAsMetaValue(false, idscores);
-          std::cout << "Finished Scoring target identifications" << std::endl;
         }
         if (su_.use_uis_scores && !transition_group_identification_decoy.getTransitions().empty())
         {
-          std::cout << "Scoring decoy identifications" << std::endl;
           OpenSwath_Ind_Scores idscores = scoreIdentification_(transition_group_identification_decoy, transition_group_detection, scorer, feature_idx,
                                                                native_ids_detection, det_intensity_ratio_score,
                                                                det_mi_ratio_score, swath_maps, drift_target);
           mrmfeature.IDScoresAsMetaValue(true, idscores);
-          std::cout << "Finished Scoring decoy identifications" << std::endl;
         }
 
         if (su_.use_coelution_score_)
