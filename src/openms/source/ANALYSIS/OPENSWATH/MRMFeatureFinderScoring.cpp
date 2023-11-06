@@ -453,17 +453,17 @@ namespace OpenMS
     bool swath_present = (!swath_maps.empty() && swath_maps[0].sptr->getNrSpectra() > 0);
     if (swath_present && su_.use_dia_scores_ && !native_ids_identification.empty())
     {
-      std::vector<double> ind_isotope_correlation, ind_isotope_overlap, ind_massdev_score, ind_im_drift, ind_im_delta, ind_im_delta_score;
+      std::vector<double> ind_isotope_correlation, ind_isotope_overlap, ind_massdev_score, ind_im_drift, ind_im_delta, ind_im_delta_score, ind_im_log_intensity;
       std::vector<double> ind_im_det_contrast_coelution, ind_im_det_contrast_shape, ind_im_det_sum_contrast_coelution, ind_im_det_sum_contrast_shape;
       for (size_t i = 0; i < native_ids_identification.size(); i++)
       {
         OpenSwath_Scores tmp_scores;
-
+//        std::cout << "Computing DIAidScores..." << std::endl;
         scorer.calculateDIAIdScores(idimrmfeature, 
                                     trgr_ident.getTransition(native_ids_identification[i]),
                                     trgr_detect,
                                     swath_maps, diascoring_, tmp_scores, drift_lower, drift_upper, drift_target);
-
+//        std::cout << "Finished computing DIAidScores..." << std::endl;
         ind_isotope_correlation.push_back(tmp_scores.isotope_correlation);
         ind_isotope_overlap.push_back(tmp_scores.isotope_overlap);
         ind_massdev_score.push_back(tmp_scores.massdev_score);
@@ -472,6 +472,7 @@ namespace OpenMS
         ind_im_drift.push_back(tmp_scores.im_drift);
         ind_im_delta.push_back(tmp_scores.im_delta);
         ind_im_delta_score.push_back(tmp_scores.im_delta_score);
+        ind_im_log_intensity.push_back(tmp_scores.im_log_intensity);
         ind_im_det_contrast_coelution.push_back(tmp_scores.im_ms1_contrast_coelution);
         ind_im_det_contrast_shape.push_back(tmp_scores.im_ms1_contrast_shape);
         ind_im_det_sum_contrast_coelution.push_back(tmp_scores.im_ms1_sum_contrast_coelution);
@@ -485,6 +486,7 @@ namespace OpenMS
       idscores.ind_im_drift = ind_im_drift;
       idscores.ind_im_delta = ind_im_delta;
       idscores.ind_im_delta_score = ind_im_delta_score;
+      idscores.ind_im_log_intensity = ind_im_log_intensity;
 
       idscores.ind_im_det_contrast_coelution = ind_im_det_contrast_coelution;
       idscores.ind_im_det_contrast_shape = ind_im_det_contrast_shape;
@@ -754,17 +756,21 @@ namespace OpenMS
         // Unique Ion Signature (UIS) scores
         if (su_.use_uis_scores && !transition_group_identification.getTransitions().empty())
         {
+          std::cout << "Scoring target identifications" << std::endl;
           OpenSwath_Ind_Scores idscores = scoreIdentification_(transition_group_identification, transition_group_detection, scorer, feature_idx,
                                                                native_ids_detection, det_intensity_ratio_score,
                                                                det_mi_ratio_score, swath_maps, drift_target);
           mrmfeature.IDScoresAsMetaValue(false, idscores);
+          std::cout << "Finished Scoring target identifications" << std::endl;
         }
         if (su_.use_uis_scores && !transition_group_identification_decoy.getTransitions().empty())
         {
+          std::cout << "Scoring decoy identifications" << std::endl;
           OpenSwath_Ind_Scores idscores = scoreIdentification_(transition_group_identification_decoy, transition_group_detection, scorer, feature_idx,
                                                                native_ids_detection, det_intensity_ratio_score,
                                                                det_mi_ratio_score, swath_maps, drift_target);
           mrmfeature.IDScoresAsMetaValue(true, idscores);
+          std::cout << "Finished Scoring decoy identifications" << std::endl;
         }
 
         if (su_.use_coelution_score_)
