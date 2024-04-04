@@ -4,7 +4,6 @@ from FeatureMap cimport *
 from MSExperiment cimport *
 from Peak1D cimport *
 from ChromatogramPeak cimport *
-from FeatureFinder cimport *
 from DefaultParamHandler cimport *
 
 cdef extern from "<OpenMS/TRANSFORMATIONS/FEATUREFINDER/FeatureFinderAlgorithmPicked.h>" namespace "OpenMS":
@@ -13,22 +12,15 @@ cdef extern from "<OpenMS/TRANSFORMATIONS/FEATUREFINDER/FeatureFinderAlgorithmPi
 
         # wrap-inherits:
         #   DefaultParamHandler
-        FeatureFinderAlgorithmPicked() nogil except +
+        FeatureFinderAlgorithmPicked() except + nogil 
         # private
-        FeatureFinderAlgorithmPicked(FeatureFinderAlgorithmPicked &) nogil except + # wrap-ignore
+        FeatureFinderAlgorithmPicked(FeatureFinderAlgorithmPicked &) except + nogil  # wrap-ignore
 
-        void setData(MSExperiment & input, FeatureMap & output, FeatureFinder & ff) nogil except +
-        void run() nogil except +
+        void setData(MSExperiment & input, FeatureMap & output) except + nogil 
+        void run() except + nogil 
 
 
-        void setSeeds(FeatureMap& seeds) nogil except +
+        void setSeeds(FeatureMap& seeds) except + nogil 
 
         # static FeatureFinderAlgorithm* create()
 
-#
-# static methods are wrapped like this:
-#
-
-cdef extern from "<OpenMS/TRANSFORMATIONS/FEATUREFINDER/FeatureFinderAlgorithmPicked.h>" namespace "OpenMS::FeatureFinderAlgorithmPicked":
-
-    String getProductName()   nogil except + # wrap-attach:FeatureFinderAlgorithmPicked

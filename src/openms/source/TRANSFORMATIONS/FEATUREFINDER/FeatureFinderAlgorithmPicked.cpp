@@ -1,31 +1,5 @@
-// --------------------------------------------------------------------------
-//                   OpenMS -- Open-Source Mass Spectrometry
-// --------------------------------------------------------------------------
-// Copyright The OpenMS Team -- Eberhard Karls University Tuebingen,
-// ETH Zurich, and Freie Universitaet Berlin 2002-2022.
-//
-// This software is released under a three-clause BSD license:
-//  * Redistributions of source code must retain the above copyright
-//    notice, this list of conditions and the following disclaimer.
-//  * Redistributions in binary form must reproduce the above copyright
-//    notice, this list of conditions and the following disclaimer in the
-//    documentation and/or other materials provided with the distribution.
-//  * Neither the name of any author or any participating institution
-//    may be used to endorse or promote products derived from this software
-//    without specific prior written permission.
-// For a full list of authors, refer to the file AUTHORS.
-// --------------------------------------------------------------------------
-// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-// ARE DISCLAIMED. IN NO EVENT SHALL ANY OF THE AUTHORS OR THE CONTRIBUTING
-// INSTITUTIONS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
-// OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-// WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
-// OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
-// ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+// Copyright (c) 2002-present, The OpenMS Team -- EKU Tuebingen, ETH Zurich, and FU Berlin
+// SPDX-License-Identifier: BSD-3-Clause
 //
 // --------------------------------------------------------------------------
 // $Maintainer: Timo Sachsenberg $
@@ -37,7 +11,6 @@
 #include <OpenMS/TRANSFORMATIONS/FEATUREFINDER/EGHTraceFitter.h>
 #include <OpenMS/TRANSFORMATIONS/FEATUREFINDER/GaussTraceFitter.h>
 
-#include <OpenMS/FORMAT/MzMLFile.h>
 #include <OpenMS/FORMAT/FileHandler.h>
 #include <OpenMS/FORMAT/TextFile.h>
 #include <OpenMS/MATH/STATISTICS/StatisticFunctions.h>
@@ -149,9 +122,9 @@ namespace OpenMS
     defaults_.setMinFloat("user-seed:min_score", 0.0);
     defaults_.setMaxFloat("user-seed:min_score", 1.0);
     defaults_.setSectionDescription("user-seed", "Settings for user-specified seeds.");
-    //debug settings
-    defaults_.setValue("debug:pseudo_rt_shift", 500.0, "Pseudo RT shift used when .", {"advanced"});
-    defaults_.setMinFloat("debug:pseudo_rt_shift", 1.0);
+    //advanced/debugging settings
+    defaults_.setValue("advanced:pseudo_rt_shift", 500.0, "Pseudo RT shift used when .", {"advanced"});
+    defaults_.setMinFloat("advanced:pseudo_rt_shift", 1.0);
     this->defaultsToParam_();
   }
 
@@ -268,7 +241,7 @@ namespace OpenMS
     if (debug_) log_ << "Precalculating intensity thresholds ..." << std::endl;
     //new scope to make local variables disappear
     {
-      ff_->startProgress(0, intensity_bins_ * intensity_bins_, "Precalculating intensity scores");
+      startProgress(0, intensity_bins_ * intensity_bins_, "Precalculating intensity scores");
       double rt_start = map_.getMinRT();
       double mz_start = map_.getMinMZ();
       intensity_rt_step_ = (map_.getMaxRT() - rt_start) / (double)intensity_bins_;
@@ -282,7 +255,7 @@ namespace OpenMS
         std::vector<double> tmp;
         for (Size mz = 0; mz < intensity_bins_; ++mz)
         {
-          ff_->setProgress(rt * intensity_bins_ + mz);
+          setProgress(rt * intensity_bins_ + mz);
           double min_mz = mz_start + mz * intensity_mz_step_;
           double max_mz = mz_start + (mz + 1) * intensity_mz_step_;
           //std::cout << "rt range: " << min_rt << " - " << max_rt << std::endl;
@@ -315,7 +288,7 @@ namespace OpenMS
           map_[s].getFloatDataArrays()[1][p] = intensityScore_(s, p);
         }
       }
-      ff_->endProgress();
+      endProgress();
     }
 
     //---------------------------------------------------------------------------
@@ -325,11 +298,11 @@ namespace OpenMS
     //new scope to make local variables disappear
     {
       Size end_iteration = map_.size() - std::min((Size)min_spectra_, map_.size());
-      ff_->startProgress(min_spectra_, end_iteration, "Precalculating mass trace scores");
+      startProgress(min_spectra_, end_iteration, "Precalculating mass trace scores");
       // skip first and last scans since we cannot extend the mass traces there
       for (Size s = min_spectra_; s < end_iteration; ++s)
       {
-        ff_->setProgress(s);
+        setProgress(s);
         SpectrumType& spectrum = map_[s];
         //iterate over all peaks of the scan
         for (Size p = 0; p < spectrum.size(); ++p)
@@ -374,7 +347,7 @@ namespace OpenMS
           spectrum.getFloatDataArrays()[2][p] = is_max_peak;
         }
       }
-      ff_->endProgress();
+      endProgress();
     }
 
     //---------------------------------------------------------------------------
@@ -385,7 +358,7 @@ namespace OpenMS
     {
       double max_mass = map_.getMaxMZ() * charge_high;
       Size num_isotopes = std::ceil(max_mass / mass_window_width_) + 1;
-      ff_->startProgress(0, num_isotopes, "Precalculating isotope distributions");
+      startProgress(0, num_isotopes, "Precalculating isotope distributions");
 
       //reserve enough space
       isotope_distributions_.resize(num_isotopes);
@@ -456,7 +429,7 @@ namespace OpenMS
         //if(debug_) log_ << " - optional begin/end:" << begin << " / " << end << std::endl;
       }
 
-      ff_->endProgress();
+      endProgress();
     }
 
     //-------------------------------------------------------------------------
@@ -476,10 +449,10 @@ namespace OpenMS
       //-----------------------------------------------------------
       // Step 3.1: Precalculate IsotopePattern score
       //-----------------------------------------------------------
-      ff_->startProgress(0, map_.size(), String("Calculating isotope pattern scores for charge ") + String(c));
+      startProgress(0, map_.size(), String("Calculating isotope pattern scores for charge ") + String(c));
       for (Size s = 0; s < map_.size(); ++s)
       {
-        ff_->setProgress(s);
+        setProgress(s);
         const SpectrumType& spectrum = map_[s];
         for (Size p = 0; p < spectrum.size(); ++p)
         {
@@ -514,19 +487,19 @@ namespace OpenMS
           }
         }
       }
-      ff_->endProgress();
+      endProgress();
       //-----------------------------------------------------------
       // Step 3.2:
       // Find seeds for this charge
       //-----------------------------------------------------------
       Size end_of_iteration = map_.size() - std::min((Size)min_spectra_, map_.size());
-      ff_->startProgress(min_spectra_, end_of_iteration, String("Finding seeds for charge ") + String(c));
+      startProgress(min_spectra_, end_of_iteration, String("Finding seeds for charge ") + String(c));
 
       double min_seed_score = param_.getValue("seed:min_score");
       //do nothing for the first few and last few spectra as the scans required to search for traces are missing
       for (Size s = min_spectra_; s < end_of_iteration; ++s)
       {
-        ff_->setProgress(s);
+        setProgress(s);
 
         //iterate over peaks
         for (Size p = 0; p < map_[s].size(); ++p)
@@ -599,7 +572,7 @@ namespace OpenMS
         FileHandler().storeFeatures(String("debug/seeds_") + String(c) + ".featureXML", seed_map);
       }
 
-      ff_->endProgress();
+      endProgress();
       std::cout << "Found " << seeds.size() << " seeds for charge " << c << "." << std::endl;
 
       //------------------------------------------------------------------
@@ -619,7 +592,7 @@ namespace OpenMS
       typedef std::map<Size, Feature> FeatureMapType;
       FeatureMapType tmp_feature_map;
       int gl_progress = 0;
-      ff_->startProgress(0, seeds.size(), String("Extending seeds for charge ") + String(c));
+      startProgress(0, seeds.size(), String("Extending seeds for charge ") + String(c));
 
 #pragma omp parallel for
       for (SignedSize i = 0; i < (SignedSize)seeds.size(); ++i)
@@ -634,7 +607,7 @@ namespace OpenMS
 
         IF_MASTERTHREAD
         {
-          ff_->setProgress(gl_progress++);
+          setProgress(gl_progress++);
 
           if (debug_)
           {
@@ -880,7 +853,7 @@ namespace OpenMS
         }
       }
 
-      IF_MASTERTHREAD ff_->endProgress();
+      IF_MASTERTHREAD endProgress();
       std::cout << "Found " << feature_candidates << " feature candidates for charge " << c << "." << std::endl;
     }
     // END OPENMP
@@ -889,7 +862,7 @@ namespace OpenMS
     //Step 4:
     //Resolve contradicting and overlapping features
     //------------------------------------------------------------------
-    ff_->startProgress(0, features_->size() * features_->size(), "Resolving overlapping features");
+    startProgress(0, features_->size() * features_->size(), "Resolving overlapping features");
     if (debug_) log_ << "Resolving intersecting features (" << features_->size() << " candidates)" << std::endl;
     //sort features according to m/z in order to speed up the resolution
     features_->sortByMZ();
@@ -913,7 +886,7 @@ namespace OpenMS
       Feature& f1((*features_)[i]);
       for (Size j = i + 1; j < features_->size(); ++j)
       {
-        ff_->setProgress(i * features_->size() + j);
+        setProgress(i * features_->size() + j);
         Feature& f2((*features_)[j]);
         //features that are more than 2 times the maximum m/z span apart do not overlap => abort
         if (f2.getMZ() - f1.getMZ() > 2.0 * max_mz_span)
@@ -1018,7 +991,7 @@ namespace OpenMS
     tmp.swapFeaturesOnly(*features_);
     // sort features by intensity
     features_->sortByIntensity(true);
-    ff_->endProgress();
+    endProgress();
 
     // Abort reasons
     OPENMS_LOG_INFO << '\n';
@@ -1054,19 +1027,79 @@ namespace OpenMS
       {
         s.getFloatDataArrays().erase(s.getFloatDataArrays().begin() + 2);
       }
-      MzMLFile().store("debug/input.mzML", map_);
+      FileHandler().storeExperiment("debug/input.mzML", map_, {FileTypes::MZML});
     }
 
   }
 
-  FeatureFinderAlgorithm* FeatureFinderAlgorithmPicked::create()
+  void FeatureFinderAlgorithmPicked::run(PeakMap& input_map, FeatureMap& features, const Param& param, const FeatureMap& seeds)
   {
-    return new FeatureFinderAlgorithmPicked();
-  }
+    // Nothing to do if there is no data
+    if (input_map.empty())
+    {
+      features.clear(true);
+      return;
+    }
 
-  const String FeatureFinderAlgorithmPicked::getProductName()
-  {
-    return "centroided";
+    // check input
+    {
+      // We need updated ranges => check number of peaks
+      if (input_map.getSize() == 0)
+      {
+        throw Exception::IllegalArgument(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION, "FeatureFinder needs updated ranges on input map. Aborting.");
+      }
+
+      // We need MS1 data only => check levels
+      if (input_map.getMSLevels().size() != 1 || input_map.getMSLevels()[0] != 1)
+      {
+        throw Exception::IllegalArgument(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION, "FeatureFinder can only operate on MS level 1 data. Please do not use MS/MS data. Aborting.");
+      }
+
+      //Check if the peaks are sorted according to m/z
+      if (!input_map.isSorted(true))
+      {
+        OPENMS_LOG_WARN << "Input map is not sorted by RT and m/z! This is done now, before applying the algorithm!" << std::endl;
+        input_map.sortSpectra(true);
+        input_map.sortChromatograms(true);
+      }
+
+      for (Size s = 0; s < input_map.size(); ++s)
+      {
+        if (input_map[s].empty())
+        {
+          continue;
+        }
+        if (input_map[s][0].getMZ() < 0)
+        {
+          throw Exception::IllegalArgument(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION, "FeatureFinder can only operate on spectra that contain peaks with positive m/z values. Filter the data accordingly beforehand! Aborting.");
+        }
+      }
+    }
+
+    // do the work
+    setParameters(param);
+    setData(input_map, features);
+    setSeeds(seeds);
+    run();
+
+    //report RT apex spectrum index and native ID for each feature
+    for (Size i = 0; i < features.size(); ++i)
+    {
+      //index
+      Size spectrum_index = input_map.RTBegin(features[i].getRT()) - input_map.begin();
+      features[i].setMetaValue("spectrum_index", spectrum_index);
+      //native id
+      if (spectrum_index < input_map.size())
+      {
+        String native_id = input_map[spectrum_index].getNativeID();
+        features[i].setMetaValue("spectrum_native_id", native_id);
+      }
+      else
+      {
+        /// @todo that happens sometimes using IsotopeWaveletFeatureFinder (Rene, Marc, Andreas, Clemens)
+        std::cerr << "FeatureFinderAlgorithm_impl, line=" << __LINE__ << "; FixMe this cannot be, but happens" << std::endl;
+      }
+    }
   }
 
   void FeatureFinderAlgorithmPicked::updateMembers_()

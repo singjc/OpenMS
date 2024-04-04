@@ -1295,29 +1295,6 @@ def testFeature():
 
 
 @report
-def testFeatureFinder():
-    """
-    @tests: FeatureFinder
-     FeatureFinder.__init__
-     FeatureFinder.endProgress
-     FeatureFinder.getLogType
-     FeatureFinder.getParameters
-     FeatureFinder.run
-     FeatureFinder.setLogType
-     FeatureFinder.setProgress
-     FeatureFinder.startProgress
-    """
-    ff = pyopenms.FeatureFinder()
-    name = pyopenms.FeatureFinderAlgorithmPicked.getProductName()
-    ff.run(name, pyopenms.MSExperiment(), pyopenms.FeatureMap() ,
-            pyopenms.Param(), pyopenms.FeatureMap())
-
-    _testProgressLogger(ff)
-
-    p = ff.getParameters(name)
-    _testParam(p)
-
-@report
 def testFeatureFileOptions():
     """
     @tests: FeatureFileOptions
@@ -1485,64 +1462,12 @@ def testFeatureFinderAlgorithmPicked():
     _testParam(ff.getParameters())
 
     assert ff.getName() == "FeatureFinderAlgorithm"
-    assert pyopenms.FeatureFinderAlgorithmPicked.getProductName() == "centroided"
 
     ff.setParameters(pyopenms.Param())
 
     ff.setName("test")
     assert ff.getName() == "test"
 
-@report
-def testFeatureFinderAlgorithmIsotopeWavelet():
-    """
-    @tests: FeatureFinderAlgorithmIsotopeWavelet
-     FeatureFinderAlgorithmIsotopeWavelet.__init__
-     FeatureFinderAlgorithmIsotopeWavelet.getDefaults
-     FeatureFinderAlgorithmIsotopeWavelet.getName
-     FeatureFinderAlgorithmIsotopeWavelet.getParameters
-     FeatureFinderAlgorithmIsotopeWavelet.getProductName
-     FeatureFinderAlgorithmIsotopeWavelet.setName
-     FeatureFinderAlgorithmIsotopeWavelet.setParameters
-    """
-    ff = pyopenms.FeatureFinderAlgorithmIsotopeWavelet()
-    p = ff.getDefaults()
-    _testParam(p)
-
-    # _testParam(ff.getParameters())
-
-    assert ff.getName() == "FeatureFinderAlgorithm"
-    assert pyopenms.FeatureFinderAlgorithmIsotopeWavelet.getProductName() == "isotope_wavelet"
-
-    ff.setParameters(pyopenms.Param())
-
-    ff.setName("test")
-    assert ff.getName() == "test"
-
-@report
-def testCompNovoIdentification():
-    """
-    @tests: CompNovoIdentification
-     CompNovoIdentification.__init__
-    """
-    ff = pyopenms.CompNovoIdentification()
-    p = ff.getDefaults()
-    _testParam(p)
-
-    assert pyopenms.CompNovoIdentification().getIdentification is not None
-    assert pyopenms.CompNovoIdentification().getIdentifications is not None
-
-@report
-def testCompNovoIdentificationCID():
-    """
-    @tests: CompNovoIdentificationCID
-     CompNovoIdentificationCID.__init__
-    """
-    ff = pyopenms.CompNovoIdentificationCID()
-    p = ff.getDefaults()
-    _testParam(p)
-
-    assert pyopenms.CompNovoIdentificationCID().getIdentification is not None
-    assert pyopenms.CompNovoIdentificationCID().getIdentifications is not None
 
 @report
 def testExperimentalSettings():
@@ -1632,19 +1557,6 @@ def testSeedListGenerator():
     # TODO 
     # assert pyopenms.SeedListGenerator().compute is not None
 
-@report
-def testTOFCalibration():
-    """
-    @tests: TOFCalibration
-     TOFCalibration.__init__
-    """
-    ff = pyopenms.TOFCalibration()
-    p = ff.getDefaults()
-    # _testParam(p)
-
-    assert pyopenms.TOFCalibration().calibrate is not None
-    assert pyopenms.TOFCalibration().pickAndCalibrate is not None
-
 # TODO: re-enable as soon as ConsensusIDAlgorithm classes are wrapped
 # @report
 # def testConsensusID():
@@ -1692,17 +1604,6 @@ def testProteinResolver():
     assert pyopenms.ProteinResolver().resolveID is not None
     assert pyopenms.ProteinResolver().setProteinData is not None
     assert pyopenms.ProteinResolver().getResults is not None
-
-@report
-def testSvmTheoreticalSpectrumGeneratorTrainer():
-    """
-    @tests: SvmTheoreticalSpectrumGeneratorTrainer
-     SvmTheoreticalSpectrumGeneratorTrainer.__init__
-    """
-    ff = pyopenms.SvmTheoreticalSpectrumGeneratorTrainer()
-
-    assert pyopenms.SvmTheoreticalSpectrumGeneratorTrainer().trainModel is not None
-    assert pyopenms.SvmTheoreticalSpectrumGeneratorTrainer().normalizeIntensity is not None
 
 @report
 def testPosteriorErrorProbabilityModel():
@@ -1793,17 +1694,6 @@ def testFeatureFinderAlgorithmPicked():
 
     assert pyopenms.FeatureFinderAlgorithmPicked().setData is not None
     assert pyopenms.FeatureFinderAlgorithmPicked().run is not None
-
-@report
-def testFeatureFinderAlgorithmIsotopeWavelet():
-    """
-    @tests: FeatureFinderAlgorithmIsotopeWavelet
-     FeatureFinderAlgorithmIsotopeWavelet.__init__
-    """
-    ff = pyopenms.FeatureFinderAlgorithmIsotopeWavelet()
-
-    assert pyopenms.FeatureFinderAlgorithmIsotopeWavelet().setData is not None
-    assert pyopenms.FeatureFinderAlgorithmIsotopeWavelet().run is not None
 
 
 @report
@@ -1913,16 +1803,6 @@ def testProteaseDigestion():
 
     #ff.setEnzyme(enz.TRYPSIN)
     #assert ff.getEnzyme() == enz.TRYPSIN
-
-@report
-def testEnzymaticDigestionLogModel():
-    ff = pyopenms.EnzymaticDigestionLogModel()
-    assert pyopenms.EnzymaticDigestionLogModel().getLogThreshold is not None
-    assert pyopenms.EnzymaticDigestionLogModel().setLogThreshold is not None
-    assert pyopenms.EnzymaticDigestionLogModel().digest is not None
-    assert pyopenms.EnzymaticDigestionLogModel().peptideCount is not None
-    ff.setLogThreshold(0.25)
-    assert ff.getLogThreshold() == 0.25
 
 @report
 def testIDDecoyProbability():
@@ -2960,11 +2840,16 @@ def testMSExperiment():
     pyopenms.MzMLFile().load(os.path.join(os.environ['OPENMS_DATA_PATH'], 'examples/FRACTIONS/BSA1_F1.mzML'), exp)
 
     ms1_df, ms2_df = exp.get_massql_df()
-
     assert ms1_df.shape == (140055, 7)
-
     assert np.allclose(ms2_df.head(), pd.read_csv(os.path.join(os.environ['OPENMS_DATA_PATH'], 'examples/FRACTIONS/BSA1_F1_MS2_MassQL.tsv'), sep='\t'))
 
+    pyopenms.MzMLFile().load(os.path.join(os.environ['OPENMS_DATA_PATH'], 'examples/FRACTIONS/BSA1_F1_ION.mzML'), exp)
+    df = exp.get_ion_df()
+    assert np.allclose(df.head(), pd.read_csv(os.path.join(os.environ['OPENMS_DATA_PATH'], 'examples/FRACTIONS/BSA1_F1_MS1_ION.tsv'), sep='\t'))
+
+    ms1_df, ms2_df = exp.get_massql_df(ion_mobility=True)
+    assert ms1_df.shape == (332620, 8)
+    assert np.allclose(ms1_df.head(), pd.read_csv(os.path.join(os.environ['OPENMS_DATA_PATH'], 'examples/FRACTIONS/BSA1_F1_MS1_MassQL_ION.tsv'), sep='\t'))
 
 @report
 def testMSQuantifications():
@@ -3722,9 +3607,22 @@ def testMatrixDouble():
      MapAlignmentAlgorithmIdentification.__init__
      """
 
-    m = pyopenms.MatrixDouble()
+    m = pyopenms.MatrixDouble(3, 2, 0.0)
+    for i in range(3):
+        for j in range(2):
+            m.setValue(i, j, i * 10.0 + j) 
+    print(m)
+
+    mv = m.get_matrix_as_view()
+    print(mv)
+
+    mc = m.get_matrix()
+    print(mc)
+
+    mat = m.get_matrix_as_view()
+
     N = 90
-    m.resize(N-1, N+2, 5.0)
+    m = pyopenms.MatrixDouble(N-1, N+2, 5.0)
 
     assert m.rows() == 89
     assert m.cols() == 92
@@ -3751,19 +3649,21 @@ def testMatrixDouble():
     assert sum(sum(matrix_view)) == (N-1)*(N+2)*5
 
 
-    # Column = 3 / Row = 5
+    # Column = 1 / Row = 2
     ## Now change a value:
 
-    assert m.getValue(3, 5) == 5.0
-    m.setValue(3, 5, 8.0)
-    assert m.getValue(3, 5) == 8.0
+    assert m.getValue(1, 2) == 5.0
+    m.setValue(1, 2, 8.0)
+    assert m.getValue(1, 2) == 8.0
 
+    print(m)
     mat = m.get_matrix_as_view()
-    assert mat[3, 5] == 8.0
+    print(mat)
+    assert mat[1, 2] == 8.0
 
     mat = m.get_matrix()
-    assert m.getValue(3, 5) == 8.0
-    assert mat[3, 5] == 8.0
+    assert m.getValue(1, 2) == 8.0
+    assert mat[1, 2] == 8.0
 
     # Whatever we change here gets changed in the raw data as well
     matrix_view = m.get_matrix_as_view()
@@ -3771,13 +3671,13 @@ def testMatrixDouble():
     assert m.getValue(1, 6) == 11.0
     assert matrix_view[1, 6] == 11.0
 
-    m.clear()
+    m = pyopenms.MatrixDouble()
     assert m.rows() == 0
     assert m.cols() == 0
 
     mat[3, 6] = 9.0
     m.set_matrix(mat)
-    assert m.getValue(3, 5) == 8.0
+    assert m.getValue(1, 2) == 8.0
     assert m.getValue(3, 6) == 9.0
 
 
@@ -4082,14 +3982,14 @@ def testMRMMapping():
     assert o.getNrChromatograms() == 0 # not so easy to test
 
 @report
-def testPeakPickerMRM():
+def testPeakPickerChromatogram():
     """
-    @tests: PeakPickerMRM
-     PeakPickerMRM.__init__
-     PeakPickerMRM.pickChromatogram
+    @tests: PeakPickerChromatogram
+     PeakPickerChromatogram.__init__
+     PeakPickerChromatogram.pickChromatogram
     """
 
-    p = pyopenms.PeakPickerMRM()
+    p = pyopenms.PeakPickerChromatogram()
     assert p.pickChromatogram is not None
 
 @report
@@ -4897,22 +4797,6 @@ def testInspectInfile():
     mods = inst.getModifications()
     assert len(mods) == 0
 
-
-@report
-def testIsotopeMarker():
-    """
-    @tests: IsotopeMarker
-     IsotopeMarker.__init__
-    """
-    inst = pyopenms.IsotopeMarker()
-    ptr = inst.create()
-
-    assert ptr.apply is not None
-
-    res = {}
-    spec = pyopenms.MSSpectrum()
-    ptr.apply(res, spec)
-
 @report
 def testAttachment():
     """
@@ -4947,33 +4831,6 @@ def testAttachment():
     inst.tableRows = [ [b"test", b"test2"], [b"otherTest"] ]
 
     assert inst.tableRows[1][0] == b"otherTest"
-
-@report
-def testOptimizePeakDeconvolution():
-    """
-    @tests: OptimizePeakDeconvolution
-     OptimizePeakDeconvolution.__init__
-    """
-    inst = pyopenms.OptimizePeakDeconvolution()
-    assert inst.getParameters
-
-    assert inst.getPenalties is not None
-    assert inst.setPenalties is not None
-    assert inst.getCharge is not None
-    assert inst.setCharge is not None
-    assert inst.optimize is not None
-
-
-    inst = pyopenms.PenaltyFactorsIntensity()
-    assert inst.height is not None
-
-    inst = pyopenms.OptimizePeakDeconvolution_Data()
-    assert inst.peaks is not None
-    assert inst.peaks is not None
-    assert inst.signal is not None
-    assert inst.penalties is not None
-    assert inst.charge is not None
-
 
 @report
 def testKernelMassTrace():
@@ -5175,49 +5032,6 @@ def testPeptideProteinResolution():
 def testPercolatorOutfile():
     e = pyopenms.PercolatorOutfile()
     assert e
-
-
-
-@report
-def testHiddenMarkovModel():
-    hmm = pyopenms.HiddenMarkovModel()
-    assert hmm
-
-    assert hmm.getNumberOfStates() == 0
-
-    ss = s("testState")
-    hmm.addNewState(ss)
-
-    assert hmm.getNumberOfStates() == 1
-
-    e = pyopenms.HMMState()
-    # hmm.addNewState(e) # Segfault !
-
-    r = hmm.getState(s("testState"))
-    assert r
-    ## assert r == ss # requires ==
-
-@report
-def testHMMState():
-    e = pyopenms.HMMState()
-    assert e
-    e.setName(s("somename"))
-    assert e.getName() == "somename", e.getName()
-    e.setHidden(True)
-    assert e.isHidden()
-
-    pre = pyopenms.HMMState()
-    pre.setName(s("pre"))
-    suc = pyopenms.HMMState()
-    suc.setName(s("suc"))
-
-    e.addPredecessorState(pre)
-    e.addSuccessorState(suc)
-
-    assert e.getPredecessorStates()
-    assert e.getSuccessorStates()
-
-
 
 @report
 def testProteaseDB():

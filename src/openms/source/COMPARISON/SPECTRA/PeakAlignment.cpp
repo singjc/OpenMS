@@ -1,31 +1,5 @@
-// --------------------------------------------------------------------------
-//                   OpenMS -- Open-Source Mass Spectrometry
-// --------------------------------------------------------------------------
-// Copyright The OpenMS Team -- Eberhard Karls University Tuebingen,
-// ETH Zurich, and Freie Universitaet Berlin 2002-2022.
-//
-// This software is released under a three-clause BSD license:
-//  * Redistributions of source code must retain the above copyright
-//    notice, this list of conditions and the following disclaimer.
-//  * Redistributions in binary form must reproduce the above copyright
-//    notice, this list of conditions and the following disclaimer in the
-//    documentation and/or other materials provided with the distribution.
-//  * Neither the name of any author or any participating institution
-//    may be used to endorse or promote products derived from this software
-//    without specific prior written permission.
-// For a full list of authors, refer to the file AUTHORS.
-// --------------------------------------------------------------------------
-// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-// ARE DISCLAIMED. IN NO EVENT SHALL ANY OF THE AUTHORS OR THE CONTRIBUTING
-// INSTITUTIONS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
-// OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-// WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
-// OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
-// ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+// Copyright (c) 2002-present, The OpenMS Team -- EKU Tuebingen, ETH Zurich, and FU Berlin
+// SPDX-License-Identifier: BSD-3-Clause
 //
 // --------------------------------------------------------------------------
 // $Maintainer: Mathias Walzer $
@@ -126,13 +100,13 @@ namespace OpenMS
 
     //initialize alignment matrix with 0 in (0,0) and a multiple of gapcost in the first row/col matrix(row,col,values)
     Matrix<double> matrix(spec1.size() + 1, spec2.size() + 1, 0);
-    for (Size i = 1; i < matrix.rows(); i++)
+    for (long int i = 1; i < matrix.rows(); i++)
     {
-      matrix.setValue(i, 0, -gap * i);
+      matrix(i, 0) = -gap * i;
     }
-    for (Size i = 1; i < matrix.cols(); i++)
+    for (long int i = 1; i < matrix.cols(); i++)
     {
-      matrix.setValue(0, i, -gap * i);
+      matrix(0, i) = -gap * i;
     }
 
     //get sigma - the standard deviation (sqrt of variance)
@@ -188,18 +162,18 @@ namespace OpenMS
         if (fabs(pos1 - pos2) <= epsilon)
         {
           // actual cell = max(upper left cell+score, left cell-gap, upper cell-gap)
-          double from_left(matrix.getValue(i, j - 1) - gap);
-          double from_above(matrix.getValue(i - 1, j) - gap);
+          double from_left(matrix(i, j - 1) - gap);
+          double from_above(matrix(i - 1, j) - gap);
           double int1(spec1[i - 1].getIntensity()), int2(spec2[j - 1].getIntensity());
-          double from_diagonal(matrix.getValue(i - 1, j - 1) + peakPairScore_(pos1, int1, pos2, int2, sigma));
-          matrix.setValue(i, j, max(from_left, max(from_above, from_diagonal)));
+          double from_diagonal(matrix(i - 1, j - 1) + peakPairScore_(pos1, int1, pos2, int2, sigma));
+          matrix(i, j) = max(from_left, max(from_above, from_diagonal));
         }
         else
         {
           // actual cell = max(left cell-gap, upper cell-gap)
-          double from_left(matrix.getValue(i, j - 1) - gap);
-          double from_above(matrix.getValue(i - 1, j) - gap);
-          matrix.setValue(i, j, max(from_left, from_above));
+          double from_left(matrix(i, j - 1) - gap);
+          double from_above(matrix(i - 1, j) - gap);
+          matrix(i, j) = max(from_left, from_above);
         }
       }
     }
@@ -210,13 +184,13 @@ namespace OpenMS
 
     //get best overall score and return
     double best_score(numeric_limits<double>::min());
-    for (Size i = 0; i < matrix.cols(); i++)
+    for (long int i = 0; i < matrix.cols(); i++)
     {
-      best_score = max(best_score, matrix.getValue(matrix.rows() - 1, i));
+      best_score = max(best_score, matrix(matrix.rows() - 1, i));
     }
-    for (Size i = 0; i < matrix.rows(); i++)
+    for (long int i = 0; i < matrix.rows(); i++)
     {
-      best_score = max(best_score, matrix.getValue(i, matrix.cols() - 1));
+      best_score = max(best_score, matrix(i, matrix.cols() - 1));
     }
 
     //calculate self-alignment scores for both input spectra
@@ -261,13 +235,13 @@ namespace OpenMS
 
     //initialize alignment matrix with 0 in (0,0) and a multiple of gapcost in the first row/col matrix(row,col,values)
     Matrix<double> matrix(spec1.size() + 1, spec2.size() + 1, 0);
-    for (Size i = 1; i < matrix.rows(); i++)
+    for (long int i = 1; i < matrix.rows(); i++)
     {
-      matrix.setValue(i, 0, -gap * i);
+      matrix(i, 0) = -gap * i;
     }
-    for (Size i = 1; i < matrix.cols(); i++)
+    for (long int i = 1; i < matrix.cols(); i++)
     {
-      matrix.setValue(0, i, -gap * i);
+      matrix(0, i) = -gap * i;
     }
 
     // gives the direction of the matrix cell that originated the respective cell
@@ -323,28 +297,28 @@ namespace OpenMS
         if (fabs(pos1 - pos2) <= epsilon)
         {
           // actual cell = max(upper left cell+score, left cell-gap, upper cell-gap)
-          double from_left(matrix.getValue(i, j - 1) - gap);
-          double from_above(matrix.getValue(i - 1, j) - gap);
+          double from_left(matrix(i, j - 1) - gap);
+          double from_above(matrix(i - 1, j) - gap);
           double int1(spec1[i - 1].getIntensity()), int2(spec2[j - 1].getIntensity());
-          double from_diagonal(matrix.getValue(i - 1, j - 1) + peakPairScore_(pos1, int1, pos2, int2, sigma));
-          matrix.setValue(i, j, max(from_left, max(from_above, from_diagonal)));
+          double from_diagonal(matrix(i - 1, j - 1) + peakPairScore_(pos1, int1, pos2, int2, sigma));
+          matrix(i, j) = max(from_left, max(from_above, from_diagonal));
 
           // TODO the cases where all or two values are equal
           if (from_diagonal > from_left && from_diagonal > from_above)
           {
-            traceback.setValue(i - 1, j - 1, 1);
+            traceback(i - 1, j - 1) = 1;
           }
           else
           {
             if (from_left > from_diagonal && from_left > from_above)
             {
-              traceback.setValue(i - 1, j - 1, 0);
+              traceback(i - 1, j - 1) = 0;
             }
             else
             {
               if (from_above > from_diagonal && from_above > from_left)
               {
-                traceback.setValue(i - 1, j - 1, 2);
+                traceback(i - 1, j - 1) = 2;
               }
             }
           }
@@ -352,16 +326,16 @@ namespace OpenMS
         else
         {
           // actual cell = max(left cell-gap, upper cell-gap)
-          double from_left(matrix.getValue(i, j - 1) - gap);
-          double from_above(matrix.getValue(i - 1, j) - gap);
-          matrix.setValue(i, j, max(from_left, from_above));
+          double from_left(matrix(i, j - 1) - gap);
+          double from_above(matrix(i - 1, j) - gap);
+          matrix(i, j) = std::max(from_left, from_above);
           if (from_left > from_above)
           {
-            traceback.setValue(i - 1, j - 1, 0);
+            traceback(i - 1, j - 1) = 0;
           }
           else           //from_left <= from_above
           {
-            traceback.setValue(i - 1, j - 1, 2);
+            traceback(i - 1, j - 1) = 2;
           }
         }
       }
@@ -372,20 +346,20 @@ namespace OpenMS
     //get matrix coordinates from best alloverscore
     Size row_index(0), col_index(0);
     double best_score(numeric_limits<double>::min());
-    for (Size i = 0; i < matrix.cols(); i++)
+    for (long int i = 0; i < matrix.cols(); i++)
     {
-      if (best_score < matrix.getValue(matrix.rows() - 1, i))
+      if (best_score < matrix(matrix.rows() - 1, i))
       {
-        best_score = matrix.getValue(matrix.rows() - 1, i);
+        best_score = matrix(matrix.rows() - 1, i);
         row_index = matrix.rows() - 1;
         col_index = i;
       }
     }
-    for (Size i = 0; i < matrix.rows(); i++)
+    for (long int i = 0; i < matrix.rows(); i++)
     {
-      if (best_score < matrix.getValue(i, matrix.cols() - 1))
+      if (best_score < matrix(i, matrix.cols() - 1))
       {
-        best_score = matrix.getValue(i, matrix.cols() - 1);
+        best_score = matrix(i, matrix.cols() - 1);
         row_index = i;
         col_index = matrix.cols() - 1;
       }
@@ -395,7 +369,7 @@ namespace OpenMS
     while (row_index > 0 && col_index > 0)
     {
       //from diagonal - peaks aligned
-      if (traceback.getValue(row_index - 1, col_index - 1) == 1)
+      if (traceback(row_index - 1, col_index - 1) == 1)
       {
         //register aligned peaks only
         ret_val.insert(ret_val.begin(), pair<Size, Size>(row_index - 1, col_index - 1));
@@ -403,7 +377,7 @@ namespace OpenMS
         col_index = col_index - 1;
       }
       // gap alignment
-      else if (traceback.getValue(row_index - 1, col_index - 1) == 0)
+      else if (traceback(row_index - 1, col_index - 1) == 0)
       {
         col_index = col_index - 1;
       }

@@ -1,31 +1,5 @@
-// --------------------------------------------------------------------------
-//                   OpenMS -- Open-Source Mass Spectrometry
-// --------------------------------------------------------------------------
-// Copyright The OpenMS Team -- Eberhard Karls University Tuebingen,
-// ETH Zurich, and Freie Universitaet Berlin 2002-2022.
-//
-// This software is released under a three-clause BSD license:
-//  * Redistributions of source code must retain the above copyright
-//    notice, this list of conditions and the following disclaimer.
-//  * Redistributions in binary form must reproduce the above copyright
-//    notice, this list of conditions and the following disclaimer in the
-//    documentation and/or other materials provided with the distribution.
-//  * Neither the name of any author or any participating institution
-//    may be used to endorse or promote products derived from this software
-//    without specific prior written permission.
-// For a full list of authors, refer to the file AUTHORS.
-// --------------------------------------------------------------------------
-// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-// ARE DISCLAIMED. IN NO EVENT SHALL ANY OF THE AUTHORS OR THE CONTRIBUTING
-// INSTITUTIONS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
-// OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-// WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
-// OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
-// ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+// Copyright (c) 2002-present, The OpenMS Team -- EKU Tuebingen, ETH Zurich, and FU Berlin
+// SPDX-License-Identifier: BSD-3-Clause
 //
 // --------------------------------------------------------------------------
 // $Maintainer: Timo Sachsenberg$
@@ -313,8 +287,10 @@ namespace OpenMS
     // update intensity, m/z and RT according to chromatograms as well:
     for (ChromatogramType& cp : chromatograms_)
     {
+      // update range of EACH chrom, if we need them individually later
+      cp.updateRanges();
 
-      // ignore TICs and ECs (as these are usually positioned at 0 and therefor lead to a large white margin in plots if included)
+      // ignore TICs and ECs for the whole experiments range (as these are usually positioned at 0 and therefor lead to a large white margin in plots if included)
       if (cp.getChromatogramType() == ChromatogramSettings::TOTAL_ION_CURRENT_CHROMATOGRAM ||
         cp.getChromatogramType() == ChromatogramSettings::EMISSION_CHROMATOGRAM)
       {
@@ -325,33 +301,8 @@ namespace OpenMS
 
       // ranges
       this->extendMZ(cp.getMZ());// MZ
-      cp.updateRanges();
       this->extend(cp);// RT and intensity from chroms's range
     }
-  }
-
-  /// returns the minimal m/z value
-  MSExperiment::CoordinateType MSExperiment::getMinMZ() const
-  {
-    return RangeManagerType::getMinMZ();
-  }
-
-  /// returns the maximal m/z value
-  MSExperiment::CoordinateType MSExperiment::getMaxMZ() const
-  {
-    return RangeManagerType::getMaxMZ();
-  }
-
-  /// returns the minimal retention time value
-  MSExperiment::CoordinateType MSExperiment::getMinRT() const
-  {
-    return RangeManagerType::getMinRT();
-  }
-
-  /// returns the maximal retention time value
-  MSExperiment::CoordinateType MSExperiment::getMaxRT() const
-  {
-    return RangeManagerType::getMaxRT();
   }
 
   /// returns the total number of peaks
@@ -654,6 +605,55 @@ namespace OpenMS
   std::vector<MSSpectrum>& MSExperiment::getSpectra()
   {
     return spectra_;
+  }
+
+  /// Returns the closest(=nearest) spectrum in retention time to the given RT
+  MSExperiment::ConstIterator MSExperiment::getClosestSpectrumInRT(const double RT) const
+  {
+    auto above = RTBegin(RT);           // the spec above or equal to our RT
+    if (above == begin()) return above; // we hit the first element, or no spectra (begin==end)
+    if (above == end()) return --above; // queried beyond last spec, but we know there are spectra, so `--above` is safe
+    // we are between two spectra
+    auto diff_left = RT - (above - 1)->getRT();
+    auto diff_right = above->getRT() - RT;
+    if (diff_left < diff_right) --above;
+    return above;
+  }
+  MSExperiment::Iterator MSExperiment::getClosestSpectrumInRT(const double RT)
+  {
+    return begin() + std::distance(cbegin(), const_cast<const MSExperiment*>(this)->getClosestSpectrumInRT(RT));
+  }
+
+  /// Returns the closest(=nearest) spectrum in retention time to the given RT of a certain MS level
+  MSExperiment::ConstIterator MSExperiment::getClosestSpectrumInRT(const double RT, UInt ms_level) const
+  {
+    auto above = RTBegin(RT); // the spec above or equal to our RT
+    auto below = above; // for later
+    // search for the next available spec to the right with correct MS level
+    while (above != end() && above->getMSLevel() != ms_level)
+    {
+      ++above;
+    }
+    if (above == begin()) return above; // we hit the first element; or no spectra at all
+
+    // careful: below may be end() at this point, yet below!=begin()
+    if (below != begin()) --below; // we need to make one step left, so we are different from `above`
+    // we are not at end() (or begin()==end())
+    while (below != begin() && below->getMSLevel() != ms_level)
+    {
+      --below;
+    }
+    if (below->getMSLevel() != ms_level) return above; // below did not find anything valid; so it must be whatever `above` is (could be end())
+    if (above == end()) return below;                  // queried beyond last spec, but we know there are spectra, so it must be whatever `below` is (which we know is valid)
+    // we are between two spectra
+    auto diff_left = RT - below->getRT();
+    auto diff_right = above->getRT() - RT;
+    return (diff_left < diff_right ? below : above);
+  }
+
+  MSExperiment::Iterator MSExperiment::getClosestSpectrumInRT(const double RT, UInt ms_level)
+  {
+    return begin() + std::distance(cbegin(), const_cast<const MSExperiment*>(this)->getClosestSpectrumInRT(RT, ms_level));
   }
 
   /// sets the chromatogram list

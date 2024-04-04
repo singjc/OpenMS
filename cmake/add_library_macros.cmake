@@ -2,7 +2,7 @@
 #                   OpenMS -- Open-Source Mass Spectrometry
 # --------------------------------------------------------------------------
 # Copyright The OpenMS Team -- Eberhard Karls University Tuebingen,
-# ETH Zurich, and Freie Universitaet Berlin 2002-2022.
+# ETH Zurich, and Freie Universitaet Berlin 2002-2023.
 #
 # This software is released under a three-clause BSD license:
 #  * Redistributions of source code must retain the above copyright
@@ -211,6 +211,7 @@ function(openms_add_library)
   #------------------------------------------------------------------------------
   # Generate export header if requested
   if(NOT ${openms_add_library_DLL_EXPORT_PATH} STREQUAL "")
+    ## this snipped creates 'OpenMSConfig.h' in the build tree
     set(_CONFIG_H "include/${openms_add_library_DLL_EXPORT_PATH}${openms_add_library_TARGET_NAME}Config.h")
     string(TOUPPER ${openms_add_library_TARGET_NAME} _TARGET_UPPER_CASE)
     include(GenerateExportHeader)

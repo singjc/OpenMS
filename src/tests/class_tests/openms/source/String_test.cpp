@@ -1,31 +1,5 @@
-// --------------------------------------------------------------------------
-//                   OpenMS -- Open-Source Mass Spectrometry
-// --------------------------------------------------------------------------
-// Copyright The OpenMS Team -- Eberhard Karls University Tuebingen,
-// ETH Zurich, and Freie Universitaet Berlin 2002-2022.
-//
-// This software is released under a three-clause BSD license:
-//  * Redistributions of source code must retain the above copyright
-//    notice, this list of conditions and the following disclaimer.
-//  * Redistributions in binary form must reproduce the above copyright
-//    notice, this list of conditions and the following disclaimer in the
-//    documentation and/or other materials provided with the distribution.
-//  * Neither the name of any author or any participating institution
-//    may be used to endorse or promote products derived from this software
-//    without specific prior written permission.
-// For a full list of authors, refer to the file AUTHORS.
-// --------------------------------------------------------------------------
-// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-// ARE DISCLAIMED. IN NO EVENT SHALL ANY OF THE AUTHORS OR THE CONTRIBUTING
-// INSTITUTIONS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
-// OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-// WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
-// OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
-// ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+// Copyright (c) 2002-present, The OpenMS Team -- EKU Tuebingen, ETH Zurich, and FU Berlin
+// SPDX-License-Identifier: BSD-3-Clause
 //
 // --------------------------------------------------------------------------
 // $Maintainer: Timo Sachsenberg$
@@ -39,13 +13,14 @@
 
 #include <OpenMS/DATASTRUCTURES/String.h>
 #include <OpenMS/DATASTRUCTURES/DataValue.h>
+
+#include <algorithm>
 #include <iostream>
 #include <iomanip>
+#include <random>
 #include <vector>
 
 #include <QtCore/QString>
-
-#include <boost/math/special_functions/fpclassify.hpp>
 
 using namespace OpenMS;
 using namespace std;
@@ -918,6 +893,7 @@ START_SECTION((String& ensureLastChar(char end)))
 END_SECTION
 
 START_SECTION((String& removeWhitespaces()))
+{
   String s;
 
   s.removeWhitespaces();
@@ -938,6 +914,15 @@ START_SECTION((String& removeWhitespaces()))
   s = "\n\r\t t\ne \ts\rt \n\r\t";
   s.removeWhitespaces();
   TEST_EQUAL(s,"test");
+
+  const std::string test(16 * 1024 + 1, 'x'); // not a multiple of 16, so any SSE code needs to deal with a remainder
+  s = test + std::string(100, ' ');
+  std::random_device rd;
+  std::mt19937 g(rd());
+  std::shuffle(s.begin(), s.end(), g);
+  s.removeWhitespaces();
+  TEST_EQUAL(s, test);
+}
 END_SECTION
 
 const String fixed("test");
@@ -1055,54 +1040,6 @@ END_SECTION
 
 START_SECTION((String& operator+= (long double d)))
 {
-  /*
-  NOTE (by Clemens): Windows platforms do not really support long double.  See
-  <CONCEPT/Types.h>.  I am leaving this code here because it will help to
-  clarify how to set writtenDigits on new platforms.
-  */
-#if 0
-#define ECHO_AND_DO(bla) STATUS(""#bla); bla
-#define ECHO_AND_VALUE(bla) STATUS(""#bla << ": " << bla);
-  typedef long double longdouble;
-
-  ECHO_AND_VALUE(sizeof(double));
-  ECHO_AND_VALUE(std::numeric_limits<double>::digits);
-  ECHO_AND_VALUE(std::numeric_limits<double>::digits10);
-  ECHO_AND_VALUE(writtenDigits<double>(0.0));
-
-  ECHO_AND_DO(std::cout.precision(std::numeric_limits<double>::digits10));
-  ECHO_AND_VALUE(typeAsString(7.4) << ": " << 7.4);
-  ECHO_AND_VALUE(typeAsString(7.4L) << ": " << 7.4L);
-
-  ECHO_AND_DO(std::cout.precision( writtenDigits<>(double()) ));
-  ECHO_AND_VALUE(typeAsString(7.4) << ": " << 7.4);
-  ECHO_AND_VALUE(typeAsString(7.4L) << ": " << 7.4L);
-
-  ECHO_AND_VALUE(sizeof(long double));
-  ECHO_AND_VALUE(std::numeric_limits<long double>::digits);
-  ECHO_AND_VALUE(std::numeric_limits<long double>::digits10);
-  ECHO_AND_VALUE( writtenDigits<>( longdouble() ) );
-
-  ECHO_AND_DO(std::cout.precision(std::numeric_limits<long double>::digits10));
-  STATUS(typeAsString(7.4) << ": " << 7.4);
-  STATUS(typeAsString(7.4L) << ": " << 7.4L);
-
-  ECHO_AND_DO(std::cout.precision(writtenDigits<>( longdouble() )));
-  STATUS(typeAsString(7.4) << ": " << 7.4);
-  STATUS(typeAsString(7.4L) << ": " << 7.4L);
-
-  const UInt save_prec  = std::cout.precision();
-  for ( UInt prec = 10; prec <= 30; ++prec)
-  {
-    std::cout.precision(prec);
-    STATUS("prec: " << prec << "   7.4: " << 7.4 << "   7.4L: " << 7.4L);
-  }
-  std::cout.precision(save_prec);
-
-#undef ECHO_AND_DO
-#undef ECHO_AND_VALUE
-#endif /* End of funny stuff by Clemens */
-
   String s = "test";
   // long double x = 7.4; // implictly double (not long double!)  =>  7.40000000000000036
   long double x = 7.4L; // explictly long double  =>  7.4

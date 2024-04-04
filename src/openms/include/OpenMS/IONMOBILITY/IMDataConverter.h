@@ -1,31 +1,5 @@
-// --------------------------------------------------------------------------
-//                   OpenMS -- Open-Source Mass Spectrometry
-// --------------------------------------------------------------------------
-// Copyright The OpenMS Team -- Eberhard Karls University Tuebingen,
-// ETH Zurich, and Freie Universitaet Berlin 2002-2022.
-//
-// This software is released under a three-clause BSD license:
-//  * Redistributions of source code must retain the above copyright
-//    notice, this list of conditions and the following disclaimer.
-//  * Redistributions in binary form must reproduce the above copyright
-//    notice, this list of conditions and the following disclaimer in the
-//    documentation and/or other materials provided with the distribution.
-//  * Neither the name of any author or any participating institution
-//    may be used to endorse or promote products derived from this software
-//    without specific prior written permission.
-// For a full list of authors, refer to the file AUTHORS.
-// --------------------------------------------------------------------------
-// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-// ARE DISCLAIMED. IN NO EVENT SHALL ANY OF THE AUTHORS OR THE CONTRIBUTING
-// INSTITUTIONS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
-// OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-// WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
-// OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
-// ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+// Copyright (c) 2002-present, The OpenMS Team -- EKU Tuebingen, ETH Zurich, and FU Berlin
+// SPDX-License-Identifier: BSD-3-Clause
 //
 // --------------------------------------------------------------------------
 // $Maintainer: Eugen Netz $
@@ -57,13 +31,13 @@ namespace OpenMS
       /**
         @brief Splits a PeakMap into one PeakMap per FAIMS compensation voltage
 
-        This only works with a PeakMap that has a FAIMS compensation voltage
-        associated with each spectrum.
+        This only works with a PeakMap that has a FAIMS compensation voltage 
+        (obtained via 'spec.getDriftTime()') associated with each spectrum.
         The spectra from the original PeakMap are moved to new PeakMaps,
         so the original PeakMap is unusable afterwards.
 
         @param exp The PeakMap
-        @return Several maps, split by CVs
+        @return Several maps, one for each CV
         @throws Exception::MissingInformation if @p exp is not FAIMS data
       */
       static std::vector<PeakMap> splitByFAIMSCV(PeakMap&& exp);
@@ -74,7 +48,9 @@ namespace OpenMS
    
         The input @p im_frame must have a floatDataArray where IM values are annotated. If not, an exception is thrown.
 
-        To get some coarser binning, choose a smaller @p number_of_bins. The default creates a new bin (=spectrum in the output) for each distinct ion mobility value.
+        To get some coarser binning, choose a smaller @p number_of_bins. The default of `-1` creates a new bin (=spectrum in the output) for each distinct ion mobility value.
+
+        For the output spectra, the IM value is annotated once in `spec.getDriftTime()` (using the center of the IM bin). There is no metadata array which contains IM values floatDataArray.
       
         @param im_frame Concatenated spectrum representing a frame
         @param number_of_bins In how many bins should the ion mobility frame be sliced? Default(-1) assigns all peaks with identical ion-mobility values to a separate spectrum.
@@ -88,7 +64,9 @@ namespace OpenMS
          @brief Expands all (TimsTOF) ion mobility frames in the PeakMap (i.e. all IM spectra with an IM float data array) into separate spectra. Non-IM spectra are simply copied to the result.
  
          To get some coarser custom binning, choose a smaller @p number_of_bins. The default creates a new bin (=spectrum in the output) for each distinct ion mobility value.
-         For custom bins, the IM range is divided into equally spaced bins and the bin center is the new drift time.
+         For custom bins, the IM range is divided into equally spaced bins and the bin center is the new drift time. 
+         For the new output spectra, the IM value is annotated once in `spec.getDriftTime()` (using the center of the IM bin). There is no metadata array which
+         contains IM values floatDataArray.
 
          @param in The PeakMap containing IM-frame spectra
          @param number_of_bins In how many bins should the ion mobility frame be sliced? Default(-1) assigns all peaks with identical ion-mobility values to a separate spectrum.
@@ -106,8 +84,8 @@ namespace OpenMS
   
         If a spectrum does not have drift time (spec.getDriftTime()), it is simply copied to the output and ignored during the collapsing process.
 
-        @param exp The input experiment with multiple spectra per frame
-        @param result The output spectra collapsed to a single spectrum per frame
+        @param in The input experiment with multiple spectra per frame
+        @return result The output spectra collapsed to a single spectrum per frame
 
         @note This requires that spectra from the same frame have the same RT ("scan start time")
 
