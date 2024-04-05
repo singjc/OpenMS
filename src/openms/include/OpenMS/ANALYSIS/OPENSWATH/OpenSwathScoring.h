@@ -226,10 +226,7 @@ namespace OpenMS
                               const std::vector<OpenSwath::SwathMap>& swath_maps,
                               RangeMobility& range_im,
                               const OpenMS::DIAScoring & diascoring,
-                              OpenSwath_Scores & scores,
-                              double drift_lower,
-                              double drift_upper,
-                              const double drift_target);
+                              OpenSwath_Scores & scores);
 
     /** @brief Computing the normalized library intensities from the transition objects
      *
