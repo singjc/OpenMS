@@ -433,7 +433,6 @@ namespace OpenMS
                                     trgr_ident.getTransition(native_ids_identification[i]),
                                     trgr_detect,
                                     swath_maps, im_range, diascoring_, tmp_scores, drift_target);
-//        std::cout << "Finished computing DIAidScores..." << std::endl;
         ind_isotope_correlation.push_back(tmp_scores.isotope_correlation);
         ind_isotope_overlap.push_back(tmp_scores.isotope_overlap);
         ind_massdev_score.push_back(tmp_scores.massdev_score);

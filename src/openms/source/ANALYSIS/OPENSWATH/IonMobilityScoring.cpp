@@ -459,35 +459,49 @@ namespace OpenMS
     scores.im_xcorr_shape_score = xcorr_shape_score;
   }
 
-  void IonMobilityScoring::driftIdScoring(const OpenSwath::SpectrumPtr& spectrum,
+  void IonMobilityScoring::driftIdScoring(const SpectrumSequence& spectra,
                                           const std::vector<TransitionType> & transition,
                                           MRMTransitionGroupType& trgr_detect,
                                           OpenSwath_Scores &scores,
-                                          const double drift_lower,
-                                          const double drift_upper,
                                           const double drift_target,
+                                          RangeMobility im_range,
                                           const double dia_extract_window_,
                                           const bool dia_extraction_ppm_,
                                           const bool /* use_spline */,
                                           const double drift_extra)
   {
-      OPENMS_PRECONDITION(spectrum != nullptr, "Spectrum cannot be null");
-      OPENMS_PRECONDITION(!transition.empty(), "Need at least one transition");
+      // OPENMS_PRECONDITION(spectrum != nullptr, "Spectrum cannot be null");
+      // OPENMS_PRECONDITION(!transition.empty(), "Need at least one transition");
 
-      if (spectrum->getDriftTimeArray() == nullptr)
+      // if (spectrum->getDriftTimeArray() == nullptr)
+      // {
+      //   OPENMS_LOG_DEBUG << " ERROR: Drift time is missing in ion mobility spectrum!" << std::endl;
+      //   return;
+      // }
+
+      OPENMS_PRECONDITION(!spectra.empty(), "Spectra cannot be empty");
+      for (auto s:spectra)
       {
-        OPENMS_LOG_DEBUG << " ERROR: Drift time is missing in ion mobility spectrum!" << std::endl;
-        return;
+        if (s->getDriftTimeArray() == nullptr)
+        {
+          OPENMS_LOG_DEBUG << " ERROR: Drift time is missing in ion mobility spectrum!" << std::endl;
+          return;
+        }
       }
 
-      double drift_width = fabs(drift_upper - drift_lower);
-      double drift_lower_used = drift_lower - drift_width * drift_extra;
-      double drift_upper_used = drift_upper + drift_width * drift_extra;
+      double eps = 1e-5; // eps for two grid cells to be considered equal
 
+      im_range.scaleBy(drift_extra * 2. + 1); // multiple by 2 because want drift extra to be extended by that amount on either side
+
+      IonMobilogram res;
       double im(0), intensity(0);
-      double left(transition[0].getProductMZ()), right(transition[0].getProductMZ());
-      DIAHelpers::adjustExtractionWindow(right, left, dia_extract_window_, dia_extraction_ppm_);
-      DIAHelpers::integrateDriftSpectrum(spectrum, left, right, im, intensity, drift_lower_used, drift_upper_used);
+      // Calculate the difference of the theoretical ion mobility and the actually measured ion mobility
+      // double left(transition[0].getProductMZ()), right(transition[0].getProductMZ());
+      // DIAHelpers::adjustExtractionWindow(right, left, dia_extract_window_, dia_extraction_ppm_);
+      // DIAHelpers::integrateDriftSpectrum(spectrum, left, right, im, intensity, drift_lower_used, drift_upper_used);
+
+      RangeMZ mz_range = DIAHelpers::createMZRangePPM(transition[0].getProductMZ(), dia_extract_window_, dia_extraction_ppm_);
+      computeIonMobilogram(spectra, mz_range, im_range, im, intensity, res, eps);
 
       // Record the measured ion mobility
       scores.im_drift = im;
@@ -504,7 +518,7 @@ namespace OpenMS
       //////////////////////////////////////////////////////////////////////////////////////////
       // Cross-Correlation of Identification against Detection Mobilogram Features
 
-      double eps = 1e-5; // eps for two grid cells to be considered equal
+      // double eps = 1e-5; // eps for two grid cells to be considered equal
 
       // IonMobilogram: a data structure that holds points <im_value, intensity>
       std::vector< IonMobilogram > mobilograms;
@@ -516,26 +530,34 @@ namespace OpenMS
         IonMobilogram detection_mobilograms;
         const TransitionType detection_transition = trgr_detect.getTransitions()[k];
         // Calculate the difference of the theoretical ion mobility and the actually measured ion mobility
-        double detection_left(detection_transition.getProductMZ()), detection_right(detection_transition.getProductMZ());
-        DIAHelpers::adjustExtractionWindow(detection_right, detection_left, dia_extract_window_, dia_extraction_ppm_);
+        // double detection_left(detection_transition.getProductMZ()), detection_right(detection_transition.getProductMZ());
+        // DIAHelpers::adjustExtractionWindow(detection_right, detection_left, dia_extract_window_, dia_extraction_ppm_);
 
-        integrateDriftSpectrum(spectrum, detection_left, detection_right, detection_im, detection_intensity, detection_mobilograms, eps, drift_lower_used, drift_upper_used);
+        // integrateDriftSpectrum(spectrum, detection_left, detection_right, detection_im, detection_intensity, detection_mobilograms, eps, drift_lower_used, drift_upper_used);
+
+        RangeMZ detection_mz_range = DIAHelpers::createMZRangePPM(detection_transition.getProductMZ(), dia_extract_window_, dia_extraction_ppm_);
+        computeIonMobilogram(spectra, detection_mz_range, im_range, detection_im, detection_intensity, detection_mobilograms, eps);
+
         mobilograms.push_back( std::move(detection_mobilograms) );
       }
 
       // Step 2: MS2 single identification transition extraction
       double identification_im(0), identification_intensity(0);
       IonMobilogram identification_mobilogram;
-      double identification_left(transition[0].getProductMZ()), identification_right(transition[0].getProductMZ());
-      DIAHelpers::adjustExtractionWindow(identification_right, identification_left, dia_extract_window_, dia_extraction_ppm_);
-      integrateDriftSpectrum(spectrum, identification_left, identification_right, identification_im, identification_intensity, identification_mobilogram, eps, drift_lower_used, drift_upper_used); // TODO: aggregate over isotopes
+      // double identification_left(transition[0].getProductMZ()), identification_right(transition[0].getProductMZ());
+      // DIAHelpers::adjustExtractionWindow(identification_right, identification_left, dia_extract_window_, dia_extraction_ppm_);
+      // integrateDriftSpectrum(spectrum, identification_left, identification_right, identification_im, identification_intensity, identification_mobilogram, eps, drift_lower_used, drift_upper_used); // TODO: aggregate over isotopes
+
+      RangeMZ identification_mz_range = DIAHelpers::createMZRangePPM(transition[0].getProductMZ(), dia_extract_window_, dia_extraction_ppm_);
+      computeIonMobilogram(spectra, identification_mz_range, im_range, identification_im, identification_intensity, identification_mobilogram, eps);
+
       mobilograms.push_back(identification_mobilogram);
 
       // Check to make sure IM of identification is not -1, otherwise assign 0 for scores
       if ( identification_im!=-1 )
       {
 
-        std::vector<double> im_grid = computeGrid(mobilograms, eps); // ensure grid is based on all profiles!
+        std::vector<double> im_grid = computeGrid_(mobilograms, eps); // ensure grid is based on all profiles!
         mobilograms.pop_back();
 
         // Step 3: Align the IonMobilogram vectors to the grid
@@ -544,13 +566,13 @@ namespace OpenMS
         {
           std::vector<double> arrInt, arrIM;
           Size max_peak_idx = 0;
-          alignToGrid(mobilogram, im_grid, arrInt, arrIM, eps, max_peak_idx);
+          alignToGrid_(mobilogram, im_grid, arrInt, arrIM, eps, max_peak_idx);
           aligned_mobilograms.push_back(arrInt);
         }
 
         std::vector<double> identification_int_values, identification_im_values;
         Size max_peak_idx = 0;
-        alignToGrid(identification_mobilogram,
+        alignToGrid_(identification_mobilogram,
                     im_grid,
                     identification_int_values,
                     identification_im_values,

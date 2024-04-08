@@ -218,6 +218,7 @@ namespace OpenMS
      * @param range_im drift time lower and upper bounds
      * @param diascoring DIA Scoring object to use for scoring
      * @param scores The object to store the result
+      * @param drift_target target drift value
      *
     */
     void calculateDIAIdScores(OpenSwath::IMRMFeature* imrmfeature,
@@ -226,7 +227,8 @@ namespace OpenMS
                               const std::vector<OpenSwath::SwathMap>& swath_maps,
                               RangeMobility& range_im,
                               const OpenMS::DIAScoring & diascoring,
-                              OpenSwath_Scores & scores);
+                              OpenSwath_Scores & scores,
+                              const double drift_target);
 
     /** @brief Computing the normalized library intensities from the transition objects
      *

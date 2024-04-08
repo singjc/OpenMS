@@ -265,7 +265,6 @@ namespace OpenMS
                                               RangeMobility& im_range,
                                               const OpenMS::DIAScoring & diascoring,
                                               OpenSwath_Scores & scores,
-                                              double drift_lower, double drift_upper,
                                               const double drift_target)
   {
     OPENMS_PRECONDITION(imrmfeature != nullptr, "Feature to be scored cannot be null");
@@ -315,10 +314,10 @@ namespace OpenMS
                                                 scores.isotope_correlation,
                                                 scores.isotope_overlap);
     // Mass deviation score
-    diascoring.dia_ms1_massdiff_score(transition.getProductMZ(), spectrum, scores.massdev_score);
+    diascoring.dia_ms1_massdiff_score(transition.getProductMZ(), spectrum, im_range, scores.massdev_score);
 
     // Drift Scoring for Identification transitions
-    if (drift_upper > 0 && su_.use_im_scores)
+    if (su_.use_im_scores)
     {
       OPENMS_LOG_DEBUG << "Computing IM scores for identification transition: " << transition.transition_name << " with product mz " << transition.getProductMZ() << " and precursor mz " << transition.getPrecursorMZ() << std::endl;
 
@@ -332,7 +331,7 @@ namespace OpenMS
       bool dia_extraction_ppm_ = diascoring.getParameters().getValue("dia_extraction_unit") == "ppm";
 
       IonMobilityScoring::driftIdScoring(spectrum, transitionVector, trgr_detect, scores,
-                                       drift_lower, drift_upper, drift_target,
+                                       drift_target, im_range,
                                        dia_extract_window_, dia_extraction_ppm_,
                                        false, im_drift_extra_pcnt_);
     }

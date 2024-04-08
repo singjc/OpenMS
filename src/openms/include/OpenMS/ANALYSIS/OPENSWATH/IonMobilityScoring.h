@@ -143,12 +143,11 @@ namespace OpenMS
     /**
       @brief Performs scoring of the ion mobility dimension for identification transitions against detection transitions
 
-      @param spectrum The DIA MS2 spectrum found at the peak apex
+      @param spectra Vector of the DIA MS2 spectrum found in SpectrumSequence object (can contain 1 or multiple spectra centered around peak apex)
       @param ms1spectrum The DIA MS1 spectrum found at the peak apex
       @param transitions The transitions used for scoring
       @param scores The output scores
-      @param drift_lower Ion Mobility extraction start
-      @param drift_upper Ion Mobility extraction end
+      @param im_range Ion Mobility extraction range
       @param drift_target Ion Mobility extraction target
       @param dia_extraction_window_ m/z extraction width
       @param dia_extraction_ppm_ Whether m/z extraction width is in ppm
@@ -157,13 +156,12 @@ namespace OpenMS
 
       @return Populates additional scores in the @p scores object
     */
-    static void driftIdScoring(const OpenSwath::SpectrumPtr& spectrum,
+    static void driftIdScoring(const SpectrumSequence& spectra,
                                 const std::vector<TransitionType> & transitions,
                                 MRMTransitionGroupType& transition_group_detection,
                                 OpenSwath_Scores & scores,
-                                const double drift_lower,
-                                const double drift_upper,
                                 const double drift_target,
+                                RangeMobility im_range,
                                 const double dia_extract_window_,
                                 const bool dia_extraction_ppm_,
                                 const bool use_spline,
