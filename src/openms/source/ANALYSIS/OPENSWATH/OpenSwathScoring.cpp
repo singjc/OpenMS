@@ -270,10 +270,10 @@ namespace OpenMS
     OPENMS_PRECONDITION(imrmfeature != nullptr, "Feature to be scored cannot be null");
     OPENMS_PRECONDITION(swath_maps.size() > 0, "There needs to be at least one swath map.");
 
-    if (!use_ms1_ion_mobility_)
-    {
-      im_range.clear();
-    }
+//    if (!use_ms1_ion_mobility_)
+//    {
+//      im_range.clear();
+//    }
 
     // Identify corresponding SONAR maps (if more than one map is used)
     std::vector<OpenSwath::SwathMap> used_swath_maps;
