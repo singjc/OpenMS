@@ -75,6 +75,10 @@ public:
 
     double getRT() const override;
 
+    double getleftWidth() const;
+
+    double getrightWidth() const;
+
     size_t size() const override;
 
 private:

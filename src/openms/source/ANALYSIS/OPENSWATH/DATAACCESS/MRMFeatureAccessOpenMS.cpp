@@ -115,6 +115,16 @@ namespace OpenMS
     return mrmfeature_.getRT();
   }
 
+  double MRMFeatureOpenMS::getleftWidth() const
+  {
+    return mrmfeature_.getMetaValue("leftWidth");
+  }
+
+  double MRMFeatureOpenMS::getrightWidth() const
+  {
+    return mrmfeature_.getMetaValue("rightWidth");
+  }
+
   size_t MRMFeatureOpenMS::size() const
   {
     return features_.size();
