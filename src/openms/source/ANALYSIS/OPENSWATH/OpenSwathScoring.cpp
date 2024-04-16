@@ -107,8 +107,18 @@ namespace OpenMS
     std::vector<double> normalized_library_intensity;
     getNormalized_library_intensities_(transitions, normalized_library_intensity);
 
+    // Check if add_up_spectra_ is -1, in which case we set add_up_spectra_ to the ceiling value of rightWidth - leftWidth
+    if (add_up_spectra_ == -1)
+    {
+      double leftWidth = imrmfeature->getleftWidth();
+      double rightWidth = imrmfeature->getrightWidth();
+      add_up_spectra_ = std::ceil(rightWidth - leftWidth);
+    }
+
     // find spectrum that is closest to the apex of the peak using binary search
+    OPENMS_LOG_DEBUG << "Fetching Spectra between leftwidth: " << imrmfeature->getleftWidth() << " rightWidth: " << imrmfeature->getrightWidth() << " peak width: " << imrmfeature->getrightWidth() - imrmfeature->getleftWidth() << " addupspec: " << add_up_spectra_ << std::endl;
     std::vector<OpenSwath::SpectrumPtr> spectra = fetchSpectrumSwath(used_swath_maps, imrmfeature->getRT(), add_up_spectra_, im_range);
+
 
     // set the DIA parameters
     // TODO Cache these parameters
