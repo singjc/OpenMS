@@ -112,7 +112,7 @@ namespace OpenMS
     {
       double leftWidth = imrmfeature->getleftWidth();
       double rightWidth = imrmfeature->getrightWidth();
-      add_up_spectra_ = std::ceil(rightWidth - leftWidth);
+      add_up_spectra_ = std::ceil(rightWidth - leftWidth) * 0.15;
     }
 
     // find spectrum that is closest to the apex of the peak using binary search
