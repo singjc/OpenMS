@@ -44,6 +44,7 @@ namespace OpenMS
   void OpenSwathScoring::initialize(double rt_normalization_factor,
                                     int add_up_spectra,
                                     double spacing_for_spectra_resampling,
+                                    double use_percent_peak_width,
                                     const double drift_extra,
                                     const OpenSwath_Scores_Usage & su,
                                     const std::string& spectrum_addition_method,
@@ -66,6 +67,7 @@ namespace OpenMS
 
     this->im_drift_extra_pcnt_ = drift_extra;
     this->spacing_for_spectra_resampling_ = spacing_for_spectra_resampling;
+    this->use_percent_peak_width_ = use_percent_peak_width;
     this->su_ = su;
     this->use_ms1_ion_mobility_ = use_ms1_ion_mobility;
   }
@@ -112,11 +114,11 @@ namespace OpenMS
     {
       double leftWidth = imrmfeature->getleftWidth();
       double rightWidth = imrmfeature->getrightWidth();
-      add_up_spectra_ = std::ceil(rightWidth - leftWidth) * 0.15;
+      add_up_spectra_ = std::ceil(rightWidth - leftWidth) * use_percent_peak_width_;
     }
 
     // find spectrum that is closest to the apex of the peak using binary search
-    OPENMS_LOG_DEBUG << "Fetching Spectra between leftwidth: " << imrmfeature->getleftWidth() << " rightWidth: " << imrmfeature->getrightWidth() << " peak width: " << imrmfeature->getrightWidth() - imrmfeature->getleftWidth() << " addupspec: " << add_up_spectra_ << std::endl;
+    OPENMS_LOG_DEBUG << "Fetching Spectra between leftwidth: " << imrmfeature->getleftWidth() << " rightWidth: " << imrmfeature->getrightWidth() << " peak width: " << imrmfeature->getrightWidth() - imrmfeature->getleftWidth() << " addupspec: " << add_up_spectra_  << " use_percent_peak_width_: " << use_percent_peak_width_ << std::endl;
     std::vector<OpenSwath::SpectrumPtr> spectra = fetchSpectrumSwath(used_swath_maps, imrmfeature->getRT(), add_up_spectra_, im_range);
 
 
