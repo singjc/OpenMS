@@ -77,7 +77,8 @@ namespace OpenMS
     defaults_.setValue("spacing_for_spectra_resampling", 0.005, "If spectra are to be added, use this spacing to add them up", {"advanced"});
     defaults_.setMinFloat("spacing_for_spectra_resampling", 0.0);
     defaults_.setValue("use_percent_peak_width", 0.15, "If spectra are to be added based on the peak width of peak, constrict number of spectra to be added based on N percent of number of points of peak width.", {"advanced"});
-    defaults_.setMinFloat("use_percent_peak_width", 0.0);
+    defaults_.setMinFloat("use_percent_peak_width", 0.0001);
+    defaults_.setMaxFloat("use_percent_peak_width", 1.0);
     defaults_.setValue("uis_threshold_sn", -1, "S/N threshold to consider identification transition (set to -1 to consider all)");
     defaults_.setValue("uis_threshold_peak_area", 0, "Peak area threshold to consider identification transition (set to -1 to consider all)");
     defaults_.setValue("scoring_model", "default", "Scoring model to use", {"advanced"});
