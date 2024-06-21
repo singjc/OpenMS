@@ -44,6 +44,7 @@ namespace OpenMS
   void OpenSwathScoring::initialize(double rt_normalization_factor,
                                     int add_up_spectra,
                                     double spacing_for_spectra_resampling,
+                                    double use_percent_peak_width,
                                     const double drift_extra,
                                     const OpenSwath_Scores_Usage & su,
                                     const std::string& spectrum_addition_method,
@@ -66,6 +67,7 @@ namespace OpenMS
 
     this->im_drift_extra_pcnt_ = drift_extra;
     this->spacing_for_spectra_resampling_ = spacing_for_spectra_resampling;
+    this->use_percent_peak_width_ = use_percent_peak_width;
     this->su_ = su;
     this->use_ms1_ion_mobility_ = use_ms1_ion_mobility;
   }
@@ -107,8 +109,19 @@ namespace OpenMS
     std::vector<double> normalized_library_intensity;
     getNormalized_library_intensities_(transitions, normalized_library_intensity);
 
+    // Check if add_up_spectra_ is -1, in which case we set add_up_spectra_ to the ceiling value of rightWidth - leftWidth
+    if (add_up_spectra_ == -1)
+    {
+      double leftWidth = imrmfeature->getMetaValue("leftWidth");
+      double rightWidth = imrmfeature->getMetaValue("rightWidth");
+      add_up_spectra_ = std::ceil(rightWidth - leftWidth) * use_percent_peak_width_;
+      add_up_spectra_ -= (static_cast<int>(add_up_spectra_) % 2 == 0); // Subtract 1 if result is even to ensure add_up_spectra is an odd int
+    }
+
     // find spectrum that is closest to the apex of the peak using binary search
+    OPENMS_LOG_DEBUG << "Fetching Spectra between leftwidth: " << imrmfeature->getMetaValue("leftWidth") << " rightWidth: " << imrmfeature->getMetaValue("rightWidth") << " peak width: " << imrmfeature->getMetaValue("rightWidth") - imrmfeature->getMetaValue("leftWidth") << " addupspec: " << add_up_spectra_  << " use_percent_peak_width_: " << use_percent_peak_width_ << std::endl;
     std::vector<OpenSwath::SpectrumPtr> spectra = fetchSpectrumSwath(used_swath_maps, imrmfeature->getRT(), add_up_spectra_, im_range);
+
 
     // set the DIA parameters
     // TODO Cache these parameters
