@@ -75,9 +75,7 @@ public:
 
     double getRT() const override;
 
-    double getleftWidth() const;
-
-    double getrightWidth() const;
+    double getMetaValue(std::string name) const;
 
     size_t size() const override;
 

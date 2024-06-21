@@ -115,14 +115,9 @@ namespace OpenMS
     return mrmfeature_.getRT();
   }
 
-  double MRMFeatureOpenMS::getleftWidth() const
+  double MRMFeatureOpenMS::getMetaValue(std::string name) const
   {
-    return mrmfeature_.getMetaValue("leftWidth");
-  }
-
-  double MRMFeatureOpenMS::getrightWidth() const
-  {
-    return mrmfeature_.getMetaValue("rightWidth");
+    return mrmfeature_.getMetaValue(name);
   }
 
   size_t MRMFeatureOpenMS::size() const

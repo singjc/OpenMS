@@ -112,14 +112,14 @@ namespace OpenMS
     // Check if add_up_spectra_ is -1, in which case we set add_up_spectra_ to the ceiling value of rightWidth - leftWidth
     if (add_up_spectra_ == -1)
     {
-      double leftWidth = imrmfeature->getleftWidth();
-      double rightWidth = imrmfeature->getrightWidth();
+      double leftWidth = imrmfeature->getMetaValue("leftWidth");
+      double rightWidth = imrmfeature->getMetaValue("rightWidth");
       add_up_spectra_ = std::ceil(rightWidth - leftWidth) * use_percent_peak_width_;
       add_up_spectra_ -= (static_cast<int>(add_up_spectra_) % 2 == 0); // Subtract 1 if result is even to ensure add_up_spectra is an odd int
     }
 
     // find spectrum that is closest to the apex of the peak using binary search
-    OPENMS_LOG_DEBUG << "Fetching Spectra between leftwidth: " << imrmfeature->getleftWidth() << " rightWidth: " << imrmfeature->getrightWidth() << " peak width: " << imrmfeature->getrightWidth() - imrmfeature->getleftWidth() << " addupspec: " << add_up_spectra_  << " use_percent_peak_width_: " << use_percent_peak_width_ << std::endl;
+    OPENMS_LOG_DEBUG << "Fetching Spectra between leftwidth: " << imrmfeature->getMetaValue("leftWidth") << " rightWidth: " << imrmfeature->getMetaValue("rightWidth") << " peak width: " << imrmfeature->getMetaValue("rightWidth") - imrmfeature->getMetaValue("leftWidth") << " addupspec: " << add_up_spectra_  << " use_percent_peak_width_: " << use_percent_peak_width_ << std::endl;
     std::vector<OpenSwath::SpectrumPtr> spectra = fetchSpectrumSwath(used_swath_maps, imrmfeature->getRT(), add_up_spectra_, im_range);
 
 
