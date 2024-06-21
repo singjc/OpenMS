@@ -192,7 +192,110 @@ namespace OpenMS
     }
   }
 
-  /// Constructor
+    std::vector<double> sumAlignedIntensities(const std::vector<std::vector<double>>& result) {
+        if (result.empty()) {
+            return {};
+        }
+
+        // Initialize the output vector with the same size as the inner vectors
+        std::vector<double> summedIntensities(result[0].size(), 0.0);
+
+        // Sum the intensities across all vectors
+        for (const auto& innerVector : result) {
+            std::transform(summedIntensities.begin(), summedIntensities.end(),
+                           innerVector.begin(), summedIntensities.begin(),
+                           std::plus<double>());
+        }
+
+        return summedIntensities;
+    }
+
+    std::tuple<size_t, size_t, size_t> findHighestPeak(const std::vector<double>& data, double threshold = 0.1) {
+        if (data.empty()) {
+            return {0, 0, 0};
+        }
+
+        // Find the highest point
+        auto maxIt = std::max_element(data.begin(), data.end());
+        size_t maxIndex = std::distance(data.begin(), maxIt);
+        double maxValue = *maxIt;
+
+        // Find left boundary
+        size_t leftBoundary = maxIndex;
+        for (size_t i = maxIndex; i > 0; --i) {
+            if (data[i] < maxValue * threshold) {
+                leftBoundary = i + 1;
+                break;
+            }
+        }
+
+        // Find right boundary
+        size_t rightBoundary = maxIndex;
+        for (size_t i = maxIndex; i < data.size(); ++i) {
+            if (data[i] < maxValue * threshold) {
+                rightBoundary = i - 1;
+                break;
+            }
+        }
+
+        return {leftBoundary, maxIndex, rightBoundary};
+    }
+
+    void plotVectorWithPeak(const std::vector<double>& data, size_t left, size_t max, size_t right, int height = 20, int width = 80) {
+        if (data.empty()) return;
+
+        double min = *std::min_element(data.begin(), data.end());
+        double max_val = *std::max_element(data.begin(), data.end());
+        double range = max_val - min;
+
+        std::vector<std::vector<char>> plot(height, std::vector<char>(width, ' '));
+
+        for (size_t i = 0; i < data.size() && i < static_cast<size_t>(width); ++i) {
+            int y = static_cast<int>((height - 1) * (data[i] - min) / range);
+            char symbol = '*';
+            if (i == left || i == right) symbol = '|';
+            if (i == max) symbol = '^';
+            plot[y][i] = symbol;
+        }
+
+        for (int i = height - 1; i >= 0; --i) {
+            for (int j = 0; j < width; ++j) {
+                std::cout << plot[i][j];
+            }
+            std::cout << '\n';
+        }
+    }
+
+    std::vector<std::vector<double>> filterPeakIntensities(const std::vector<std::vector<double>>& result,
+                                                           size_t leftBoundary, size_t rightBoundary) {
+        std::vector<std::vector<double>> filteredResult;
+        filteredResult.reserve(result.size());
+
+        for (const auto& innerVector : result) {
+            std::vector<double> filteredInnerVector;
+            filteredInnerVector.reserve(rightBoundary - leftBoundary + 1);
+
+            std::copy(innerVector.begin() + leftBoundary,
+                      innerVector.begin() + rightBoundary + 1,
+                      std::back_inserter(filteredInnerVector));
+
+            filteredResult.push_back(std::move(filteredInnerVector));
+        }
+
+        return filteredResult;
+    }
+
+    void filterPeakIntensitiesInPlace(std::vector<std::vector<double>>& result,
+                                      size_t leftBoundary, size_t rightBoundary) {
+        for (auto& innerVector : result) {
+            innerVector.erase(innerVector.begin() + rightBoundary + 1, innerVector.end());
+            innerVector.erase(innerVector.begin(), innerVector.begin() + leftBoundary);
+        }
+    }
+
+
+
+    /// Constructor
   IonMobilityScoring::IonMobilityScoring() = default;
 
   /// Destructor
@@ -439,6 +542,17 @@ namespace OpenMS
       alignToGrid_(mobilogram, im_grid, arr_int, arr_IM, eps, max_peak_idx);
       if (!arr_int.empty()) aligned_mobilograms.push_back(arr_int);
     }
+
+    std::vector<double> summedIntensities = sumAlignedIntensities(aligned_mobilograms);
+    auto [left, max, right] = findHighestPeak(summedIntensities);
+    plotVectorWithPeak(summedIntensities, left, max, right);
+
+    scores.im_drift_left = left;
+    scores.im_drift_right = right;
+
+    // Filter the original data and overwrite
+    aligned_mobilograms = filterPeakIntensities(aligned_mobilograms, left, right);
+
 
     // Step 3: Compute cross-correlation scores based on ion mobilograms
     if (aligned_mobilograms.size() < 2)
