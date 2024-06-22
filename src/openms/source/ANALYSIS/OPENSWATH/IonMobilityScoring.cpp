@@ -547,12 +547,11 @@ namespace OpenMS
     auto [left, max, right] = findHighestPeak(summedIntensities);
     plotVectorWithPeak(summedIntensities, left, max, right);
 
-    scores.im_drift_left = left;
-    scores.im_drift_right = right;
+    scores.im_drift_left = im_grid[left];
+    scores.im_drift_right = im_grid[right];
 
     // Filter the original data and overwrite
     aligned_mobilograms = filterPeakIntensities(aligned_mobilograms, left, right);
-
 
     // Step 3: Compute cross-correlation scores based on ion mobilograms
     if (aligned_mobilograms.size() < 2)
@@ -684,6 +683,16 @@ namespace OpenMS
           aligned_mobilograms.push_back(arrInt);
         }
 
+        std::vector<double> summedIntensities = sumAlignedIntensities(aligned_mobilograms);
+        auto [left, max, right] = findHighestPeak(summedIntensities);
+        plotVectorWithPeak(summedIntensities, left, max, right);
+
+        scores.im_drift_left = im_grid[left];
+        scores.im_drift_right = im_grid[right];
+
+        // Filter the original data and overwrite
+        aligned_mobilograms = filterPeakIntensities(aligned_mobilograms, left, right);
+
         std::vector<double> identification_int_values, identification_im_values;
         Size max_peak_idx = 0;
         alignToGrid_(identification_mobilogram,
@@ -692,6 +701,15 @@ namespace OpenMS
                     identification_im_values,
                     eps,
                     max_peak_idx);
+
+        //  auto [left, max, right] = findHighestPeak(identification_int_values);
+        // based filtering on left and right width form detecting ion mobilograms
+        // TODO: Would inidividual boundaries help?
+        // TODO: pass identficaition int as nested double vector.
+        // Filter the original data and overwrite
+        std::vector <std::vector<double>> identification_int_values_filtered = filterPeakIntensities({identification_int_values}, left, right);
+        identification_int_values = identification_int_values_filtered[0];
+
 
         // Step 4: MS1 contrast scores
         {
