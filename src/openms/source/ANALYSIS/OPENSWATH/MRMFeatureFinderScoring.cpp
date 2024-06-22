@@ -426,7 +426,7 @@ namespace OpenMS
     bool swath_present = (!swath_maps.empty() && swath_maps[0].sptr->getNrSpectra() > 0);
     if (swath_present && su_.use_dia_scores_ && !native_ids_identification.empty())
     {
-      std::vector<double> ind_isotope_correlation, ind_isotope_overlap, ind_massdev_score, ind_im_drift, ind_im_delta, ind_im_delta_score, ind_im_log_intensity;
+      std::vector<double> ind_isotope_correlation, ind_isotope_overlap, ind_massdev_score, ind_im_drift, ind_im_drift_left, ind_im_drift_right, ind_im_delta, ind_im_delta_score, ind_im_log_intensity;
       std::vector<double> ind_im_det_contrast_coelution, ind_im_det_contrast_shape, ind_im_det_sum_contrast_coelution, ind_im_det_sum_contrast_shape;
       for (size_t i = 0; i < native_ids_identification.size(); i++)
       {
@@ -442,6 +442,8 @@ namespace OpenMS
 
         // Ion mobility scores
         ind_im_drift.push_back(tmp_scores.im_drift);
+        ind_im_drift_left.push_back(tmp_scores.im_drift_left);
+        ind_im_drift_right.push_back(tmp_scores.im_drift_right);
         ind_im_delta.push_back(tmp_scores.im_delta);
         ind_im_delta_score.push_back(tmp_scores.im_delta_score);
         ind_im_log_intensity.push_back(tmp_scores.im_log_intensity);
@@ -456,6 +458,8 @@ namespace OpenMS
       idscores.ind_massdev_score = ind_massdev_score;
 
       idscores.ind_im_drift = ind_im_drift;
+      idscores.ind_im_drift_left = ind_im_drift_left;
+      idscores.ind_im_drift_right = ind_im_drift_right;
       idscores.ind_im_delta = ind_im_delta;
       idscores.ind_im_delta_score = ind_im_delta_score;
       idscores.ind_im_log_intensity = ind_im_log_intensity;
@@ -915,6 +919,8 @@ namespace OpenMS
           mrmfeature.addScore("var_im_delta_score", scores.im_delta_score);
           mrmfeature.addScore("var_im_ms1_delta_score", scores.im_ms1_delta_score);
           mrmfeature.addScore("im_drift", scores.im_drift); // MS2 level
+          mrmfeature.addScore("im_drift_left", scores.im_drift_left); // MS2 level
+          mrmfeature.addScore("im_drift_right", scores.im_drift_right); // MS2 level
           mrmfeature.addScore("im_drift_weighted", scores.im_drift_weighted); // MS2 level
           mrmfeature.addScore("im_ms1_drift", scores.im_ms1_drift); // MS1 level
           mrmfeature.addScore("im_ms1_delta", scores.im_ms1_delta); // MS1 level

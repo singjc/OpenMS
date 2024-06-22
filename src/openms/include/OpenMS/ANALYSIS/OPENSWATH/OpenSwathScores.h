@@ -192,6 +192,8 @@ namespace OpenMS
     std::vector<double> ind_mi_score;
 
     std::vector<double>  ind_im_drift;
+    std::vector<double>  ind_im_drift_left;
+    std::vector<double>  ind_im_drift_right;
     std::vector<double>  ind_im_delta;
     std::vector<double>  ind_im_delta_score;
     std::vector<double>  ind_im_log_intensity;

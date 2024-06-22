@@ -159,6 +159,8 @@ namespace OpenMS
     setMetaValue(id + "ind_mi_ratio_score", idscores.ind_mi_ratio);
 
     setMetaValue(id + "ind_im_drift", idscores.ind_im_drift);
+    setMetaValue(id + "ind_im_drift_left", idscores.ind_im_drift_left);
+    setMetaValue(id + "ind_im_drift_right", idscores.ind_im_drift_right);
     setMetaValue(id + "ind_im_delta", idscores.ind_im_delta);
     setMetaValue(id + "ind_im_delta_score", idscores.ind_im_delta_score);
     setMetaValue(id + "ind_im_log_intensity", idscores.ind_im_log_intensity);
