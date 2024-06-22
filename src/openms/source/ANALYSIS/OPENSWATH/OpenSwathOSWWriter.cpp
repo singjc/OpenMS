@@ -50,6 +50,8 @@ namespace OpenMS
       "DELTA_RT REAL NOT NULL," \
       "LEFT_WIDTH REAL NOT NULL," \
       "RIGHT_WIDTH REAL NOT NULL); " \
+      "EXP_IM_LEFTWIDTH REAL," \
+      "EXP_IM_RIGHTWIDTH REAL," \
 
       // MS1-level scores
       "CREATE TABLE FEATURE_MS1(" \
@@ -79,6 +81,8 @@ namespace OpenMS
       "TOTAL_AREA_INTENSITY REAL NOT NULL," \
       "APEX_INTENSITY REAL NOT NULL," \
       "EXP_IM REAL," \
+      "EXP_IM_LEFTWIDTH REAL," \
+      "EXP_IM_RIGHTWIDTH REAL," \
       "DELTA_IM REAL," \
       "TOTAL_MI REAL NULL," \
       "VAR_BSERIES_SCORE REAL NULL," \
@@ -144,6 +148,8 @@ namespace OpenMS
       "VAR_ISOTOPE_CORRELATION_SCORE REAL NULL," \
       "VAR_ISOTOPE_OVERLAP_SCORE REAL NULL," \
       "EXP_IM REAL NULL," \
+      "EXP_IM_LEFTWIDTH REAL," \
+      "EXP_IM_RIGHTWIDTH REAL," \
       "DELTA_IM REAL NULL," \
       "VAR_IM_DELTA_SCORE REAL NULL,"
       "VAR_IM_LOG_INTENSITY REAL NULL,"
@@ -254,7 +260,7 @@ namespace OpenMS
       if (feature_it.metaValueExists("norm_RT") ) norm_rt = feature_it.getMetaValue("norm_RT");
       if (feature_it.metaValueExists("delta_rt") ) delta_rt = feature_it.getMetaValue("delta_rt");
 
-      sql_feature << "INSERT INTO FEATURE (ID, RUN_ID, PRECURSOR_ID, EXP_RT, EXP_IM, NORM_RT, DELTA_RT, LEFT_WIDTH, RIGHT_WIDTH) VALUES ("
+      sql_feature << "INSERT INTO FEATURE (ID, RUN_ID, PRECURSOR_ID, EXP_RT, EXP_IM, NORM_RT, DELTA_RT, LEFT_WIDTH, RIGHT_WIDTH, EXP_IM_LEFTWIDTH, EXP_IM_RIGHTWIDTH) VALUES ("
                   << feature_id << ", "
                   << run_id_ << ", "
                   << id << ", "
@@ -263,10 +269,12 @@ namespace OpenMS
                   << norm_rt << ", "
                   << delta_rt << ", "
                   << feature_it.getMetaValue("leftWidth") << ", "
-                  << feature_it.getMetaValue("rightWidth") << "); ";
+                  << feature_it.getMetaValue("rightWidth") << ", "
+                  << getScore(feature_it, "im_drift_left") << ", "
+                  << getScore(feature_it, "im_drift_right") << "); ";
 
       sql_feature_ms2 << "INSERT INTO FEATURE_MS2 " \
-        "(FEATURE_ID, AREA_INTENSITY, TOTAL_AREA_INTENSITY, APEX_INTENSITY, EXP_IM, DELTA_IM, TOTAL_MI, "\
+        "(FEATURE_ID, AREA_INTENSITY, TOTAL_AREA_INTENSITY, APEX_INTENSITY, EXP_IM, EXP_IM_LEFTWIDTH, EXP_IM_RIGHTWIDTH, DELTA_IM, TOTAL_MI, "\
         "VAR_BSERIES_SCORE, VAR_DOTPROD_SCORE, VAR_INTENSITY_SCORE, " \
         "VAR_ISOTOPE_CORRELATION_SCORE, VAR_ISOTOPE_OVERLAP_SCORE, VAR_LIBRARY_CORR,  "\
         "VAR_LIBRARY_DOTPROD, VAR_LIBRARY_MANHATTAN, VAR_LIBRARY_RMSD, VAR_LIBRARY_ROOTMEANSQUARE, "\
@@ -282,6 +290,8 @@ namespace OpenMS
                       << getScore(feature_it, "total_xic") << ", "
                       << getScore(feature_it, "peak_apices_sum") << ", "
                       << getScore(feature_it, "im_drift") << ", "
+                      << getScore(feature_it, "im_drift_left") << ", "
+                      << getScore(feature_it, "im_drift_right") << ", "
                       << getScore(feature_it, "im_delta") << ", "
                       << getScore(feature_it, "total_mi") << ", "
                       << getScore(feature_it, "var_bseries_score") << ", "
@@ -371,6 +381,8 @@ namespace OpenMS
         auto id_target_ind_isotope_overlap = getSeparateScore(feature_it, "id_target_ind_isotope_overlap");
 
         auto id_target_ind_im_drift = getSeparateScore(feature_it, "id_target_ind_im_drift");
+        auto id_target_ind_im_drift_left = getSeparateScore(feature_it, "id_target_ind_im_drift_left");
+        auto id_target_ind_im_drift_right = getSeparateScore(feature_it, "id_target_ind_im_drift_right");
         auto id_target_ind_im_delta = getSeparateScore(feature_it, "id_target_ind_im_delta");
         auto id_target_ind_im_delta_score = getSeparateScore(feature_it, "id_target_ind_im_delta_score");
         auto id_target_ind_im_log_intensity = getSeparateScore(feature_it, "id_target_ind_im_log_intensity");
@@ -392,7 +404,7 @@ namespace OpenMS
               " VAR_LOG_INTENSITY, VAR_XCORR_COELUTION, VAR_XCORR_SHAPE, VAR_LOG_SN_SCORE, "\
               " VAR_MASSDEV_SCORE, VAR_MI_SCORE, VAR_MI_RATIO_SCORE, "\
               " VAR_ISOTOPE_CORRELATION_SCORE, VAR_ISOTOPE_OVERLAP_SCORE, "\
-              " EXP_IM, DELTA_IM, VAR_IM_DELTA_SCORE, VAR_IM_LOG_INTENSITY, "\
+              " EXP_IM, EXP_IM_LEFTWIDTH, EXP_IM_RIGHTWIDTH, DELTA_IM, VAR_IM_DELTA_SCORE, VAR_IM_LOG_INTENSITY, "\
               " VAR_IM_XCORR_COELUTION_CONTRAST, VAR_IM_XCORR_SHAPE_CONTRAST, VAR_IM_XCORR_COELUTION_COMBINED, VAR_IM_XCORR_SHAPE_COMBINED "\
               ") VALUES ("
                                         << feature_id << ", "
@@ -413,6 +425,8 @@ namespace OpenMS
                                         << id_target_ind_isotope_correlation[i] << ", "
                                         << id_target_ind_isotope_overlap[i] << ", "
                                         << id_target_ind_im_drift[i] << ", "
+                                        << id_target_ind_im_drift_left[i] << ", "
+                                        << id_target_ind_im_drift_right[i] << ", "
                                         << id_target_ind_im_delta[i] << ", "
                                         << id_target_ind_im_delta_score[i] << ", "
                                         << id_target_ind_im_log_intensity[i] << ", "
@@ -441,6 +455,8 @@ namespace OpenMS
         auto id_decoy_ind_isotope_overlap = getSeparateScore(feature_it, "id_decoy_ind_isotope_overlap");
 
         auto id_decoy_ind_im_drift = getSeparateScore(feature_it, "id_decoy_ind_im_drift");
+        auto id_decoy_ind_im_drift_left = getSeparateScore(feature_it, "id_decoy_ind_im_drift_left");
+        auto id_decoy_ind_im_drift_right = getSeparateScore(feature_it, "id_decoy_ind_im_drift_right");
         auto id_decoy_ind_im_delta = getSeparateScore(feature_it, "id_decoy_ind_im_delta");
         auto id_decoy_ind_ind_im_delta_score = getSeparateScore(feature_it, "id_decoy_ind_im_delta_score");
         auto id_decoy_ind_log_intensity = getSeparateScore(feature_it, "id_decoy_ind_im_log_intensity");
@@ -461,7 +477,7 @@ namespace OpenMS
                 " VAR_LOG_INTENSITY, VAR_XCORR_COELUTION, VAR_XCORR_SHAPE, VAR_LOG_SN_SCORE, "\
                 " VAR_MASSDEV_SCORE, VAR_MI_SCORE, VAR_MI_RATIO_SCORE, "\
                 " VAR_ISOTOPE_CORRELATION_SCORE, VAR_ISOTOPE_OVERLAP_SCORE, "\
-                " EXP_IM, DELTA_IM, VAR_IM_DELTA_SCORE, VAR_IM_LOG_INTENSITY, "\
+                " EXP_IM, EXP_IM_LEFTWIDTH, EXP_IM_RIGHTWIDTH, DELTA_IM, VAR_IM_DELTA_SCORE, VAR_IM_LOG_INTENSITY, "\
                 " VAR_IM_XCORR_COELUTION_CONTRAST, VAR_IM_XCORR_SHAPE_CONTRAST, VAR_IM_XCORR_COELUTION_COMBINED, VAR_IM_XCORR_SHAPE_COMBINED "\
                 ") VALUES ("
                                         << feature_id << ", "
@@ -482,6 +498,8 @@ namespace OpenMS
                                         << id_decoy_ind_isotope_correlation[i] << ", "
                                         << id_decoy_ind_isotope_overlap[i] << ", "
                                         << id_decoy_ind_im_drift[i] << ", "
+                                        << id_decoy_ind_im_drift_left[i] << ", "
+                                        << id_decoy_ind_im_drift_right[i] << ", "
                                         << id_decoy_ind_im_delta[i] << ", "
                                         << id_decoy_ind_ind_im_delta_score[i] << ", "
                                         << id_decoy_ind_log_intensity[i] << ", "
