@@ -88,6 +88,8 @@ namespace OpenMS
     defaults_.setValue("strict", "true", "Whether to error (true) or skip (false) if a transition in a transition group does not have a corresponding chromatogram.", {"advanced"});
     defaults_.setValidStrings("strict", {"true","false"});
     defaults_.setValue("use_ms1_ion_mobility", "true", "Performs ion mobility extraction in MS1. Set to false if MS1 spectra do not contain ion mobility", {"advanced"});
+    defaults_.setValue("apply_im_peak_picking", "true", "Whether to apply peaking picking on the ion mobilograms..", {"advanced"});
+    defaults_.setValidStrings("apply_im_peak_picking", {"true","false"});
 
     defaults_.insert("TransitionGroupPicker:", MRMTransitionGroupPicker().getDefaults());
 
@@ -562,7 +564,8 @@ namespace OpenMS
                       im_extra_drift_,
                       su_,
                       spectrum_addition_method_,
-                      use_ms1_ion_mobility_);
+                      use_ms1_ion_mobility_,
+                      apply_im_peak_picking_);
 
     ProteaseDigestion pd;
     pd.setEnzyme("Trypsin");
@@ -1076,6 +1079,7 @@ namespace OpenMS
     emgscoring_.setFitterParam(param_.copy("EMGScoring:", true));
     strict_ = (bool)param_.getValue("strict").toBool();
     use_ms1_ion_mobility_ = (bool)param_.getValue("use_ms1_ion_mobility").toBool();
+    apply_im_peak_picking_ = (bool)param_.getValue("apply_im_peak_picking").toBool();
 
     su_.use_coelution_score_     = param_.getValue("Scores:use_coelution_score").toBool();
     su_.use_shape_score_         = param_.getValue("Scores:use_shape_score").toBool();

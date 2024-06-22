@@ -455,7 +455,8 @@ namespace OpenMS
                                         const double dia_extract_window_,
                                         const bool dia_extraction_ppm_,
                                         const bool /* use_spline */,
-                                        const double drift_extra)
+                                        const double drift_extra,
+                                        const bool apply_im_peak_picking)
   {
     OPENMS_PRECONDITION(!spectra.empty(), "Spectra cannot be empty");
     for (auto s:spectra)
@@ -543,15 +544,17 @@ namespace OpenMS
       if (!arr_int.empty()) aligned_mobilograms.push_back(arr_int);
     }
 
-    std::vector<double> summedIntensities = sumAlignedIntensities(aligned_mobilograms);
-    auto [left, max, right] = findHighestPeak(summedIntensities);
-    plotVectorWithPeak(summedIntensities, left, max, right);
+    if (apply_im_peak_picking) {
+        std::vector<double> summedIntensities = sumAlignedIntensities(aligned_mobilograms);
+        auto [left, max, right] = findHighestPeak(summedIntensities);
+        plotVectorWithPeak(summedIntensities, left, max, right);
 
-    scores.im_drift_left = im_grid[left];
-    scores.im_drift_right = im_grid[right];
+        scores.im_drift_left = im_grid[left];
+        scores.im_drift_right = im_grid[right];
 
-    // Filter the original data and overwrite
-    aligned_mobilograms = filterPeakIntensities(aligned_mobilograms, left, right);
+        // Filter the original data and overwrite
+        aligned_mobilograms = filterPeakIntensities(aligned_mobilograms, left, right);
+    }
 
     // Step 3: Compute cross-correlation scores based on ion mobilograms
     if (aligned_mobilograms.size() < 2)
@@ -581,7 +584,8 @@ namespace OpenMS
                                           const double dia_extract_window_,
                                           const bool dia_extraction_ppm_,
                                           const bool /* use_spline */,
-                                          const double drift_extra)
+                                          const double drift_extra,
+                                          const bool apply_im_peak_picking)
   {
       // OPENMS_PRECONDITION(spectrum != nullptr, "Spectrum cannot be null");
       // OPENMS_PRECONDITION(!transition.empty(), "Need at least one transition");
@@ -683,15 +687,17 @@ namespace OpenMS
           aligned_mobilograms.push_back(arrInt);
         }
 
-        std::vector<double> summedIntensities = sumAlignedIntensities(aligned_mobilograms);
-        auto [left, max, right] = findHighestPeak(summedIntensities);
-        plotVectorWithPeak(summedIntensities, left, max, right);
+        if ( apply_im_peak_picking ) {
+            std::vector<double> summedIntensities = sumAlignedIntensities(aligned_mobilograms);
+            auto [left, max, right] = findHighestPeak(summedIntensities);
+            plotVectorWithPeak(summedIntensities, left, max, right);
 
-        scores.im_drift_left = im_grid[left];
-        scores.im_drift_right = im_grid[right];
+            scores.im_drift_left = im_grid[left];
+            scores.im_drift_right = im_grid[right];
 
-        // Filter the original data and overwrite
-        aligned_mobilograms = filterPeakIntensities(aligned_mobilograms, left, right);
+            // Filter the original data and overwrite
+            aligned_mobilograms = filterPeakIntensities(aligned_mobilograms, left, right);
+        }
 
         std::vector<double> identification_int_values, identification_im_values;
         Size max_peak_idx = 0;
@@ -702,14 +708,16 @@ namespace OpenMS
                     eps,
                     max_peak_idx);
 
-        //  auto [left, max, right] = findHighestPeak(identification_int_values);
-        // based filtering on left and right width form detecting ion mobilograms
-        // TODO: Would inidividual boundaries help?
-        // TODO: pass identficaition int as nested double vector.
-        // Filter the original data and overwrite
-        std::vector <std::vector<double>> identification_int_values_filtered = filterPeakIntensities({identification_int_values}, left, right);
-        identification_int_values = identification_int_values_filtered[0];
-
+        if ( apply_im_peak_picking ) {
+            //  auto [left, max, right] = findHighestPeak(identification_int_values);
+            // based filtering on left and right width form detecting ion mobilograms
+            // TODO: Would inidividual boundaries help?
+            // TODO: pass identficaition int as nested double vector.
+            // Filter the original data and overwrite
+            std::vector<std::vector<double>> identification_int_values_filtered = filterPeakIntensities(
+                    {identification_int_values}, left, right);
+            identification_int_values = identification_int_values_filtered[0];
+        }
 
         // Step 4: MS1 contrast scores
         {

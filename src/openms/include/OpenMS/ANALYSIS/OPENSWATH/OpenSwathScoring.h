@@ -60,6 +60,7 @@ namespace OpenMS
     double im_drift_extra_pcnt_;
     OpenSwath_Scores_Usage su_;
     bool use_ms1_ion_mobility_; ///< whether to use MS1 ion mobility extraction in DIA scores
+    bool apply_im_peak_picking_; ///< whether to apply peak picking on ion mobilograms
     const std::string ION_MOBILITY_DESCRIPTION = "Ion Mobility";
 
   public:
@@ -82,6 +83,7 @@ namespace OpenMS
      * @param su Which scores to actually compute
      * @param spectrum_addition_method Method to use for spectrum addition (valid: "simple", "resample")
      * @param use_ms1_ion_mobility Use MS1 ion mobility extraction in DIA scores
+     * @param apply_im_peak_picking Apply peak picking on ion mobilogram
      *
     */
     void initialize(double rt_normalization_factor,
@@ -91,7 +93,8 @@ namespace OpenMS
                     const double drift_extra,
                     const OpenSwath_Scores_Usage & su,
                     const std::string& spectrum_addition_method,
-                    bool use_ms1_ion_mobility);
+                    bool use_ms1_ion_mobility,
+                    bool apply_im_peak_picking);
 
     /** @brief Score a single peakgroup in a chromatogram using only chromatographic properties.
      *

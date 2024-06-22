@@ -48,7 +48,8 @@ namespace OpenMS
                                     const double drift_extra,
                                     const OpenSwath_Scores_Usage & su,
                                     const std::string& spectrum_addition_method,
-                                    bool use_ms1_ion_mobility)
+                                    bool use_ms1_ion_mobility,
+                                    bool  apply_im_peak_picking)
   {
     this->rt_normalization_factor_ = rt_normalization_factor;
     this->add_up_spectra_ = add_up_spectra;
@@ -70,6 +71,7 @@ namespace OpenMS
     this->use_percent_peak_width_ = use_percent_peak_width;
     this->su_ = su;
     this->use_ms1_ion_mobility_ = use_ms1_ion_mobility;
+    this->apply_im_peak_picking_ = apply_im_peak_picking;
   }
 
   void OpenSwathScoring::calculateDIAScores(OpenSwath::IMRMFeature* imrmfeature,
@@ -134,7 +136,7 @@ namespace OpenMS
       IonMobilityScoring::driftScoring(spectra, transitions, scores,
                                        drift_target, im_range,
                                        dia_extract_window_, dia_extraction_ppm_,
-                                       false, im_drift_extra_pcnt_);
+                                       false, im_drift_extra_pcnt_, apply_im_peak_picking_);
     }
 
 
@@ -346,7 +348,7 @@ namespace OpenMS
       IonMobilityScoring::driftIdScoring(spectrum, transitionVector, trgr_detect, scores,
                                        drift_target, im_range,
                                        dia_extract_window_, dia_extraction_ppm_,
-                                       false, im_drift_extra_pcnt_);
+                                       false, im_drift_extra_pcnt_, apply_im_peak_picking_);
     }
 
   }

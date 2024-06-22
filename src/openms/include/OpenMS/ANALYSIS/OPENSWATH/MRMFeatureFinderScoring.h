@@ -266,6 +266,7 @@ private:
     bool write_convex_hull_;
     bool strict_;
     bool use_ms1_ion_mobility_;
+    bool apply_im_peak_picking_;
     String scoring_model_;
 
     // scoring parameters
