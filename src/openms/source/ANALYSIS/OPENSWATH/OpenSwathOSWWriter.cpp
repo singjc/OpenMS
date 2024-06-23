@@ -49,9 +49,9 @@ namespace OpenMS
       "NORM_RT REAL NOT NULL," \
       "DELTA_RT REAL NOT NULL," \
       "LEFT_WIDTH REAL NOT NULL," \
-      "RIGHT_WIDTH REAL NOT NULL); " \
+      "RIGHT_WIDTH REAL NOT NULL," \
       "EXP_IM_LEFTWIDTH REAL," \
-      "EXP_IM_RIGHTWIDTH REAL," \
+      "EXP_IM_RIGHTWIDTH REAL); " \
 
       // MS1-level scores
       "CREATE TABLE FEATURE_MS1(" \

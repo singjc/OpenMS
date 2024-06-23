@@ -547,7 +547,7 @@ namespace OpenMS
     if (apply_im_peak_picking) {
         std::vector<double> summedIntensities = sumAlignedIntensities(aligned_mobilograms);
         auto [left, max, right] = findHighestPeak(summedIntensities);
-        plotVectorWithPeak(summedIntensities, left, max, right);
+//        plotVectorWithPeak(summedIntensities, left, max, right);
 
         scores.im_drift_left = im_grid[left];
         scores.im_drift_right = im_grid[right];
@@ -687,10 +687,11 @@ namespace OpenMS
           aligned_mobilograms.push_back(arrInt);
         }
 
+        size_t left = 0, max = 0, right = 0;
         if ( apply_im_peak_picking ) {
             std::vector<double> summedIntensities = sumAlignedIntensities(aligned_mobilograms);
-            auto [left, max, right] = findHighestPeak(summedIntensities);
-            plotVectorWithPeak(summedIntensities, left, max, right);
+            std::tie(left, max, right) = findHighestPeak(summedIntensities);
+//            plotVectorWithPeak(summedIntensities, left, max, right);
 
             scores.im_drift_left = im_grid[left];
             scores.im_drift_right = im_grid[right];
@@ -708,14 +709,14 @@ namespace OpenMS
                     eps,
                     max_peak_idx);
 
-        if ( apply_im_peak_picking ) {
-            //  auto [left, max, right] = findHighestPeak(identification_int_values);
+        if ( apply_im_peak_picking )
+        {
+//            auto [left, max, right] = findHighestPeak(identification_int_values);
             // based filtering on left and right width form detecting ion mobilograms
             // TODO: Would inidividual boundaries help?
             // TODO: pass identficaition int as nested double vector.
             // Filter the original data and overwrite
-            std::vector<std::vector<double>> identification_int_values_filtered = filterPeakIntensities(
-                    {identification_int_values}, left, right);
+            std::vector <std::vector<double>> identification_int_values_filtered = filterPeakIntensities({identification_int_values}, left, right);
             identification_int_values = identification_int_values_filtered[0];
         }
 
