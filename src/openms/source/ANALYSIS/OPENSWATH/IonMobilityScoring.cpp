@@ -544,7 +544,7 @@ namespace OpenMS
       if (!arr_int.empty()) aligned_mobilograms.push_back(arr_int);
     }
 
-    if (apply_im_peak_picking) {
+    if ( apply_im_peak_picking && !aligned_mobilograms.empty() ) {
         std::vector<double> summedIntensities = sumAlignedIntensities(aligned_mobilograms);
         auto [left, max, right] = findHighestPeak(summedIntensities);
 //        plotVectorWithPeak(summedIntensities, left, max, right);
@@ -688,7 +688,7 @@ namespace OpenMS
         }
 
         size_t left = 0, max = 0, right = 0;
-        if ( apply_im_peak_picking ) {
+        if ( apply_im_peak_picking && !aligned_mobilograms.empty() ) {
             std::vector<double> summedIntensities = sumAlignedIntensities(aligned_mobilograms);
             std::tie(left, max, right) = findHighestPeak(summedIntensities);
 //            plotVectorWithPeak(summedIntensities, left, max, right);
@@ -709,7 +709,7 @@ namespace OpenMS
                     eps,
                     max_peak_idx);
 
-        if ( apply_im_peak_picking )
+        if ( apply_im_peak_picking && !aligned_mobilograms.empty() )
         {
 //            auto [left, max, right] = findHighestPeak(identification_int_values);
             // based filtering on left and right width form detecting ion mobilograms
