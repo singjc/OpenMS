@@ -13,7 +13,7 @@
 #include <OpenMS/FORMAT/IdXMLFile.h>
 #include <OpenMS/KERNEL/Feature.h>
 #include <OpenMS/KERNEL/StandardTypes.h>
-#include <OpenMS/MATH/MISC/MathFunctions.h>
+#include <OpenMS/MATH/MathFunctions.h>
 #include <OpenMS/SYSTEM/FileWatcher.h>
 #include <OpenMS/VISUAL/ColorSelector.h>
 #include <OpenMS/VISUAL/DIALOGS/FeatureEditDialog.h>
@@ -996,11 +996,11 @@ namespace OpenMS
         context_menu->addSeparator();
       }
       
-      auto it_closest_MS1 = lp->getPeakData()->getClosestSpectrumInRT(e_units.getMinRT(), 1);
-      if (it_closest_MS1->containsIMData())
+      auto it_closest_MS = lp->getPeakData()->getClosestSpectrumInRT(e_units.getMinRT());
+      if (it_closest_MS->containsIMData())
       {
-        context_menu->addAction(("Switch to ion mobility view (RT: " + String(it_closest_MS1->getRT(), false) + ")").c_str(),
-                                [&]() {emit showCurrentPeaksAsIonMobility(*it_closest_MS1); });
+        context_menu->addAction(("Switch to ion mobility view (MSLevel: " + String(it_closest_MS->getMSLevel()) + ";RT: " + String(it_closest_MS->getRT(), false) + ")").c_str(),
+                                [&]() {emit showCurrentPeaksAsIonMobility(*it_closest_MS); });
       }
 
 

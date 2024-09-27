@@ -30,8 +30,8 @@
 //logging
 #include <OpenMS/CONCEPT/LogStream.h>
 
-class RangeMZ;
-class RangeMobility;
+struct RangeMZ;
+struct RangeMobility;
 
 namespace OpenMS
 {
