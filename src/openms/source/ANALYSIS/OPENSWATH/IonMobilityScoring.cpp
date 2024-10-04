@@ -705,7 +705,7 @@ namespace OpenMS
       if (!aligned_mobilogram.empty()) aligned_ms2_mobilograms.push_back(std::move(aligned_mobilogram));
     }
     size_t left = 0, max = 0, right = 0;
-    if ( apply_im_peak_picking && !aligned_mobilograms.empty() ) {
+    if ( apply_im_peak_picking ) {
 //        std::vector<double> summedIntensities = sumAlignedIntensities(aligned_ms2_mobilograms);
 //        auto [left, max, right] = findHighestPeak(summedIntensities);
 ////        plotVectorWithPeak(summedIntensities, left, max, right);
