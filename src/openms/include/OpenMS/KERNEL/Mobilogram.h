@@ -11,7 +11,9 @@
 #include <OpenMS/KERNEL/MobilityPeak1D.h>
 
 #include <OpenMS/IONMOBILITY/IMTypes.h>
+#include <OpenMS/METADATA/MetaInfoDescription.h>
 #include <OpenMS/KERNEL/RangeManager.h>
+#include <OpenMS/METADATA/DataArrays.h>
 
 namespace OpenMS
 {
@@ -45,6 +47,15 @@ namespace OpenMS
     /// RangeManager
     using RangeManagerContainerType = RangeManagerContainer<RangeMobility, RangeIntensity>;
     using RangeManagerType = RangeManager<RangeMobility, RangeIntensity>;
+    /// Float data array vector type
+    typedef OpenMS::DataArrays::FloatDataArray FloatDataArray ;
+    typedef std::vector<FloatDataArray> FloatDataArrays;
+    /// String data array vector type
+    typedef OpenMS::DataArrays::StringDataArray StringDataArray ;
+    typedef std::vector<StringDataArray> StringDataArrays;
+    /// Integer data array vector type
+    typedef OpenMS::DataArrays::IntegerDataArray IntegerDataArray ;
+    typedef std::vector<IntegerDataArray> IntegerDataArrays;
     //@}
 
     ///@name Peak container iterator type definitions
@@ -232,6 +243,13 @@ namespace OpenMS
 
     ///@name Accessors for meta information
     ///@{
+
+    /// Returns the name
+    const String& getName() const;
+
+    /// Sets the name
+    void setName(const String& name);
+
     /// Returns the retention time (in seconds)
     double getRT() const noexcept
     {
@@ -262,6 +280,56 @@ namespace OpenMS
 
     //@}
 
+        /**
+      @name Peak data array methods
+
+      These methods are used to annotate each peak in a chromatogram with meta information.
+      It is an intermediate way between storing the information in the peak's MetaInfoInterface
+      and deriving a new peak type with members for this information.
+
+      These statements should help you chose which approach to use
+        - Access to meta info arrays is slower than to a member variable
+        - Access to meta info arrays is faster than to a %MetaInfoInterface
+        - Meta info arrays are stored when using mzML format for storing
+    */
+    ///@{
+    /// Returns a const reference to the float meta data arrays
+    const FloatDataArrays& getFloatDataArrays() const;
+
+    /// Returns a mutable reference to the float meta data arrays
+    FloatDataArrays& getFloatDataArrays();
+
+    /// Sets the float meta data arrays
+    void setFloatDataArrays(const FloatDataArrays& fda)
+    {
+      float_data_arrays_ = fda;
+    }
+
+    /// Returns a const reference to the string meta data arrays
+    const StringDataArrays& getStringDataArrays() const;
+
+    /// Returns a mutable reference to the string meta data arrays
+    StringDataArrays& getStringDataArrays();
+
+    /// Sets the string meta data arrays
+    void setStringDataArrays(const StringDataArrays& sda)
+    {
+      string_data_arrays_ = sda;
+    }
+
+    /// Returns a const reference to the integer meta data arrays
+    const IntegerDataArrays& getIntegerDataArrays() const;
+
+    /// Returns a mutable reference to the integer meta data arrays
+    IntegerDataArrays& getIntegerDataArrays();
+
+    /// Sets the integer meta data arrays
+    void setIntegerDataArrays(const IntegerDataArrays& ida)
+    {
+      integer_data_arrays_ = ida;
+    }
+
+    ///@}
 
     ///@name Sorting peaks
     //@{
@@ -515,8 +583,20 @@ namespace OpenMS
     /// Retention time
     double retention_time_ = -1;
 
+    /// Name
+    String name_;
+
     /// Drift time unit
     DriftTimeUnit drift_time_unit_ = DriftTimeUnit::NONE;
+
+    /// Float data arrays
+    FloatDataArrays float_data_arrays_;
+
+    /// String data arrays
+    StringDataArrays string_data_arrays_;
+
+    /// Integer data arrays
+    IntegerDataArrays integer_data_arrays_;
   };
 
   OPENMS_DLLAPI std::ostream& operator<<(std::ostream& os, const Mobilogram& mb);

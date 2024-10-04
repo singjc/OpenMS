@@ -207,20 +207,32 @@ namespace OpenMS
                  double eps,
                  Size & max_peak_idx);
 
-    /*
-    @brief Extracts intensity values from a vector of Mobilogram objects
+    /**
+     * @brief Extracts intensity values from a single Mobilogram object
+     *
+     * This function takes a single Mobilogram object and extracts the intensity
+     * values, returning them as a vector of doubles.
+     *
+     * @param mobilogram [in] A const reference to a Mobilogram object from which
+     *                        to extract intensity values.
+     * @return A vector of doubles containing the extracted intensity values.
+     */
+    static std::vector<double> extractIntensities(const Mobilogram& mobilogram);
 
-    This function takes a vector of Mobilogram objects and extracts the intensity
-    values from each Mobilogram, storing them in a 2D vector of doubles. The
-    resulting vector of intensity values is stored in the provided output parameter.
-
-    @param mobilograms [in] A const reference to a vector of Mobilogram objects
-                            from which to extract intensity values.
-    @param int_values [out] A reference to a vector of vector of doubles where
-                            the extracted intensity values will be stored. This
-                            vector will be cleared and resized as necessary.
-    */
-    static void extractIntensities(const std::vector< Mobilogram >& mobilograms,
+    /**
+     * @brief Extracts intensity values from a vector of Mobilogram objects
+     *
+     * This function takes a vector of Mobilogram objects and extracts the intensity
+     * values from each Mobilogram, storing them in a 2D vector of doubles. The
+     * resulting vector of intensity values is stored in the provided output parameter.
+     *
+     * @param mobilograms [in] A const reference to a vector of Mobilogram objects
+     *                         from which to extract intensity values.
+     * @param int_values [out] A reference to a vector of vector of doubles where
+     *                         the extracted intensity values will be stored. This
+     *                         vector will be cleared and resized as necessary.
+     */
+    static void extractIntensities(const std::vector<Mobilogram>& mobilograms,
                                    std::vector<std::vector<double>>& int_values);
 
   };

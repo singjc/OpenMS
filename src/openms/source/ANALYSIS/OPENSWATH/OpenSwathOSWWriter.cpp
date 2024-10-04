@@ -148,16 +148,6 @@ namespace OpenMS
       "VAR_MI_RATIO_SCORE REAL NULL," \
       "VAR_ISOTOPE_CORRELATION_SCORE REAL NULL," \
       "VAR_ISOTOPE_OVERLAP_SCORE REAL NULL," \
-      "EXP_IM REAL NULL," \
-      "EXP_IM_LEFTWIDTH REAL," \
-      "EXP_IM_RIGHTWIDTH REAL," \
-      "DELTA_IM REAL NULL," \
-      "VAR_IM_DELTA_SCORE REAL NULL,"
-      "VAR_IM_LOG_INTENSITY REAL NULL,"
-      "VAR_IM_XCORR_COELUTION_CONTRAST, "
-      "VAR_IM_XCORR_SHAPE_CONTRAST, "
-      "VAR_IM_XCORR_COELUTION_COMBINED, "
-      "VAR_IM_XCORR_SHAPE_COMBINED, " \
       "START_POSITION_AT_5 REAL NULL, " \
       "END_POSITION_AT_5 REAL NULL, " \
       "START_POSITION_AT_10 REAL NULL, " \
@@ -170,7 +160,17 @@ namespace OpenMS
       "SLOPE_OF_BASELINE REAL NULL, " \
       "BASELINE_DELTA_2_HEIGHT REAL NULL, " \
       "POINTS_ACROSS_BASELINE REAL NULL, " \
-      "POINTS_ACROSS_HALF_HEIGHT REAL NULL); ";
+      "POINTS_ACROSS_HALF_HEIGHT REAL NULL, "\
+      "EXP_IM REAL NULL," \
+      "EXP_IM_LEFTWIDTH REAL," \
+      "EXP_IM_RIGHTWIDTH REAL," \
+      "DELTA_IM REAL NULL," \
+      "VAR_IM_DELTA_SCORE REAL NULL," \
+      "VAR_IM_LOG_INTENSITY REAL NULL," \
+      "VAR_IM_XCORR_COELUTION_CONTRAST, " \
+      "VAR_IM_XCORR_SHAPE_CONTRAST, " \
+      "VAR_IM_XCORR_COELUTION_COMBINED, " \
+      "VAR_IM_XCORR_SHAPE_COMBINED); ";
 
 
     // Execute SQL create statement
@@ -486,7 +486,9 @@ namespace OpenMS
               << (enable_compute_peak_shape_metrics ? ", START_POSITION_AT_5, END_POSITION_AT_5, "
                                          "START_POSITION_AT_10, END_POSITION_AT_10, START_POSITION_AT_50, END_POSITION_AT_50, "
                                          "TOTAL_WIDTH, TAILING_FACTOR, ASYMMETRY_FACTOR, SLOPE_OF_BASELINE, BASELINE_DELTA_2_HEIGHT, "
-                                         "POINTS_ACROSS_BASELINE, POINTS_ACROSS_HALF_HEIGHT" : "")
+                                         "POINTS_ACROSS_BASELINE, POINTS_ACROSS_HALF_HEIGHT," : ",") \
+              << " EXP_IM, EXP_IM_LEFTWIDTH, EXP_IM_RIGHTWIDTH, DELTA_IM, VAR_IM_DELTA_SCORE, VAR_IM_LOG_INTENSITY, "\
+              " VAR_IM_XCORR_COELUTION_CONTRAST, VAR_IM_XCORR_SHAPE_CONTRAST, VAR_IM_XCORR_COELUTION_COMBINED, VAR_IM_XCORR_SHAPE_COMBINED " \
               << ") VALUES ("
                                         << feature_id << ", "
                                         << id_target_transition_names[i] << ", "
@@ -601,7 +603,9 @@ namespace OpenMS
                 << (enable_compute_peak_shape_metrics ? ", START_POSITION_AT_5, END_POSITION_AT_5, "
                                          "START_POSITION_AT_10, END_POSITION_AT_10, START_POSITION_AT_50, END_POSITION_AT_50, "
                                          "TOTAL_WIDTH, TAILING_FACTOR, ASYMMETRY_FACTOR, SLOPE_OF_BASELINE, BASELINE_DELTA_2_HEIGHT, "
-                                         "POINTS_ACROSS_BASELINE, POINTS_ACROSS_HALF_HEIGHT" : "")
+                                         "POINTS_ACROSS_BASELINE, POINTS_ACROSS_HALF_HEIGHT," : ",")
+                << " EXP_IM, EXP_IM_LEFTWIDTH, EXP_IM_RIGHTWIDTH, DELTA_IM, VAR_IM_DELTA_SCORE, VAR_IM_LOG_INTENSITY, "\
+              " VAR_IM_XCORR_COELUTION_CONTRAST, VAR_IM_XCORR_SHAPE_CONTRAST, VAR_IM_XCORR_COELUTION_COMBINED, VAR_IM_XCORR_SHAPE_COMBINED " \
                 << ") VALUES ("
                                         << feature_id << ", "
                                         << id_decoy_transition_names[i] << ", "
