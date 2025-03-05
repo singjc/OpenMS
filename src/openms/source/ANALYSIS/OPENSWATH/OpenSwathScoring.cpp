@@ -295,6 +295,8 @@ namespace OpenMS
     OPENMS_PRECONDITION(imrmfeature != nullptr, "Feature to be scored cannot be null");
     OPENMS_PRECONDITION(swath_maps.size() > 0, "There needs to be at least one swath map.");
 
+    std::cout << "OpenSwathScoring::calculateDIAIdScores img_range is empty " << im_range.isEmpty() << std::endl;
+
     // automatically compute the amount of spectra to add based on the fraction of the retention time peak width, or add a fixed number of spectra
     int n_merge_spectra = 1;
     if (spectra_merge_method_type_ == SpectrumMergeMethodType::DYNAMIC)

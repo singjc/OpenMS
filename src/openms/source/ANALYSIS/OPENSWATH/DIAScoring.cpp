@@ -182,6 +182,7 @@ namespace OpenMS
     // although precursor_mz can be received from the empirical formula (if non-empty), the actual precursor could be
     // slightly different. And also for compounds, usually the neutral sum_formula without adducts is given.
     // Therefore calculate the isotopes based on the formula but place them at precursor_mz
+    std::cout << "DIAScoring.cpp: dia_ms1_isotope_scores: im_range.isEmpty() = " << im_range.isEmpty() << std::endl;
     std::vector<double> isotopes_int;
     getIsotopeIntysFromExpSpec_(precursor_mz, spectrum, sum_formula.getCharge(), im_range, isotopes_int);
 
@@ -213,6 +214,7 @@ namespace OpenMS
   void DIAScoring::dia_ms1_isotope_scores_averagine(double precursor_mz, const SpectrumSequence& spectrum, int charge_state, RangeMobility& im_range,
                                                     double& isotope_corr, double& isotope_overlap) const
   {
+    std::cout << "DIAScoring.cpp: dia_ms1_isotope_scores_averagine: im_range.isEmpty() = " << im_range.isEmpty() << std::endl;
     std::vector<double> exp_isotopes_int;
     getIsotopeIntysFromExpSpec_(precursor_mz, spectrum, charge_state, im_range, exp_isotopes_int);
     CoarseIsotopePatternGenerator solver(dia_nr_isotopes_ + 1);
