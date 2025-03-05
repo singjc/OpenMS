@@ -701,7 +701,7 @@ namespace OpenMS
         ///////////////////////////////////
         // Call the scoring for fragment ions
         ///////////////////////////////////
-
+        std::cout << "Scoring fragment ions" << std::endl;
         std::vector<double> normalized_library_intensity;
         transition_group_detection.getLibraryIntensity(normalized_library_intensity);
         OpenSwath::Scoring::normalize_sum(&normalized_library_intensity[0], boost::numeric_cast<int>(normalized_library_intensity.size()));
@@ -722,6 +722,7 @@ namespace OpenMS
 
         ///////////////////////////////////
         // Library and chromatographic scores
+        std::cout << " Computing library and chromatographic scores" << std::endl;
         OpenSwath_Scores& scores = mrmfeature.getScores();
         scorer.calculateChromatographicScores(imrmfeature, native_ids_detection, precursor_ids, normalized_library_intensity,
                                               signal_noise_estimators, scores);
@@ -733,6 +734,8 @@ namespace OpenMS
         // DIA scores
         if (swath_present && su_.use_dia_scores_)
         {
+          std::cout << " Computing DIA scores" << std::endl;
+          std::cout << "  - using im_range " << im_range.min << " " << im_range.max << std::endl;
           std::vector<double> masserror_ppm;
           scorer.calculateDIAScores(imrmfeature,
                                     transition_group_detection.getTransitions(),
