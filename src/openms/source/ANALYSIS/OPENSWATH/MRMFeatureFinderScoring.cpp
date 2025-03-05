@@ -319,13 +319,14 @@ namespace OpenMS
     // get drift time upper/lower offset (this assumes that all chromatograms
     // are derived from the same precursor with the same drift time)
     RangeMobility im_range;
-
+    std::cout << "MRMFeatureFinderScoring::scoreIdentification_ img_range is empty " << im_range.isEmpty() << std::endl;
     if ( (!trgr_ident.getChromatograms().empty()) || (!trgr_ident.getPrecursorChromatograms().empty()) )
     {
       auto & prec = trgr_ident.getChromatograms()[0].getPrecursor();
       im_range.setMin(prec.getDriftTime()); // sets the minimum and maximum
       im_range.minSpanIfSingular(prec.getDriftTimeWindowLowerOffset());
     }
+    std::cout << "MRMFeatureFinderScoring::scoreIdentification_ img_range is empty " << im_range.isEmpty() << std::endl;
 
     std::vector<std::string> native_ids_identification;
     std::vector<OpenSwath::ISignalToNoisePtr> signal_noise_estimators_identification;
