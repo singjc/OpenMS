@@ -133,6 +133,8 @@ namespace OpenMS
 
     std::vector<OpenSwath::SpectrumPtr> spectra = fetchSpectrumSwath(swath_maps, imrmfeature->getRT(), n_merge_spectra, im_range);
 
+    std::cout << "  extracted " << spectra.size() << " spectra" << std::endl;
+
     // set the DIA parameters
     // TODO Cache these parameters
     double dia_extract_window_ = (double)diascoring.getParameters().getValue("dia_extraction_window");
@@ -541,7 +543,7 @@ namespace OpenMS
 
   SpectrumSequence OpenSwathScoring::fetchSpectrumSwath(OpenSwath::SpectrumAccessPtr swathmap, double RT, int nr_spectra_to_add, const RangeMobility& im_range)
   {
-
+    std::cout << "OpenSwathScoring::fetchSpectrumSwath " << std::endl;
     SpectrumSequence all_spectra = swathmap->getMultipleSpectra(RT, nr_spectra_to_add);
     if (spectra_addition_method_ == SpectrumAdditionMethod::ADDITION)
     {
@@ -564,6 +566,7 @@ namespace OpenMS
     // This is not SONAR data
     if (swath_maps.size() == 1)
     {
+      std::cout << "Extracting spectra from a single SWATH map" << std::endl;
       return fetchSpectrumSwath(swath_maps[0].sptr, RT, nr_spectra_to_add, im_range);
     }
     else
@@ -571,6 +574,7 @@ namespace OpenMS
       // data is not IM enhanced
       if (!im_range.isEmpty())
       {
+        std::cout << "Extracting spectra from multiple SWATH maps with ion mobility" << std::endl;
         // multiple SWATH maps for a single precursor -> this is SONAR data, in all cases only return a single spectrum
         SpectrumSequence all_spectra;
 
@@ -593,6 +597,7 @@ namespace OpenMS
       }
       else // im_range.isEmpty()
       {
+        std::cout << "Extracting spectra from multiple SWATH maps without ion mobility" << std::endl;
         // multiple SWATH maps for a single precursor -> this is SONAR data, in all cases only return a single spectrum
         SpectrumSequence all_spectra;
 

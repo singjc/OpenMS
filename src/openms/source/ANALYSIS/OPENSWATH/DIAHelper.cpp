@@ -73,6 +73,8 @@ namespace OpenMS::DIAHelpers
         return;
       }
 
+      std::cout << "DIAHelper.cpp: integrateWindow_: im_range.isEmpty() = " << im_range.isEmpty() << std::endl;
+
       // if im_range is set, than integrate across dirft time
       if (!im_range.isEmpty()) // if imRange supplied, integrate across IM
       {

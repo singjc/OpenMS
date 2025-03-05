@@ -116,6 +116,7 @@ namespace OpenMS
                                       double& ppm_score_weighted,
                                       std::vector<double>& diff_ppm) const
   {
+    std::cout << "DIAScoring.cpp: dia_massdiff_score: im_range.isEmpty() = " << im_range.isEmpty() << std::endl;
     // Calculate the difference of the theoretical mass and the actually measured mass
     ppm_score = 0;
     ppm_score_weighted = 0;
@@ -151,6 +152,7 @@ namespace OpenMS
   bool DIAScoring::dia_ms1_massdiff_score(double precursor_mz, const SpectrumSequence& spectrum,
                                           const RangeMobility& im_range, double& ppm_score) const
   {
+    std::cout << "DIAScoring.cpp: dia_ms1_massdiff_score: im_range.isEmpty() = " << im_range.isEmpty() << std::endl;
     ppm_score = -1;
     double mz, intensity, im;
     {
@@ -196,6 +198,7 @@ namespace OpenMS
   void DIAScoring::getIsotopeIntysFromExpSpec_(double precursor_mz, const SpectrumSequence& spectrum, int charge_state, const RangeMobility& im_range,
                             std::vector<double>& isotopes_int) const
   {
+    std::cout << "DIAScoring.cpp: getIsotopeIntysFromExpSpec_: im_range.isEmpty() = " << im_range.isEmpty() << std::endl;
     double abs_charge = std::fabs(static_cast<double>(charge_state));
     for (int iso = 0; iso <= dia_nr_isotopes_; ++iso)
     {
@@ -229,6 +232,7 @@ namespace OpenMS
                                     AASequence& sequence, int charge, const RangeMobility& im_range, double& bseries_score,
                                     double& yseries_score) const
   {
+    std::cout << "DIAScoring.cpp: dia_by_ion_score: im_range.isEmpty() = " << im_range.isEmpty() << std::endl;
     bseries_score = 0;
     yseries_score = 0;
     OPENMS_PRECONDITION(charge > 0, "Charge is a positive integer"); // for peptides, charge should be positive
@@ -288,6 +292,7 @@ namespace OpenMS
                                         double& isotope_corr,
                                         double& isotope_overlap) const
   {
+    std::cout << "DIAScoring.cpp: diaIsotopeScoresSub_: im_range.isEmpty() = " << im_range.isEmpty() << std::endl;
     std::vector<double> isotopes_int;
     double max_ratio;
     int nr_occurences;
@@ -325,6 +330,7 @@ namespace OpenMS
 
   void DIAScoring::largePeaksBeforeFirstIsotope_(const SpectrumSequence& spectrum, double mono_mz, double mono_int, int& nr_occurences, double& max_ratio, const RangeMobility& im_range) const
   {
+    std::cout << "DIAScoring.cpp: largePeaksBeforeFirstIsotope_: im_range.isEmpty() = " << im_range.isEmpty() << std::endl;
     double mz, intensity, im;
     nr_occurences = 0;
     max_ratio = 0.0;
