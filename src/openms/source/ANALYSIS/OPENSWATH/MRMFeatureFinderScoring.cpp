@@ -735,7 +735,7 @@ namespace OpenMS
         if (swath_present && su_.use_dia_scores_)
         {
           std::cout << " Computing DIA scores" << std::endl;
-          std::cout << "  - using im_range " << im_range.min << " " << im_range.max << std::endl;
+          std::cout << "  - using im_range empty " << im_range.isEmpty() << std::endl;
           std::vector<double> masserror_ppm;
           scorer.calculateDIAScores(imrmfeature,
                                     transition_group_detection.getTransitions(),

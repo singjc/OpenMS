@@ -129,7 +129,8 @@ namespace OpenMS
     
     // find spectrum that is closest to the apex of the peak using binary search
     std::cout << "Finding closest spectrum to the apex of the peak using binary search" << std::endl;
-    std::cout << "  - using im_range " << im_range.min << " " << im_range.max << std::endl;
+    std::cout << "  - using im_range empty " << im_range.isEmpty() << std::endl;
+
     std::vector<OpenSwath::SpectrumPtr> spectra = fetchSpectrumSwath(swath_maps, imrmfeature->getRT(), n_merge_spectra, im_range);
 
     // set the DIA parameters
