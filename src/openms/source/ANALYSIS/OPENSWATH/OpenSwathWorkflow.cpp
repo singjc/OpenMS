@@ -137,7 +137,7 @@ namespace
 
     estimate.available_memory = static_cast<UInt64>(available_memory_kb) * 1024ull;
     const UInt64 reserved_memory =
-      std::min(AUTO_BATCH_MEMORY_RESERVE_BYTES, estimate.available_memory / 2ull);
+      std::min(AUTO_BATCH_MEMORY_RESERVE_BYTES, estimate.available_memory / static_cast<UInt64>(2));
     if (estimate.available_memory <= reserved_memory)
     {
       return estimate;
