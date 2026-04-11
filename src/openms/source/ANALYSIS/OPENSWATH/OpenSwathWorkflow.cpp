@@ -17,13 +17,151 @@
 #include <OpenMS/FORMAT/FileTypes.h>
 #include <OpenMS/CONCEPT/LogStream.h>
 #include <OpenMS/KERNEL/MSExperiment.h>
+#include <OpenMS/SYSTEM/SysInfo.h>
+#include <algorithm>
 #include <cmath>
+#include <limits>
 #include <unordered_map>
-
 
 // OpenSwathWorkflow
 namespace OpenMS
 {
+
+// File-local helpers for batch size estimation
+namespace
+{
+  /// Fallback used if available system memory cannot be queried.
+  constexpr int DEFAULT_BATCH_SIZE = 1000;
+
+  /// Keep at least this much memory free for the OS and other processes.
+  constexpr UInt64 AUTO_BATCH_MEMORY_RESERVE_BYTES = 4ull * 1024ull * 1024ull * 1024ull;
+
+  /// Conservative byte estimate for one extracted chromatogram data point and container overhead.
+  constexpr UInt64 AUTO_BATCH_BYTES_PER_CHROM_POINT = 128ull;
+
+  /// Conservative per-assay overhead for scoring structures and copied transition metadata.
+  constexpr UInt64 AUTO_BATCH_BYTES_PER_COMPOUND_OVERHEAD = 64ull * 1024ull;
+
+  /// Use only this fraction of the memory remaining after the reserve.
+  constexpr double AUTO_BATCH_MEMORY_FRACTION = 0.8;
+
+  /// Diagnostic details for the automatic batch-size decision.
+  struct AutoBatchSizeEstimate
+  {
+    int batch_size = DEFAULT_BATCH_SIZE;
+    bool used_memory = false;
+    UInt64 available_memory = 0;
+    UInt64 memory_budget = 0;
+    UInt64 bytes_per_compound = 0;
+    Size points_per_chromatogram = 0;
+    double chromatograms_per_compound = 0.0;
+  };
+
+  /// Estimate how many RT points each extracted chromatogram will keep after RT windowing.
+  Size estimatePointsPerChromatogram(const OpenSwath::SpectrumAccessPtr& swath_map,
+                                     const ChromExtractParams& cp)
+  {
+    if (!swath_map)
+    {
+      return 1;
+    }
+
+    const Size nr_spectra = swath_map->getNrSpectra();
+    if (nr_spectra <= 1 || cp.rt_extraction_window < 0.0)
+    {
+      return std::max<Size>(nr_spectra, 1);
+    }
+
+    const double rt_first = swath_map->getSpectrumMetaById(0).RT;
+    const double rt_last = swath_map->getSpectrumMetaById(static_cast<int>(nr_spectra - 1)).RT;
+    const double rt_span = std::fabs(rt_last - rt_first);
+    if (!std::isfinite(rt_span) || rt_span <= 0.0)
+    {
+      return nr_spectra;
+    }
+
+    const double extraction_window = cp.rt_extraction_window + std::max(0.0, cp.extra_rt_extract);
+    if (extraction_window <= 0.0)
+    {
+      return 1;
+    }
+
+    const double fraction = std::min(1.0, extraction_window / rt_span);
+    const auto estimated_points = static_cast<Size>(std::ceil(static_cast<double>(nr_spectra) * fraction));
+    return std::clamp<Size>(estimated_points, 1, nr_spectra);
+  }
+
+  /// Estimate a memory-aware batch size for one SWATH map while accounting for concurrent map processing.
+  AutoBatchSizeEstimate estimateAutoBatchSize(const OpenSwath::LightTargetedExperiment& transition_exp_used_all,
+                                              const OpenSwath::SpectrumAccessPtr& swath_map,
+                                              const ChromExtractParams& cp,
+                                              bool use_ms1_traces,
+                                              int ms1_isotopes,
+                                              Size concurrent_swath_maps)
+  {
+    const Size n_compounds = transition_exp_used_all.getCompounds().size();
+    const Size max_batch = std::min<Size>(
+      n_compounds, static_cast<Size>(std::numeric_limits<int>::max()));
+
+    AutoBatchSizeEstimate estimate;
+    estimate.batch_size = static_cast<int>(std::min<Size>(max_batch, DEFAULT_BATCH_SIZE));
+    if (n_compounds == 0)
+    {
+      estimate.batch_size = 0;
+      return estimate;
+    }
+
+    estimate.points_per_chromatogram = estimatePointsPerChromatogram(swath_map, cp);
+    const double transitions_per_compound =
+      static_cast<double>(transition_exp_used_all.getTransitions().size()) / static_cast<double>(n_compounds);
+    const double ms1_chromatograms_per_compound =
+      use_ms1_traces ? static_cast<double>(std::max(0, ms1_isotopes) + 1) : 0.0;
+    estimate.chromatograms_per_compound =
+      std::max(1.0, transitions_per_compound + ms1_chromatograms_per_compound);
+
+    const double bytes_per_compound = estimate.chromatograms_per_compound *
+                                      static_cast<double>(estimate.points_per_chromatogram) *
+                                      static_cast<double>(AUTO_BATCH_BYTES_PER_CHROM_POINT) +
+                                      static_cast<double>(AUTO_BATCH_BYTES_PER_COMPOUND_OVERHEAD);
+    if (!std::isfinite(bytes_per_compound) || bytes_per_compound <= 0.0)
+    {
+      return estimate;
+    }
+    estimate.bytes_per_compound = static_cast<UInt64>(std::ceil(bytes_per_compound));
+
+    size_t available_memory_kb = 0;
+    if (!SysInfo::getFreeSystemMemory(available_memory_kb) || available_memory_kb == 0)
+    {
+      return estimate;
+    }
+
+    estimate.available_memory = static_cast<UInt64>(available_memory_kb) * 1024ull;
+    const UInt64 reserved_memory =
+      std::min(AUTO_BATCH_MEMORY_RESERVE_BYTES, estimate.available_memory / 2ull);
+    if (estimate.available_memory <= reserved_memory)
+    {
+      return estimate;
+    }
+
+    const UInt64 usable_memory = static_cast<UInt64>(
+      static_cast<double>(estimate.available_memory - reserved_memory) * AUTO_BATCH_MEMORY_FRACTION);
+    estimate.memory_budget = usable_memory / std::max<Size>(concurrent_swath_maps, 1);
+    if (estimate.memory_budget == 0)
+    {
+      estimate.batch_size = 1;
+      estimate.used_memory = true;
+      return estimate;
+    }
+
+    const UInt64 memory_limited_batch_size = estimate.memory_budget / estimate.bytes_per_compound;
+    estimate.batch_size = static_cast<int>(std::min<UInt64>(
+      std::max<UInt64>(memory_limited_batch_size, 1),
+      static_cast<UInt64>(max_batch)));
+    estimate.used_memory = true;
+    return estimate;
+  }
+} // anonymous namespace
+
   // Helper: load MS1 map (returns first swath map marked as ms1)
   OpenSwath::SpectrumAccessPtr OpenSwathWorkflow::loadMS1Map(const std::vector< OpenSwath::SwathMap > & swath_maps, bool load_into_memory)
   {
@@ -209,6 +347,27 @@ namespace OpenMS
     // We set dynamic scheduling such that the maps are worked on in the order
     // in which they were given to the program / acquired. This gives much
     // better load balancing than static allocation.
+    const Size nr_ms2_swath_maps = static_cast<Size>(
+      std::count_if(swath_maps.begin(), swath_maps.end(),
+                    [](const OpenSwath::SwathMap& swath_map) { return !swath_map.ms1; }));
+    Size concurrent_swath_maps = 1;
+#ifdef _OPENMP
+#ifdef MT_ENABLE_NESTED_OPENMP
+    if (threads_outer_loop_ > -1)
+    {
+      concurrent_swath_maps = static_cast<Size>(std::min(threads_outer_loop_, omp_get_max_threads()));
+    }
+    else
+    {
+      concurrent_swath_maps = static_cast<Size>(omp_get_max_threads());
+    }
+#else
+    concurrent_swath_maps = static_cast<Size>(omp_get_max_threads());
+#endif
+#endif
+    concurrent_swath_maps =
+      std::min(std::max<Size>(concurrent_swath_maps, 1), std::max<Size>(nr_ms2_swath_maps, 1));
+
 #ifdef _OPENMP
 #ifdef MT_ENABLE_NESTED_OPENMP
     int total_nr_threads = omp_get_max_threads(); // store total number of threads we are allowed to use
@@ -286,7 +445,42 @@ namespace OpenMS
           }
 
           int batch_size;
-          if (batchSize <= 0 || batchSize >= (int)transition_exp_used_all.getCompounds().size())
+          if (batchSize < 0)
+          {
+            const AutoBatchSizeEstimate auto_batch_size = estimateAutoBatchSize(transition_exp_used_all,
+                                                                                current_swath_map,
+                                                                                cp,
+                                                                                use_ms1_traces_,
+                                                                                ms1_isotopes,
+                                                                                concurrent_swath_maps);
+            batch_size = auto_batch_size.batch_size;
+#ifdef _OPENMP
+#pragma omp critical (osw_write_stdout)
+#endif
+            {
+              if (auto_batch_size.used_memory)
+              {
+                OPENMS_LOG_INFO << "Auto-selected batchSize " << batch_size
+                                << " for SWATH " << i
+                                << " using " << bytesToHumanReadable(auto_batch_size.memory_budget)
+                                << " per concurrent SWATH from "
+                                << bytesToHumanReadable(auto_batch_size.available_memory)
+                                << " available system memory; estimated "
+                                << bytesToHumanReadable(auto_batch_size.bytes_per_compound)
+                                << " per compound ("
+                                << auto_batch_size.chromatograms_per_compound
+                                << " chromatograms/compound, "
+                                << auto_batch_size.points_per_chromatogram
+                                << " points/chromatogram)." << std::endl;
+              }
+              else
+              {
+                OPENMS_LOG_WARN << "Could not determine available system memory; using fallback batchSize "
+                                << batch_size << " for SWATH " << i << "." << std::endl;
+              }
+            }
+          }
+          else if (batchSize == 0 || batchSize >= (int)transition_exp_used_all.getCompounds().size())
           {
             batch_size = transition_exp_used_all.getCompounds().size();
           }

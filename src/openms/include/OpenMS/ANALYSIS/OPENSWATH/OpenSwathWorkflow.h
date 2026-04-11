@@ -303,6 +303,7 @@ protected:
      * @param[out] result_osw OSW Writer object to store identified features in SQLite format (set store_features to false if using this option)
      * @param[out] result_chromatograms Chromatogram consumer object to store the extracted chromatograms
      * @param[in] batchSize Size of the batches which should be extracted and scored
+     *                       (-1 means estimate from available system memory, 0 means one batch)
      * @param[in] ms1_isotopes Number of MS1 isotopes to extract (zero means only monoisotopic peak)
      * @param[in] load_into_memory Whether to cache the current SWATH map in memory
      * @param[in] mrm_mapping_param Parameter for mapping chromatograms to transitions (MRMMapping)
@@ -439,5 +440,3 @@ protected:
       std::vector<OpenSwath::LightTransition>& output);
   };
 }
-
-
