@@ -63,4 +63,13 @@ START_SECTION(static bool getProcessMemoryConsumption(size_t& mem_virtual))
 }
 END_SECTION
 
+START_SECTION(static bool getFreeSystemMemory(size_t& mem_available))
+{
+  size_t mem_available = 0;
+  TEST_EQUAL(SysInfo::getFreeSystemMemory(mem_available), true)
+  TEST_NOT_EQUAL(mem_available, 0)
+  std::cout << "Available system memory: " << mem_available << " KB" << std::endl;
+}
+END_SECTION
+
 END_TEST
