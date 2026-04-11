@@ -327,8 +327,10 @@ protected:
     registerStringOption_("extraction_function", "<name>", "tophat", "Function used to extract the signal", false, true);
     setValidStrings_("extraction_function", ListUtils::create<String>("tophat,bartlett"));
 
-    registerIntOption_("batchSize", "<number>", 1000, "The batch size of chromatograms to process (0 means to only have one batch, sensible values are around 250-1000)", false, true);
-    setMinInt_("batchSize", 0);
+    registerIntOption_("batchSize", "<number>", 1000,
+      "The batch size of chromatograms to process (-1 estimates the batch size from available system memory, "
+      "0 means to only have one batch, sensible fixed values are around 250-1000)", false, true);
+    setMinInt_("batchSize", -1);
     registerIntOption_("outer_loop_threads", "<number>", -1, "How many threads should be used for the outer loop (-1 use all threads, use 4 to analyze 4 SWATH windows in memory at once).", false, true);
 
     registerIntOption_("ms1_isotopes", "<number>", 3, "The number of MS1 isotopes used for extraction", false, true);
