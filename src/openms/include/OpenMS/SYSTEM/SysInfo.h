@@ -33,6 +33,16 @@ namespace OpenMS
 			/// @param[out] mem_virtual Total virtual memory currently allocated by this process
 			/// @return True on success, false otherwise. If false is returned, then @p mem_virtual is set to 0.
 			static bool getProcessMemoryConsumption(size_t& mem_virtual);
+
+      /// Get currently available physical system memory in KiloBytes (KB)
+      ///
+      /// This reports memory that can be allocated without swapping according
+      /// to the operating system. On Linux this uses MemAvailable from
+      /// /proc/meminfo when present.
+      ///
+      /// @param[out] mem_available Available physical memory
+      /// @return True on success, false otherwise. If false is returned, then @p mem_available is set to 0.
+      static bool getFreeSystemMemory(size_t& mem_available);
   
       /// Get peak memory consumption in KiloBytes (KB)
       /// On Windows, this is equivalent to 'Working Set (Memory)' in Task Manager.
@@ -89,4 +99,3 @@ namespace OpenMS
       };
   };
 }
-
