@@ -911,6 +911,9 @@ namespace OpenMS
     spec.setRT(frame.time);
     spec.setMSLevel(ms_level);
     spec.setDriftTimeUnit(DriftTimeUnit::VSSC);
+    // TDF peaks are detector-centroided in m/z (peak-list format); label as
+    // centroid so downstream tools (e.g. CometAdapter) don't reject as profile.
+    spec.setType(SpectrumSettings::SpectrumType::CENTROID);
     spec.setNativeID("frame=" + String(frame.id));
 
     if (frame.num_peaks == 0) return;
@@ -994,6 +997,19 @@ namespace OpenMS
     IMDataConverter::setIMUnit(im_array, DriftTimeUnit::VSSC);
     spec.getFloatDataArrays().push_back(std::move(im_array));
     spec.setIMPeakType(IMPeakType::IM_CENTROIDED);
+  }
+
+  // =====================================================================
+  // Helper: build one MS1 spectrum from a frame, with optional IM centroiding
+  // =====================================================================
+  static void loadMS1Spectrum(TimsFrame& frame, MSSpectrum& spec,
+                              const BrukerTimsFile::Config& config,
+                              FrameCentroider& centroider)
+  {
+    if (isCentroidingEnabled(config))
+      centroidMS1Frame(frame, spec, config, centroider);
+    else
+      frameToSpectrum(frame, spec, 1);
   }
 
   // =====================================================================
@@ -1111,7 +1127,6 @@ namespace OpenMS
     SQLite::Database db(std::string(tdf_path), SQLite::OPEN_READONLY);
 
     // --- MS1 frames ---
-    bool do_centroid = isCentroidingEnabled(config);
     FrameCentroider centroider;
 
     std::vector<uint32_t> ms1_frame_ids;
@@ -1126,10 +1141,15 @@ namespace OpenMS
     {
       TimsFrame& frame = handle->get_frame(ms1_frame_ids[i]);
       MSSpectrum spec;
-      if (do_centroid)
-        centroidMS1Frame(frame, spec, config, centroider);
-      else
-        frameToSpectrum(frame, spec, 1);
+      loadMS1Spectrum(frame, spec, config, centroider);
+      // Sort peaks by m/z (and the associated IM float data array alongside).
+      // TIMS save_to_buffs returns peaks in (scan_id, m/z-within-scan) order,
+      // which is NOT globally m/z-sorted. Downstream consumers
+      // (OpenSwath's chromatogram extraction) assume sorted m/z for lower_bound /
+      // upper_bound range queries; without this sort, queries silently miss
+      // peaks, producing empty chromatograms and breaking iRT calibration.
+      // The non-streaming load() path gets this sort for free via exp.sortSpectra(true).
+      spec.sortByPosition();
       consumer.consumeSpectrum(spec);
       setProgress(i);
     }
@@ -1186,6 +1206,7 @@ namespace OpenMS
           spec.setRT(frame.time);
           spec.setMSLevel(2);
           spec.setDriftTimeUnit(DriftTimeUnit::VSSC);
+          spec.setType(SpectrumSettings::SpectrumType::CENTROID);
           spec.setNativeID("frame=" + String(frame.id) + " windowGroup=" + String(win->window_group) + " scan=" + String(win->scan_begin));
 
           Precursor prec;
@@ -1216,6 +1237,11 @@ namespace OpenMS
           {
             spec.getFloatDataArrays().push_back(std::move(im_array));
             spec.setIMPeakType(IMPeakType::IM_PROFILE);
+            // Sort peaks by m/z (and the IM float data array alongside).
+            // See the matching comment in the MS1 loop above — TIMS save_to_buffs
+            // returns peaks in (scan_id, m/z-within-scan) order; OpenSwath's
+            // chromatogram extraction assumes globally m/z-sorted input.
+            spec.sortByPosition();
             consumer.consumeSpectrum(spec);
           }
         }
@@ -1363,20 +1389,12 @@ namespace OpenMS
     startProgress(0, ms1_frame_ids.size() + num_ms2, "Loading DDA-PASEF data");
 
     // --- MS1 frames ---
-    bool do_centroid = isCentroidingEnabled(config);
     FrameCentroider centroider;
     for (size_t i = 0; i < ms1_frame_ids.size(); ++i)
     {
       TimsFrame& frame = handle.get_frame(ms1_frame_ids[i]);
       MSSpectrum spec;
-      if (do_centroid)
-      {
-        centroidMS1Frame(frame, spec, config, centroider);
-      }
-      else
-      {
-        frameToSpectrum(frame, spec, 1);
-      }
+      loadMS1Spectrum(frame, spec, config, centroider);
       exp.addSpectrum(std::move(spec));
       setProgress(i);
     }
@@ -1685,6 +1703,7 @@ namespace OpenMS
       spec.setMSLevel(2);
       spec.setDriftTime(scalar_im);
       spec.setDriftTimeUnit(DriftTimeUnit::VSSC);
+      spec.setType(SpectrumSettings::SpectrumType::CENTROID);
       spec.setNativeID("scan=" + String(prec_id));
 
       // Copy sorted peak data
@@ -1745,21 +1764,13 @@ namespace OpenMS
     }
 
     // --- MS1 frames ---
-    bool do_centroid = isCentroidingEnabled(config);
     FrameCentroider centroider;
     startProgress(0, ms1_frame_ids.size(), "Loading DIA-PASEF MS1 frames");
     for (size_t i = 0; i < ms1_frame_ids.size(); ++i)
     {
       TimsFrame& frame = handle.get_frame(ms1_frame_ids[i]);
       MSSpectrum spec;
-      if (do_centroid)
-      {
-        centroidMS1Frame(frame, spec, config, centroider);
-      }
-      else
-      {
-        frameToSpectrum(frame, spec, 1);
-      }
+      loadMS1Spectrum(frame, spec, config, centroider);
       exp.addSpectrum(std::move(spec));
       setProgress(i);
     }
@@ -1847,14 +1858,14 @@ namespace OpenMS
               }
             }
 
-            // Denoise (skip if only 1 frame in range)
+            // Denoise (skip if only 1 frame in range, or caller disabled it via min_support <= 0)
             // TODO: This checks the index range, not the actual number of neighbor
             // frames that contributed peaks to the grid. If neighbor frames exist
             // but have zero peaks passing the IM filter for this window, the grid
             // contains only single-frame data yet denoising still runs — which may
             // remove valid isolated peaks. Consider counting actual contributing
             // frames if this becomes an issue in practice.
-            bool skip_denoise = (hi - lo) < 1;
+            bool skip_denoise = (hi - lo) < 1 || config.dia_ms2_min_support <= 0;
             auto peaks = config.dia_ms2_centroid
               ? aggregator.finalizeCentroided(config.dia_ms2_min_support, skip_denoise)
               : aggregator.finalize(config.dia_ms2_min_support, skip_denoise);
@@ -1867,6 +1878,7 @@ namespace OpenMS
             spec.setRT(center_frame.time);
             spec.setMSLevel(2);
             spec.setDriftTimeUnit(DriftTimeUnit::VSSC);
+            spec.setType(SpectrumSettings::SpectrumType::CENTROID);
             spec.setNativeID("frame=" + String(center_frame.id) + " windowGroup=" + String(win->window_group) + " scan=" + String(win->scan_begin));
 
             Precursor prec;
@@ -1931,6 +1943,7 @@ namespace OpenMS
             spec.setRT(frame.time);
             spec.setMSLevel(2);
             spec.setDriftTimeUnit(DriftTimeUnit::VSSC);
+            spec.setType(SpectrumSettings::SpectrumType::CENTROID);
             spec.setNativeID("frame=" + String(frame.id) + " windowGroup=" + String(win->window_group) + " scan=" + String(win->scan_begin));
 
             Precursor prec;
@@ -1998,21 +2011,16 @@ namespace OpenMS
         continue;
       }
 
-      bool do_centroid = (level == 1) && isCentroidingEnabled(config);
       FrameCentroider centroider;
       startProgress(0, frame_ids.size(), String("Loading MS") + String(level) + " frames");
       for (size_t i = 0; i < frame_ids.size(); ++i)
       {
         TimsFrame& frame = handle.get_frame(frame_ids[i]);
         MSSpectrum spec;
-        if (do_centroid)
-        {
-          centroidMS1Frame(frame, spec, config, centroider);
-        }
+        if (level == 1)
+          loadMS1Spectrum(frame, spec, config, centroider);
         else
-        {
           frameToSpectrum(frame, spec, level);
-        }
         exp.addSpectrum(std::move(spec));
         setProgress(i);
       }

@@ -275,6 +275,7 @@ set(format_executables_list
   ZlibCompression_test
   Libzip_test
   ZipArchiveFile_test
+  ZipIfstream_test
   ZipRandomAccessFile_test
   # DATAACCESS
   MSDataCachedConsumer_test
@@ -564,7 +565,7 @@ set(analysis_executables_list
   ReactionMonitoringTransition_test
   NuXLModificationsGenerator_test
   NuXLParameterParsing_test
-  PeptideSearchEngineFIAlgorithm_test
+  ProSEAlgorithm_test
   SimpleSearchEngineAlgorithm_test
   SimpleSVM_test
   SpectralDeconvolution_test
@@ -648,6 +649,7 @@ if(NOT DISABLE_OPENSWATH)
     ChromatogramExtractorAlgorithm_test
     OpenSwathHelper_test
     OpenSwathOSWWriter_test
+    TransitionListEvidenceFilter_test
     OpenSwathScoring_test
     OpenSwathScores_test
     PeakIntegrator_test

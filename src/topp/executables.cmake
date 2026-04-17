@@ -101,7 +101,7 @@ PeakPickerHiRes
 PeakPickerIterative
 PeakPickerIM
 PeptideIndexer
-PeptideDataBaseSearchFI
+ProSE
 PercolatorAdapter
 PhosphoScoring
 ProteinInference
@@ -146,6 +146,7 @@ if(NOT DISABLE_OPENSWATH)
     TargetedFileConverter
     OpenSwathDIAPreScoring
     OpenSwathMzMLFileCacher
+    TransitionListEvidenceFilter
     OpenSwathWorkflow
     OpenSwathFileSplitter
     OpenSwathRewriteToFeatureXML

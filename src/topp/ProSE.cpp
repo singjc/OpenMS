@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: BSD-3-Clause
 //
 // --------------------------------------------------------------------------
-// $Maintainer:  $
-// $Authors:  $
+// $Maintainer: Timo Sachsenberg $
+// $Authors: Timo Sachsenberg $
 // --------------------------------------------------------------------------
 
-#include <OpenMS/ANALYSIS/ID/PeptideSearchEngineFIAlgorithm.h>
+#include <OpenMS/ANALYSIS/ID/ProSEAlgorithm.h>
 #include <OpenMS/APPLICATIONS/TOPPBase.h>
 
 #include <OpenMS/ANALYSIS/ID/BasicProteinInferenceAlgorithm.h>
@@ -17,12 +17,18 @@
 #include <OpenMS/FORMAT/FileTypes.h>
 #include <OpenMS/PROCESSING/ID/IDFilter.h>
 #include <OpenMS/FORMAT/QPXFile.h>
+#include <OpenMS/FORMAT/ProteinGroupArrowExport.h>
+#include <OpenMS/FORMAT/ProteinIdentificationArrowIO.h>
+#include <OpenMS/FORMAT/ArrowIOHelpers.h>
 #include <OpenMS/METADATA/ProteinIdentification.h>
 #include <OpenMS/KERNEL/StandardTypes.h>
 #include <OpenMS/SYSTEM/File.h>
 #include <OpenMS/METADATA/PeptideIdentificationList.h>
 
+#include <arrow/table.h>  // only for std::shared_ptr<arrow::Table> declarations
+
 #include <map>
+#include <set>
 
 using namespace OpenMS;
 using namespace std;
@@ -32,7 +38,7 @@ using namespace std;
 //-------------------------------------------------------------
 
 /**
-@page TOPP_PeptideDataBaseSearchFI PeptideDataBaseSearchFI
+@page TOPP_ProSE ProSE
 
 @brief Identifies peptides in MS/MS spectra.
 
@@ -40,7 +46,7 @@ using namespace std;
     <table>
         <tr>
             <th ALIGN = "center"> pot. predecessor tools </td>
-            <td VALIGN="middle" ROWSPAN=2> &rarr; PeptideDataBaseSearchFI &rarr;</td>
+            <td VALIGN="middle" ROWSPAN=2> &rarr; ProSE &rarr;</td>
             <th ALIGN = "center"> pot. successor tools </td>
         </tr>
         <tr>
@@ -58,21 +64,21 @@ using namespace std;
     @note Decoy handling: either enable '-Search:decoys' to generate decoys internally, or provide a FASTA database that already contains decoy proteins (e.g., from DecoyDatabase). In both cases, the decoy accession prefix must match '-Search:decoy_prefix' (default: "DECOY_").
 
     <B>The command line parameters of this tool are:</B>
-    @verbinclude TOPP_PeptideDataBaseSearchFI.cli
+    @verbinclude TOPP_ProSE.cli
     <B>INI file documentation of this tool:</B>
-    @htmlinclude TOPP_PeptideDataBaseSearchFI.html
+    @htmlinclude TOPP_ProSE.html
 */
 
 // We do not want this class to show up in the docu:
 /// @cond TOPPCLASSES
 
-class PeptideDataBaseSearchFI :
+class ProSE :
     public TOPPBase
 {
   public:
-    PeptideDataBaseSearchFI() :
-      TOPPBase("PeptideDataBaseSearchFI",
-        "Annotates bottom-up MS/MS spectra using PeptideDataBaseSearchFI.",
+    ProSE() :
+      TOPPBase("ProSE",
+        "Annotates bottom-up MS/MS spectra using ProSE.",
         false)
     {
     }
@@ -86,10 +92,14 @@ class PeptideDataBaseSearchFI :
       registerInputFile_("database", "<file>", "", "Input protein sequence database in FASTA format.");
       setValidFormats_("database", ListUtils::create<String>("fasta"));
 
-      registerOutputFileList_("out", "<files>", StringList(), "Output identification file(s). Must have the same number of entries as -in. Output format is auto-detected per file from the extension (.idXML or .parquet); a mix of formats within one run is allowed.");
-      setValidFormats_("out", ListUtils::create<String>("idXML,parquet"));
+      registerOutputFileList_("out_idxml", "<files>", StringList(), "Output idXML identification file(s). Must have the same number of entries as -in.", false);
+      setValidFormats_("out_idxml", ListUtils::create<String>("idXML"));
 
-      registerOutputFile_("out_merged", "<file>", "", "Optional merged output file containing all PSMs pooled across input files with cross-file protein inference (BasicProteinInferenceAlgorithm) and optional picked-protein FDR (FDR:protein). Per-file outputs (-out) retain run-level information. Only useful with multiple -in files.", false);
+      registerOutputDir_("out_qpx", "<dir>", "", "Output directory for QPX exchange format Parquet files. Writes per-input <basename>.psm.parquet and <basename>.pg.parquet, plus merged quantms.psm.parquet and quantms.pg.parquet.", false, true);
+
+      registerOutputDir_("out_parquet", "<dir>", "", "Output directory for OpenMS internal format Parquet files. Writes per-input <basename>.psm/proteins/pg/search_params.parquet, plus merged openms.* files.", false, true);
+
+      registerOutputFile_("out_merged", "<file>", "", "Optional merged output file containing all PSMs pooled across input files with cross-file protein inference (BasicProteinInferenceAlgorithm) and optional picked-protein FDR (FDR:protein). Per-file outputs (-out_idxml / -out_qpx / -out_parquet) retain run-level information. Only useful with multiple -in files.", false);
       setValidFormats_("out_merged", ListUtils::create<String>("idXML"));
 
       registerOutputDir_("out_mod_analysis_dir", "<dir>", "", "Optional directory to write modification-analysis tables (delta-mass, PTM stats) when running in open-search mode. When set, per-file tables are written using each input file's basename and an additional aggregate table is written across all input files. Has no effect in closed-search mode.", false, true);
@@ -104,7 +114,7 @@ class PeptideDataBaseSearchFI :
 
       // put search algorithm parameters at Search: subtree of parameters
       Param search_algo_params_with_subsection;
-      search_algo_params_with_subsection.insert("Search:", PeptideSearchEngineFIAlgorithm().getDefaults());
+      search_algo_params_with_subsection.insert("Search:", ProSEAlgorithm().getDefaults());
       registerFullParam_(search_algo_params_with_subsection);
     }
 
@@ -112,8 +122,10 @@ class PeptideDataBaseSearchFI :
     {
       const StringList in_list = getStringList_("in");
       const String database = getStringOption_("database");
-      const StringList out_list = getStringList_("out");
+      const StringList out_idxml_list = getStringList_("out_idxml");
       const String out_merged = getStringOption_("out_merged");
+      const String out_qpx_dir = getOutputDirOption("out_qpx");
+      const String out_parquet_dir = getOutputDirOption("out_parquet");
       // getOutputDirOption auto-creates the directory if it doesn't exist (and returns "" if unset).
       const String out_mod_analysis_dir = getOutputDirOption("out_mod_analysis_dir");
 
@@ -123,25 +135,34 @@ class PeptideDataBaseSearchFI :
         return ILLEGAL_PARAMETERS;
       }
 
-      if (in_list.size() != out_list.size())
+      // At least one output must be specified
+      if (out_idxml_list.empty() && out_qpx_dir.empty() && out_parquet_dir.empty())
       {
-        OPENMS_LOG_ERROR << "Number of output files (-out, " << out_list.size()
+        OPENMS_LOG_ERROR << "No output specified. Provide at least one of -out_idxml, -out_qpx, or -out_parquet." << endl;
+        return ILLEGAL_PARAMETERS;
+      }
+
+      // -out_idxml count must match -in count
+      if (!out_idxml_list.empty() && in_list.size() != out_idxml_list.size())
+      {
+        OPENMS_LOG_ERROR << "Number of output files (-out_idxml, " << out_idxml_list.size()
                          << ") must match number of input files (-in, " << in_list.size() << ")." << endl;
         return ILLEGAL_PARAMETERS;
       }
 
-      // Pre-flight validate every -out file extension before running the search,
-      // so the user learns about a typo (e.g. ".idxml" -> "idxml") before paying the
-      // index-build + search cost. registerOutputFileList_ does NOT validate per-entry
-      // formats at the CLI layer, so we have to do it here.
-      for (const String& out_file : out_list)
+      // Validate basenames are unique (for parquet directory output)
+      if (!out_qpx_dir.empty() || !out_parquet_dir.empty())
       {
-        const FileTypes::Type out_type = FileHandler::getTypeByFileName(out_file);
-        if (out_type != FileTypes::IDXML && out_type != FileTypes::PARQUET)
+        std::set<std::string> basenames;
+        for (const auto& in_file : in_list)
         {
-          OPENMS_LOG_ERROR << "Unsupported output format for '" << out_file
-                           << "' (expected .idXML or .parquet)." << endl;
-          return ILLEGAL_PARAMETERS;
+          std::string bn = File::stemName(in_file);
+          if (!basenames.insert(bn).second)
+          {
+            OPENMS_LOG_ERROR << "Duplicate input basename '" << bn
+                             << "'. Parquet directory output requires unique basenames." << endl;
+            return ILLEGAL_PARAMETERS;
+          }
         }
       }
 
@@ -156,25 +177,27 @@ class PeptideDataBaseSearchFI :
       // so protein inference uses Percolator q-values, not raw HyperScores.
       if (!percolator_executable.empty() && user_protein_fdr > 0.0)
       {
-        OPENMS_LOG_INFO << "[PDBS-FI] Percolator rescoring enabled: deferring protein FDR to post-rescoring." << endl;
+        OPENMS_LOG_INFO << "[ProSE] Percolator rescoring enabled: deferring protein FDR to post-rescoring." << endl;
         search_params.setValue("FDR:protein", 0.0);
       }
 
-      PeptideSearchEngineFIAlgorithm sse;
+      ProSEAlgorithm sse;
       sse.setParameters(search_params);
 
       // Determine open-search mode the same way the algorithm does, so we can give
       // the user actionable feedback if -out_mod_analysis_dir is set in closed-search.
-      const double precursor_tol = static_cast<double>(search_params.getValue("precursor:mass_tolerance"));
+      const double precursor_tol_lower = static_cast<double>(search_params.getValue("precursor:mass_tolerance_lower"));
+      const double precursor_tol_upper = static_cast<double>(search_params.getValue("precursor:mass_tolerance_upper"));
       const String precursor_tol_unit = search_params.getValue("precursor:mass_tolerance_unit").toString();
-      const bool open_search_mode = (precursor_tol_unit == "ppm")
-        ? (precursor_tol > 1000.0)
-        : (precursor_tol > 1.0);
+      const bool open_search_mode = FragmentIndex::isOpenSearchMode(precursor_tol_lower,
+                                                                    precursor_tol_upper,
+                                                                    precursor_tol_unit == "ppm");
 
       if (!out_mod_analysis_dir.empty() && !open_search_mode)
       {
         OPENMS_LOG_WARN << "-out_mod_analysis_dir was set but the search is in CLOSED-search mode "
-                        << "(precursor tolerance " << precursor_tol << " " << precursor_tol_unit
+                        << "(precursor tolerance [-" << precursor_tol_lower
+                        << ", +" << precursor_tol_upper << "] " << precursor_tol_unit
                         << "). Modification-analysis tables will NOT be written." << endl;
       }
 
@@ -221,7 +244,7 @@ class PeptideDataBaseSearchFI :
       }
 
       // Single-shot multi-file search: builds the fragment index once and iterates over -in.
-      PeptideSearchEngineFIAlgorithm::MultiFileSearchResult mfres =
+      ProSEAlgorithm::MultiFileSearchResult mfres =
         sse.searchWithModificationAnalysis(in_list, database, mod_analysis_base_names, aggregate_base_name);
 
       if (mfres.per_file.size() != in_list.size())
@@ -240,7 +263,7 @@ class PeptideDataBaseSearchFI :
         bool has_decoys_for_percolator = false;
         for (const auto& pf : mfres.per_file)
         {
-          if (pf.exit_code != PeptideSearchEngineFIAlgorithm::ExitCodes::EXECUTION_OK) continue;
+          if (pf.exit_code != ProSEAlgorithm::ExitCodes::EXECUTION_OK) continue;
           for (const auto& ph : pf.protein_ids[0].getHits())
           {
             if (ph.metaValueExists("target_decoy") && ph.getMetaValue("target_decoy").toString() == "decoy")
@@ -262,7 +285,7 @@ class PeptideDataBaseSearchFI :
         for (Size i = 0; i < in_list.size(); ++i)
         {
           auto& result = mfres.per_file[i];
-          if (result.exit_code != PeptideSearchEngineFIAlgorithm::ExitCodes::EXECUTION_OK) continue;
+          if (result.exit_code != ProSEAlgorithm::ExitCodes::EXECUTION_OK) continue;
           if (result.peptide_ids.size() < 100)
           {
             OPENMS_LOG_WARN << "Skipping Percolator rescoring for " << in_list[i]
@@ -286,7 +309,7 @@ class PeptideDataBaseSearchFI :
             "-weights", tmp_weights
           };
 
-          OPENMS_LOG_INFO << "[PDBS-FI] Rescoring " << in_list[i] << " with Percolator..." << endl;
+          OPENMS_LOG_INFO << "[ProSE] Rescoring " << in_list[i] << " with Percolator..." << endl;
           TOPPBase::ExitCodes perc_ec = runExternalProcess_(String("PercolatorAdapter"), perc_params);
 
           if (perc_ec != EXECUTION_OK)
@@ -311,7 +334,7 @@ class PeptideDataBaseSearchFI :
 
       // Write merged output: pool all per-file PSMs (possibly Percolator-rescored),
       // run cross-file protein inference + optional protein FDR, write to -out_merged.
-      // Per-file outputs (-out) are NOT modified — they retain run-level information.
+      // Per-file outputs (-out_idxml/-out_qpx/-out_parquet) are NOT modified — they retain run-level information.
       if (!out_merged.empty() && in_list.size() > 1)
       {
         const String decoy_prefix = search_params.getValue("decoy_prefix").toString();
@@ -320,7 +343,7 @@ class PeptideDataBaseSearchFI :
         IDMergerAlgorithm merger;
         for (const auto& pf : mfres.per_file)
         {
-          if (pf.exit_code != PeptideSearchEngineFIAlgorithm::ExitCodes::EXECUTION_OK) continue;
+          if (pf.exit_code != ProSEAlgorithm::ExitCodes::EXECUTION_OK) continue;
           merger.insertRuns(pf.protein_ids, pf.peptide_ids);
         }
         ProteinIdentification merged_proteins;
@@ -341,7 +364,7 @@ class PeptideDataBaseSearchFI :
           fdr.applyPickedProteinFDR(merged_protein_ids[0], decoy_prefix, true);
           IDFilter::filterHitsByScore(merged_protein_ids, user_protein_fdr);
 
-          OPENMS_LOG_INFO << "[PDBS-FI] Merged protein inference + FDR: "
+          OPENMS_LOG_INFO << "[ProSE] Merged protein inference + FDR: "
                           << merged_protein_ids[0].getHits().size() << " proteins at "
                           << user_protein_fdr * 100 << "% FDR" << endl;
         }
@@ -366,14 +389,17 @@ class PeptideDataBaseSearchFI :
       }
 
       // Write per-file outputs and track failures.
+      // Accumulate Arrow tables for merged parquet output.
+      std::vector<std::shared_ptr<arrow::Table>> qpx_psm_tables, qpx_pg_tables;
+      std::vector<std::shared_ptr<arrow::Table>> oms_psm_tables, oms_prot_tables, oms_pg_tables, oms_sp_tables;
+
       Size failed_count = 0;
       for (Size i = 0; i < in_list.size(); ++i)
       {
         const String& in_file = in_list[i];
-        const String& out_file = out_list[i];
-        PeptideSearchEngineFIAlgorithm::SearchResult& result = mfres.per_file[i];
+        ProSEAlgorithm::SearchResult& result = mfres.per_file[i];
 
-        if (result.exit_code != PeptideSearchEngineFIAlgorithm::ExitCodes::EXECUTION_OK)
+        if (result.exit_code != ProSEAlgorithm::ExitCodes::EXECUTION_OK)
         {
           OPENMS_LOG_ERROR << "Search failed for " << in_file
                            << " (algorithm exit code " << static_cast<int>(result.exit_code) << "). Skipping output." << endl;
@@ -381,33 +407,173 @@ class PeptideDataBaseSearchFI :
           continue;
         }
 
+        const String basename = File::stemName(in_file);
+
         // In test mode, replace the absolute MS run path with file://<basename> for reproducible diffs.
         if (getFlag_("test") && !result.protein_ids.empty())
         {
           result.protein_ids[0].setPrimaryMSRunPath({"file://" + File::basename(in_file)});
         }
 
-        // Dispatch on output extension (already validated above to be IDXML or PARQUET).
-        const FileTypes::Type out_type = FileHandler::getTypeByFileName(out_file);
-        if (out_type == FileTypes::IDXML)
+        // Output modes are independent: a failure in one mode must not skip the
+        // sibling modes for the same input. Each mode contributes at most one
+        // failure to input_failed; the input counts as failed if any mode failed.
+        bool input_failed = false;
+
+        // -- idXML output --
+        if (!out_idxml_list.empty())
         {
-          FileHandler().storeIdentifications(out_file, result.protein_ids, result.peptide_ids, {FileTypes::IDXML});
-        }
-        else // FileTypes::PARQUET
-        {
-          if (!QPXFile::exportToParquet(result.protein_ids, result.peptide_ids, out_file, /*export_all_psms=*/false))
+          try
           {
-            OPENMS_LOG_ERROR << "Failed to write parquet output for " << in_file << " -> " << out_file << endl;
-            ++failed_count;
-            continue;
+            FileHandler().storeIdentifications(out_idxml_list[i], result.protein_ids, result.peptide_ids, {FileTypes::IDXML});
+          }
+          catch (const Exception::BaseException& e)
+          {
+            OPENMS_LOG_ERROR << "Failed to write idXML output for " << in_file
+                             << " -> " << out_idxml_list[i] << ": " << e.what() << endl;
+            input_failed = true;
           }
         }
+
+        // -- QPX directory output --
+        if (!out_qpx_dir.empty())
+        {
+          // PSM — build table once, write to file, accumulate same table for merge.
+          const String qpx_psm_file = out_qpx_dir + "/" + basename + ".psm.parquet";
+          auto qpx_psm_table = QPXFile::exportPSMsToQPXArrow(result.protein_ids, result.peptide_ids, /*export_all_psms=*/false);
+          if (qpx_psm_table)
+          {
+            qpx_psm_tables.push_back(qpx_psm_table);
+            if (!QPXFile::exportToParquet(qpx_psm_table, qpx_psm_file))
+            {
+              OPENMS_LOG_ERROR << "Failed to write QPX PSM parquet for " << in_file << " -> " << qpx_psm_file << endl;
+              input_failed = true;
+            }
+          }
+          else
+          {
+            OPENMS_LOG_WARN << "QPX PSM table build returned null for " << in_file << " — skipping " << qpx_psm_file << endl;
+          }
+
+          // Protein groups — independent of PSM result.
+          const String qpx_pg_file = out_qpx_dir + "/" + basename + ".pg.parquet";
+          auto qpx_pg_table = ProteinGroupArrowExport::exportToArrow(result.protein_ids, result.peptide_ids);
+          if (qpx_pg_table)
+          {
+            qpx_pg_tables.push_back(qpx_pg_table);
+            if (!ProteinGroupArrowExport::exportToParquet(qpx_pg_table, qpx_pg_file))
+            {
+              OPENMS_LOG_ERROR << "Failed to write QPX PG parquet for " << in_file << " -> " << qpx_pg_file << endl;
+              input_failed = true;
+            }
+          }
+          else
+          {
+            OPENMS_LOG_WARN << "QPX PG table build returned null for " << in_file << " — skipping " << qpx_pg_file << endl;
+          }
+        }
+
+        // -- OpenMS internal directory output --
+        if (!out_parquet_dir.empty())
+        {
+          // PSM (internal PSMSchema) — build once, write, accumulate for merge.
+          const String oms_psm_file = out_parquet_dir + "/" + basename + ".psm.parquet";
+          auto oms_psm_table = QPXFile::exportToArrow(result.protein_ids, result.peptide_ids, /*export_all_psms=*/false);
+          if (oms_psm_table)
+          {
+            oms_psm_tables.push_back(oms_psm_table);
+            if (!ArrowIOHelpers::writeTableToParquet(oms_psm_table, oms_psm_file))
+            {
+              OPENMS_LOG_ERROR << "Failed to write internal PSM parquet for " << in_file << " -> " << oms_psm_file << endl;
+              input_failed = true;
+            }
+          }
+          else
+          {
+            OPENMS_LOG_WARN << "Internal PSM table build returned null for " << in_file << " — skipping " << oms_psm_file << endl;
+          }
+
+          // Proteins
+          const String oms_prot_file = out_parquet_dir + "/" + basename + ".proteins.parquet";
+          auto prot_table = ProteinIdentificationArrowIO::exportProteinsToArrow(result.protein_ids);
+          if (prot_table)
+          {
+            oms_prot_tables.push_back(prot_table);
+            if (!ProteinIdentificationArrowIO::exportProteinsToParquet(result.protein_ids, oms_prot_file))
+            {
+              OPENMS_LOG_ERROR << "Failed to write proteins parquet for " << in_file << " -> " << oms_prot_file << endl;
+              input_failed = true;
+            }
+          }
+          else
+          {
+            OPENMS_LOG_WARN << "Proteins table build returned null for " << in_file << " — skipping " << oms_prot_file << endl;
+          }
+
+          // Protein groups
+          const String oms_pg_file = out_parquet_dir + "/" + basename + ".pg.parquet";
+          auto pg_table = ProteinIdentificationArrowIO::exportProteinGroupsToArrow(result.protein_ids);
+          if (pg_table)
+          {
+            oms_pg_tables.push_back(pg_table);
+            if (!ProteinIdentificationArrowIO::exportProteinGroupsToParquet(result.protein_ids, oms_pg_file))
+            {
+              OPENMS_LOG_ERROR << "Failed to write protein groups parquet for " << in_file << " -> " << oms_pg_file << endl;
+              input_failed = true;
+            }
+          }
+          else
+          {
+            OPENMS_LOG_WARN << "Protein groups table build returned null for " << in_file << " — skipping " << oms_pg_file << endl;
+          }
+
+          // Search params
+          const String oms_sp_file = out_parquet_dir + "/" + basename + ".search_params.parquet";
+          auto sp_table = ProteinIdentificationArrowIO::exportSearchParamsToArrow(result.protein_ids);
+          if (sp_table)
+          {
+            oms_sp_tables.push_back(sp_table);
+            if (!ProteinIdentificationArrowIO::exportSearchParamsToParquet(result.protein_ids, oms_sp_file))
+            {
+              OPENMS_LOG_ERROR << "Failed to write search params parquet for " << in_file << " -> " << oms_sp_file << endl;
+              input_failed = true;
+            }
+          }
+          else
+          {
+            OPENMS_LOG_WARN << "Search params table build returned null for " << in_file << " — skipping " << oms_sp_file << endl;
+          }
+        }
+
+        if (input_failed) { ++failed_count; }
+      }
+
+      // -- Write merged Parquet files --
+      // Always write merged files (even for single input — provides a canonical name).
+      bool merged_ok = true;
+      if (!out_qpx_dir.empty())
+      {
+        merged_ok = ArrowIOHelpers::concatenateAndWriteToParquet(qpx_psm_tables, out_qpx_dir + "/quantms.psm.parquet") && merged_ok;
+        merged_ok = ArrowIOHelpers::concatenateAndWriteToParquet(qpx_pg_tables,  out_qpx_dir + "/quantms.pg.parquet")  && merged_ok;
+      }
+
+      if (!out_parquet_dir.empty())
+      {
+        merged_ok = ArrowIOHelpers::concatenateAndWriteToParquet(oms_psm_tables,  out_parquet_dir + "/openms.psm.parquet")           && merged_ok;
+        merged_ok = ArrowIOHelpers::concatenateAndWriteToParquet(oms_prot_tables, out_parquet_dir + "/openms.proteins.parquet")      && merged_ok;
+        merged_ok = ArrowIOHelpers::concatenateAndWriteToParquet(oms_pg_tables,   out_parquet_dir + "/openms.pg.parquet")            && merged_ok;
+        merged_ok = ArrowIOHelpers::concatenateAndWriteToParquet(oms_sp_tables,   out_parquet_dir + "/openms.search_params.parquet") && merged_ok;
       }
 
       if (failed_count > 0)
       {
-        OPENMS_LOG_ERROR << "PeptideDataBaseSearchFI finished with " << failed_count
+        OPENMS_LOG_ERROR << "ProSE finished with " << failed_count
                          << " file(s) failing out of " << in_list.size() << "." << endl;
+        return INTERNAL_ERROR;
+      }
+      if (!merged_ok)
+      {
+        OPENMS_LOG_ERROR << "ProSE failed to write one or more merged Parquet files." << endl;
         return INTERNAL_ERROR;
       }
       return EXECUTION_OK;
@@ -416,7 +582,7 @@ class PeptideDataBaseSearchFI :
 
 int main(int argc, const char** argv)
 {
-  PeptideDataBaseSearchFI tool;
+  ProSE tool;
   return tool.main(argc, argv);
 }
 
