@@ -510,6 +510,16 @@ namespace OpenMS
       rdbuf()->stream_list_.clear();
     }
 
+    bool LogStream::hasStreams() const
+    {
+      if (!bound_())
+      {
+        return false;
+      }
+      LogStream* non_const_this = const_cast<LogStream*>(this);
+      return !non_const_this->rdbuf()->stream_list_.empty();
+    }
+
     void LogStream::insertNotification(std::ostream & s, LogStreamNotifier & target)
     {
       if (!bound_())

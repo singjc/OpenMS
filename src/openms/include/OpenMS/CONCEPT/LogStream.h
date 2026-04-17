@@ -438,6 +438,9 @@ public:
         flushed before streams are reconfigured globally.
       */
       void flushIncomplete();
+
+      /// Returns whether this log stream currently has output streams attached.
+      bool hasStreams() const;
       //@}
 private:
 
@@ -556,11 +559,13 @@ private:
 
   /// Macro for debug information - includes file and line info
 #define OPENMS_LOG_DEBUG \
-  OpenMS::getThreadLocalLogDebug() << past_last_slash(__FILE__) << "(" << __LINE__ << "): "
+  for (bool openms_log_debug_once = OpenMS::getGlobalLogDebug().hasStreams(); openms_log_debug_once; openms_log_debug_once = false) \
+    OpenMS::getThreadLocalLogDebug() << past_last_slash(__FILE__) << "(" << __LINE__ << "): "
 
   /// Macro for debug information (without file info)
 #define OPENMS_LOG_DEBUG_NOFILE \
-  OpenMS::getThreadLocalLogDebug()
+  for (bool openms_log_debug_once = OpenMS::getGlobalLogDebug().hasStreams(); openms_log_debug_once; openms_log_debug_once = false) \
+    OpenMS::getThreadLocalLogDebug()
 
   /**
     @name Global LogStream accessor functions
