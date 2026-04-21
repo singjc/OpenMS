@@ -67,6 +67,11 @@ namespace OpenMS
 
     defaults_.insert("auto_irt:prefilter:", TransitionListEvidenceFilter().getDefaults());
     
+    // Customize iRT prefiltering: enable with MS2-only evidence and higher fragment hit threshold
+    defaults_.setValue("auto_irt:prefilter:enabled", "true", "Enable raw-data evidence prefiltering for sampled iRT peptides.");
+    defaults_.setValue("auto_irt:prefilter:evidence_sources", "ms2", "Evidence source for iRT prefiltering: use MS2 fragments only (more stringent than hybrid).");
+    defaults_.setValue("auto_irt:prefilter:ms2_min_fragment_hits", 6, "Minimum fragment hits for iRT prefiltering (higher threshold ensures robust iRT peptides).");
+    
     // Static iRT file parameters
     defaults_.setValue("files:linear_irt_file", "", "Path(s) to linear iRT transition file(s) (TraML, TSV, or PQP). Accepts a string of a single file path or multiple file paths (space-separated, 'run1_irt.pqp run2_irt.pqp ... runN_irt.pqp') for run-specific mapping (positional: nth entry -> nth run).");
     defaults_.setValue("files:nonlinear_irt_file", "", "Path(s) to nonlinear iRT transition file(s) (TraML, TSV, or PQP). Accepts a string of a single file path or multiple file paths (space-separated, 'run1_irt.pqp run2_irt.pqp ... runN_irt.pqp') for run-specific mapping (positional: nth entry -> nth run). Entries may be empty to indicate no nonlinear iRT for that run.");
