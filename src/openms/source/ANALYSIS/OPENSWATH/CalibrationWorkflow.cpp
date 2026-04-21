@@ -50,7 +50,7 @@ namespace OpenMS
     defaults_.setMinInt("auto_irt:irt_bins_nonlinear", 1);
     defaults_.setMaxInt("auto_irt:irt_bins_nonlinear", 10000);
     
-    defaults_.setValue("auto_irt:irt_peptides_per_bin_nonlinear", 50, "Peptides sampled per bin for nonlinear iRT (0 = skip nonlinear)");
+    defaults_.setValue("auto_irt:irt_peptides_per_bin_nonlinear", 0, "Peptides sampled per bin for nonlinear iRT (0 = skip nonlinear)");
     defaults_.setMinInt("auto_irt:irt_peptides_per_bin_nonlinear", 0);
     // defaults_.setMaxInt("auto_irt:irt_peptides_per_bin_nonlinear", 10000);
     
@@ -76,7 +76,7 @@ namespace OpenMS
     defaults_.setValidStrings("linear:outlier_detection", {"iter_residual", "iter_jackknife", "ransac", "none"});
       
     // Nonlinear calibration parameters
-    defaults_.setValue("nonlinear:outlier_detection", "iter_residual", "Which outlier detection method to use for nonlinear calibration (valid: 'iter_residual', 'iter_jackknife', 'ransac', 'none'). Iterative methods remove one outlier at a time. Jackknife approach optimizes for maximum r-squared improvement while 'iter_residual' removes the datapoint with the largest residual error (removal by residual is computationally cheaper, use this with lots of peptides).");
+    defaults_.setValue("nonlinear:outlier_detection", "none", "Which outlier detection method to use for nonlinear calibration (valid: 'iter_residual', 'iter_jackknife', 'ransac', 'none'). Iterative methods remove one outlier at a time. Jackknife approach optimizes for maximum r-squared improvement while 'iter_residual' removes the datapoint with the largest residual error (removal by residual is computationally cheaper, use this with lots of peptides).");
     defaults_.setValidStrings("nonlinear:outlier_detection", {"iter_residual", "iter_jackknife", "ransac", "none"});
     
     // Window estimation parameters
@@ -89,12 +89,12 @@ namespace OpenMS
     defaults_.setValue("windows:estimate_im", "true", "Estimate ion mobility extraction windows from calibration");
     defaults_.setValidStrings("windows:estimate_im", {"true", "false"});
     
-    defaults_.setValue("windows:rt_percentile", 95.0, "Percentile for RT window estimation (25.0-99.9)");
+    defaults_.setValue("windows:rt_percentile", 75.0, "Percentile for RT window estimation (25.0-99.9)");
     defaults_.setMinFloat("windows:rt_percentile", 25.0);
     defaults_.setMaxFloat("windows:rt_percentile", 99.9);
     
     // Window padding factors
-    defaults_.setValue("windows:rt_estimation_padding_factor", 1.3, "A padding factor to multiply the estimated RT window by. For example, a factor of 1.3 will add a 30% padding to the estimated RT window, so if the estimated RT window is 144, then 43 will be added for a total estimated RT window of 187 seconds. A factor of 1.0 will not add any padding to the estimated window.");
+    defaults_.setValue("windows:rt_estimation_padding_factor", 1.0, "A padding factor to multiply the estimated RT window by. For example, a factor of 1.3 will add a 30% padding to the estimated RT window, so if the estimated RT window is 144, then 43 will be added for a total estimated RT window of 187 seconds. A factor of 1.0 will not add any padding to the estimated window.");
     defaults_.setMinFloat("windows:rt_estimation_padding_factor", 1.0);
     
     // Quality control parameters
