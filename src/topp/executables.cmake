@@ -146,6 +146,7 @@ if(NOT DISABLE_OPENSWATH)
     TargetedFileConverter
     OpenSwathDIAPreScoring
     OpenSwathMzMLFileCacher
+    TransitionListEvidenceFilter
     OpenSwathWorkflow
     OpenSwathFileSplitter
     OpenSwathRewriteToFeatureXML
