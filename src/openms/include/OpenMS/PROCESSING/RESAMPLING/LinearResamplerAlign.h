@@ -413,12 +413,12 @@ protected:
         ++it;
       }
 
-      if (spacing_ < min_dist && !suppress_resampling_spacing_warning.load())
-      {
-        OPENMS_LOG_WARN << "Resampling spacing (" << spacing_
-                        << ") is smaller than the smallest distance between data points ("
-                        << min_dist << "). This approximates the detector dead time and may produce spurious peaks.\n";
-      }
+      // if (spacing_ < min_dist && !suppress_resampling_spacing_warning.load())
+      // {
+      //   OPENMS_LOG_WARN << "Resampling spacing (" << spacing_
+      //                   << ") is smaller than the smallest distance between data points ("
+      //                   << min_dist << "). This approximates the detector dead time and may produce spurious peaks.\n";
+      // }
     }
 
   };
