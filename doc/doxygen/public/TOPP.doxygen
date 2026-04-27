@@ -158,6 +158,7 @@
   - @subpage TOPP_OpenSwathConfidenceScoring - Computes confidence scores for OpenSwath results.
   - @subpage TOPP_OpenSwathDecoyGenerator - Generates decoys according to different models for a specific TraML.
   - @subpage TOPP_OpenSwathDIAPreScoring - SWATH (data-independent acquisition) pre-scoring.
+  - @subpage TOPP_FastaEvidenceFilter - Filters a FASTA database by staged DIA raw-data evidence.
   - @subpage TOPP_OpenSwathFeatureXMLToTSV - Converts a featureXML to a tsv.
   - @subpage TOPP_OpenSwathFileSplitter - Splitting a single SWATH / DIA file into a set of files, each containing one SWATH window.
   - @subpage TOPP_OpenSwathMzMLFileCacher - Caching of large mzML files.

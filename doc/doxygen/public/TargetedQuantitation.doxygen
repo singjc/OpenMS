@@ -355,6 +355,7 @@
 
   The following TOPP tools utilize these algorithms:
 
+  - @ref TOPP_FastaEvidenceFilter - FASTA prefiltering by staged DIA evidence
   - @ref TOPP_MRMTransitionGroupPicker - Peak picking in MRM chromatograms
   - @ref TOPP_OpenSwathWorkflow - Complete OpenSWATH/DIA analysis pipeline
 
