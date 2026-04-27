@@ -1055,6 +1055,7 @@ namespace OpenMS
 
   void FragmentIndex::build(const std::vector<FASTAFile::FASTAEntry>& fasta_entries)
   {
+      clear();
       protein_lengths_.clear();
       protein_lengths_.reserve(fasta_entries.size());
       for (const auto& e : fasta_entries)
@@ -1285,6 +1286,18 @@ namespace OpenMS
       std::sort( bucket_min_mz_.begin(), bucket_min_mz_.end());
       is_build_ = true;
       OPENMS_LOG_INFO << "Fragment index built!" << endl;
+  }
+
+  void FragmentIndex::buildPeptidesOnly(const std::vector<FASTAFile::FASTAEntry>& fasta_entries)
+  {
+      clear();
+      protein_lengths_.reserve(fasta_entries.size());
+      for (const auto& e : fasta_entries)
+      {
+        protein_lengths_.push_back(static_cast<uint32_t>(e.sequence.size()));
+      }
+
+      generatePeptides(fasta_entries);
   }
 
   std::pair<size_t, size_t> FragmentIndex::getPeptidesInMassWindow(float precursor_mass,

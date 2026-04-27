@@ -187,6 +187,19 @@ namespace OpenMS
      */
     void build(const std::vector<FASTAFile::FASTAEntry> & fasta_entries);
 
+    /** @brief Enumerate peptides and modification states without building fragment buckets.
+     *
+     * This populates the internal peptide list and initializes the modification
+     * tables needed by reconstructModifiedSequence(), but deliberately skips
+     * fragment generation, fragment sorting, and bucket construction.
+     *
+     * Use this when callers only need peptide enumeration/reconstruction and do
+     * not intend to run querySpectrum() on the same FragmentIndex instance.
+     *
+     * @param[in] fasta_entries The FASTA entries used to enumerate peptides.
+     */
+    void buildPeptidesOnly(const std::vector<FASTAFile::FASTAEntry>& fasta_entries);
+
     /** @brief Delete fragment index. Sets is_build=false*/
     void clear();
 
