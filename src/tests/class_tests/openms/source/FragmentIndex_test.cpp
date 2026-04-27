@@ -386,6 +386,39 @@ START_SECTION(clear())
 }
 END_SECTION
 
+START_SECTION(buildPeptidesOnly())
+{
+  const std::vector<FASTAFile::FASTAEntry> entries0 {{"t", "t", "ARGEPADSSRKDFDMDMDM"}, {"t2", "t2", "HALLORTSCHSM"}};
+
+  FragmentIndex_test full_build;
+  auto params = full_build.getParameters();
+  params.setValue("enzyme", "Trypsin");
+  params.setValue("peptide:missed_cleavages", 0);
+  params.setValue("peptide:min_mass", 0);
+  params.setValue("peptide:min_size", 6);
+  params.setValue("peptide:max_mass", 5000);
+  params.setValue("modifications:variable", std::vector<std::string>{"Oxidation (M)"});
+  params.setValue("modifications:fixed", std::vector<std::string>{"Carbamidomethyl (C)"});
+  full_build.setParameters(params);
+  full_build.build(entries0);
+
+  FragmentIndex_test peptides_only;
+  peptides_only.setParameters(params);
+  peptides_only.buildPeptidesOnly(entries0);
+
+  TEST_EQUAL(peptides_only.isBuild(), false)
+  TEST_EQUAL(peptides_only.getPeptides().size(), full_build.getPeptides().size())
+  TEST_TRUE(peptides_only.testDigestion(full_build.getPeptides()))
+  TEST_TRUE(peptides_only.peptidesSorted())
+  TEST_TRUE(peptides_only.getFragments().empty())
+
+  for (const auto& pep : peptides_only.getPeptides())
+  {
+    TEST_TRUE(!peptides_only.reconstructModifiedSequence(pep, entries0).toString().empty())
+  }
+}
+END_SECTION
+
 
 ////TEST Different Charges of the query Spectrum ////
 // For each charge (1..4), a peptide's own theoretical spectrum should self-hit,
