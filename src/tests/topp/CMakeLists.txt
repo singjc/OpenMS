@@ -1560,6 +1560,134 @@ ${TOPP_BIN_PATH}/OpenSwathDecoyGenerator -test -in ${DATA_DIR_TOPP}/OpenSwathDec
     -Algorithm:min_supported_precursors 1
     -test)
 
+  set(FASTA_EVIDENCE_FILTER_COMMON
+    -database ${DATA_DIR_TOPP}/FastaEvidenceFilter_input.fasta
+    -mz_extraction_window_ms1 10000
+    -mz_extraction_window_ms1_unit Th
+    -mz_extraction_window_ms2 10000
+    -mz_extraction_window_ms2_unit Th
+    -Stage1:evidence_sources hybrid
+    -Stage1:ms2_min_fragment_hits 1
+    -Stage1:min_supported_precursors 1
+    -Stage2:mode raw_score
+    -Stage2:decoys false
+    -Stage2:min_matched_ions 100
+    -SearchSpace:missed_cleavages 0
+    -SearchSpace:min_size 7
+    -SearchSpace:max_size 7
+    -SearchSpace:precursor:min_charge 2
+    -SearchSpace:precursor:max_charge 2
+    -SearchSpace:fragment:min_charge 1
+    -SearchSpace:fragment:max_charge 1
+    -SearchSpace:fragment:max_per_precursor 4
+    -test)
+
+  add_test("TOPP_FastaEvidenceFilter_test_1" ${TOPP_BIN_PATH}/FastaEvidenceFilter
+    -in ${DATA_DIR_TOPP}/OpenSwathWorkflow_1_input.mzML
+    -out_fasta ${TESTS_TEMP_DIR}/FastaEvidenceFilter_test_1.tmp.fasta
+    -out_peptides ${TESTS_TEMP_DIR}/FastaEvidenceFilter_test_1.tmp.tsv
+    ${FASTA_EVIDENCE_FILTER_COMMON})
+  add_test("TOPP_FastaEvidenceFilter_test_1_out1" ${DIFF}
+    -in1 ${TESTS_TEMP_DIR}/FastaEvidenceFilter_test_1.tmp.fasta
+    -in2 ${DATA_DIR_TOPP}/degenerate_cases/empty.fasta)
+  add_test("TOPP_FastaEvidenceFilter_test_1_out2" ${DIFF}
+    -in1 ${TESTS_TEMP_DIR}/FastaEvidenceFilter_test_1.tmp.tsv
+    -in2 ${DATA_DIR_TOPP}/FastaEvidenceFilter_empty.tsv)
+  set_tests_properties("TOPP_FastaEvidenceFilter_test_1_out1" PROPERTIES DEPENDS "TOPP_FastaEvidenceFilter_test_1")
+  set_tests_properties("TOPP_FastaEvidenceFilter_test_1_out2" PROPERTIES DEPENDS "TOPP_FastaEvidenceFilter_test_1")
+
+  add_test("TOPP_FastaEvidenceFilter_test_2_any" ${TOPP_BIN_PATH}/FastaEvidenceFilter
+    -in ${DATA_DIR_TOPP}/OpenSwathWorkflow_1_input.mzML ${DATA_DIR_TOPP}/OpenSwathWorkflow_1_input.mzML
+    -aggregation_method any
+    -out_fasta ${TESTS_TEMP_DIR}/FastaEvidenceFilter_test_2.tmp.fasta
+    -out_peptides ${TESTS_TEMP_DIR}/FastaEvidenceFilter_test_2.tmp.tsv
+    ${FASTA_EVIDENCE_FILTER_COMMON})
+  add_test("TOPP_FastaEvidenceFilter_test_2_out1" ${DIFF}
+    -in1 ${TESTS_TEMP_DIR}/FastaEvidenceFilter_test_2.tmp.fasta
+    -in2 ${DATA_DIR_TOPP}/degenerate_cases/empty.fasta)
+  add_test("TOPP_FastaEvidenceFilter_test_2_out2" ${DIFF}
+    -in1 ${TESTS_TEMP_DIR}/FastaEvidenceFilter_test_2.tmp.tsv
+    -in2 ${DATA_DIR_TOPP}/FastaEvidenceFilter_empty.tsv)
+  set_tests_properties("TOPP_FastaEvidenceFilter_test_2_out1" PROPERTIES DEPENDS "TOPP_FastaEvidenceFilter_test_2_any")
+  set_tests_properties("TOPP_FastaEvidenceFilter_test_2_out2" PROPERTIES DEPENDS "TOPP_FastaEvidenceFilter_test_2_any")
+
+  add_test("TOPP_FastaEvidenceFilter_test_3_all" ${TOPP_BIN_PATH}/FastaEvidenceFilter
+    -in ${DATA_DIR_TOPP}/OpenSwathWorkflow_1_input.mzML ${DATA_DIR_TOPP}/OpenSwathWorkflow_1_input.mzML
+    -aggregation_method all
+    -out_fasta ${TESTS_TEMP_DIR}/FastaEvidenceFilter_test_3.tmp.fasta
+    -out_peptides ${TESTS_TEMP_DIR}/FastaEvidenceFilter_test_3.tmp.tsv
+    ${FASTA_EVIDENCE_FILTER_COMMON})
+  add_test("TOPP_FastaEvidenceFilter_test_3_out1" ${DIFF}
+    -in1 ${TESTS_TEMP_DIR}/FastaEvidenceFilter_test_3.tmp.fasta
+    -in2 ${DATA_DIR_TOPP}/degenerate_cases/empty.fasta)
+  add_test("TOPP_FastaEvidenceFilter_test_3_out2" ${DIFF}
+    -in1 ${TESTS_TEMP_DIR}/FastaEvidenceFilter_test_3.tmp.tsv
+    -in2 ${DATA_DIR_TOPP}/FastaEvidenceFilter_empty.tsv)
+  set_tests_properties("TOPP_FastaEvidenceFilter_test_3_out1" PROPERTIES DEPENDS "TOPP_FastaEvidenceFilter_test_3_all")
+  set_tests_properties("TOPP_FastaEvidenceFilter_test_3_out2" PROPERTIES DEPENDS "TOPP_FastaEvidenceFilter_test_3_all")
+
+  add_test("TOPP_FastaEvidenceFilter_test_4_split" ${TOPP_BIN_PATH}/FastaEvidenceFilter
+    -in ${TESTS_TEMP_DIR}/OpenSwathWorkflow_1_input_ms1.mzML ${TESTS_TEMP_DIR}/OpenSwathWorkflow_1_input_0.mzML ${TESTS_TEMP_DIR}/OpenSwathWorkflow_1_input_1.mzML ${TESTS_TEMP_DIR}/OpenSwathWorkflow_1_input_2.mzML ${TESTS_TEMP_DIR}/OpenSwathWorkflow_1_input_3.mzML ${TESTS_TEMP_DIR}/OpenSwathWorkflow_1_input_4.mzML
+    -split_file_input
+    -out_fasta ${TESTS_TEMP_DIR}/FastaEvidenceFilter_test_4.tmp.fasta
+    -out_peptides ${TESTS_TEMP_DIR}/FastaEvidenceFilter_test_4.tmp.tsv
+    ${FASTA_EVIDENCE_FILTER_COMMON})
+  add_test("TOPP_FastaEvidenceFilter_test_4_out1" ${DIFF}
+    -in1 ${TESTS_TEMP_DIR}/FastaEvidenceFilter_test_4.tmp.fasta
+    -in2 ${DATA_DIR_TOPP}/degenerate_cases/empty.fasta)
+  add_test("TOPP_FastaEvidenceFilter_test_4_out2" ${DIFF}
+    -in1 ${TESTS_TEMP_DIR}/FastaEvidenceFilter_test_4.tmp.tsv
+    -in2 ${DATA_DIR_TOPP}/FastaEvidenceFilter_empty.tsv)
+  set_tests_properties("TOPP_FastaEvidenceFilter_test_4_split" PROPERTIES DEPENDS "TOPP_OpenSwathFileSplitter_1")
+  set_tests_properties("TOPP_FastaEvidenceFilter_test_4_out1" PROPERTIES DEPENDS "TOPP_FastaEvidenceFilter_test_4_split")
+  set_tests_properties("TOPP_FastaEvidenceFilter_test_4_out2" PROPERTIES DEPENDS "TOPP_FastaEvidenceFilter_test_4_split")
+
+  add_test("TOPP_FastaEvidenceFilter_test_5_pasef" ${TOPP_BIN_PATH}/FastaEvidenceFilter
+    -in ${DATA_DIR_TOPP}/OpenSwathWorkflow_23_input.mzML
+    -pasef
+    -out_fasta ${TESTS_TEMP_DIR}/FastaEvidenceFilter_test_5.tmp.fasta
+    -out_peptides ${TESTS_TEMP_DIR}/FastaEvidenceFilter_test_5.tmp.tsv
+    ${FASTA_EVIDENCE_FILTER_COMMON})
+  add_test("TOPP_FastaEvidenceFilter_test_5_out1" ${DIFF}
+    -in1 ${TESTS_TEMP_DIR}/FastaEvidenceFilter_test_5.tmp.fasta
+    -in2 ${DATA_DIR_TOPP}/degenerate_cases/empty.fasta)
+  add_test("TOPP_FastaEvidenceFilter_test_5_out2" ${DIFF}
+    -in1 ${TESTS_TEMP_DIR}/FastaEvidenceFilter_test_5.tmp.tsv
+    -in2 ${DATA_DIR_TOPP}/FastaEvidenceFilter_empty.tsv)
+  set_tests_properties("TOPP_FastaEvidenceFilter_test_5_out1" PROPERTIES DEPENDS "TOPP_FastaEvidenceFilter_test_5_pasef")
+  set_tests_properties("TOPP_FastaEvidenceFilter_test_5_out2" PROPERTIES DEPENDS "TOPP_FastaEvidenceFilter_test_5_pasef")
+
+  add_test("TOPP_FastaEvidenceFilter_test_6_export_fragments" ${TOPP_BIN_PATH}/FastaEvidenceFilter
+    -in ${DATA_DIR_TOPP}/OpenSwathWorkflow_1_input.mzML
+    -Export:export_fragments true
+    -out_fasta ${TESTS_TEMP_DIR}/FastaEvidenceFilter_test_6.tmp.fasta
+    -out_peptides ${TESTS_TEMP_DIR}/FastaEvidenceFilter_test_6.tmp.tsv
+    ${FASTA_EVIDENCE_FILTER_COMMON})
+  add_test("TOPP_FastaEvidenceFilter_test_6_out1" ${DIFF}
+    -in1 ${TESTS_TEMP_DIR}/FastaEvidenceFilter_test_6.tmp.fasta
+    -in2 ${DATA_DIR_TOPP}/degenerate_cases/empty.fasta)
+  add_test("TOPP_FastaEvidenceFilter_test_6_out2" ${DIFF}
+    -in1 ${TESTS_TEMP_DIR}/FastaEvidenceFilter_test_6.tmp.tsv
+    -in2 ${DATA_DIR_TOPP}/FastaEvidenceFilter_empty.tsv)
+  set_tests_properties("TOPP_FastaEvidenceFilter_test_6_out1" PROPERTIES DEPENDS "TOPP_FastaEvidenceFilter_test_6_export_fragments")
+  set_tests_properties("TOPP_FastaEvidenceFilter_test_6_out2" PROPERTIES DEPENDS "TOPP_FastaEvidenceFilter_test_6_export_fragments")
+
+  add_test("TOPP_FastaEvidenceFilter_test_7_cache" ${TOPP_BIN_PATH}/FastaEvidenceFilter
+    -in ${DATA_DIR_TOPP}/OpenSwathWorkflow_1_input.mzML
+    -readOptions cache
+    -threads 2
+    -out_fasta ${TESTS_TEMP_DIR}/FastaEvidenceFilter_test_7.tmp.fasta
+    -out_peptides ${TESTS_TEMP_DIR}/FastaEvidenceFilter_test_7.tmp.tsv
+    ${FASTA_EVIDENCE_FILTER_COMMON})
+  add_test("TOPP_FastaEvidenceFilter_test_7_out1" ${DIFF}
+    -in1 ${TESTS_TEMP_DIR}/FastaEvidenceFilter_test_7.tmp.fasta
+    -in2 ${DATA_DIR_TOPP}/degenerate_cases/empty.fasta)
+  add_test("TOPP_FastaEvidenceFilter_test_7_out2" ${DIFF}
+    -in1 ${TESTS_TEMP_DIR}/FastaEvidenceFilter_test_7.tmp.tsv
+    -in2 ${DATA_DIR_TOPP}/FastaEvidenceFilter_empty.tsv)
+  set_tests_properties("TOPP_FastaEvidenceFilter_test_7_out1" PROPERTIES DEPENDS "TOPP_FastaEvidenceFilter_test_7_cache")
+  set_tests_properties("TOPP_FastaEvidenceFilter_test_7_out2" PROPERTIES DEPENDS "TOPP_FastaEvidenceFilter_test_7_cache")
+
   add_test("TOPP_OpenSwathChromatogramExtractor_test_1" ${TOPP_BIN_PATH}/OpenSwathChromatogramExtractor -in ${DATA_DIR_TOPP}/OpenSwathChromatogramExtractor_input.mzML -tr ${DATA_DIR_TOPP}/OpenSwathChromatogramExtractor_input.TraML -out ${TESTS_TEMP_DIR}/OpenSwathChromatogramExtractor_output.tmp.mzML -test)
   add_test("TOPP_OpenSwathChromatogramExtractor_test_1_out1" ${DIFF} -whitelist ${INDEX_WHITELIST} -in1 ${TESTS_TEMP_DIR}/OpenSwathChromatogramExtractor_output.tmp.mzML -in2 ${DATA_DIR_TOPP}/OpenSwathChromatogramExtractor_output.mzML)
   set_tests_properties("TOPP_OpenSwathChromatogramExtractor_test_1_out1" PROPERTIES DEPENDS "TOPP_OpenSwathChromatogramExtractor_test_1")

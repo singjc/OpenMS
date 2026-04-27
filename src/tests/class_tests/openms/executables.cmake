@@ -645,6 +645,7 @@ if(NOT DISABLE_OPENSWATH)
     MRMRTNormalizer_test
     TransitionTSVFile_test
     TransitionPQPFile_test
+    FastaEvidenceFilter_test
     ChromatogramExtractor_test
     ChromatogramExtractorAlgorithm_test
     OpenSwathHelper_test
