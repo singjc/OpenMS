@@ -10,6 +10,7 @@ set(sources_list_h
   DIAHelper.h
   DIAPrescoring.h
   DIAScoring.h
+  FastaEvidenceFilter.h
   IonMobilityScoring.h
   MasstraceCorrelator.h
   MRMAssay.h

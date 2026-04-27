@@ -10,6 +10,7 @@ set(sources_list
   DIAHelper.cpp
   DIAPrescoring.cpp
   DIAScoring.cpp
+  FastaEvidenceFilter.cpp
   IonMobilityScoring.cpp
   MasstraceCorrelator.cpp
   MRMAssay.cpp

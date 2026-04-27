@@ -144,6 +144,7 @@ if(NOT DISABLE_OPENSWATH)
   set(TOPP_executables
     ${TOPP_executables}
     TargetedFileConverter
+    FastaEvidenceFilter
     OpenSwathDIAPreScoring
     OpenSwathMzMLFileCacher
     TransitionListEvidenceFilter
