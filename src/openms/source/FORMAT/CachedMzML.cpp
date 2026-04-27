@@ -36,6 +36,7 @@ namespace OpenMS
     meta_ms_experiment_(rhs.meta_ms_experiment_),
     ifs_(rhs.filename_cached_.c_str(), std::ios::binary),
     filename_(rhs.filename_),
+    filename_cached_(rhs.filename_cached_),
     spectra_index_(rhs.spectra_index_),
     chrom_index_(rhs.chrom_index_)
   {
@@ -115,4 +116,3 @@ namespace OpenMS
   }
 
 }
-

@@ -197,6 +197,16 @@ START_SECTION(( const MSExperiment& getMetaData() const ))
 }
 END_SECTION
 
+START_SECTION(( [EXTRA] copy constructor keeps cached backing file for nested copies ))
+{
+  CachedmzML first_copy(cache_example);
+  TEST_EQUAL(first_copy.getSpectrum(0).size(), exp.getSpectrum(0).size())
+
+  CachedmzML second_copy(first_copy);
+  TEST_EQUAL(second_copy.getSpectrum(0).size(), exp.getSpectrum(0).size())
+}
+END_SECTION
+
 /////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////
 END_TEST
