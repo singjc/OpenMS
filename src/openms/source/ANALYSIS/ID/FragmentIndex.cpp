@@ -1322,6 +1322,24 @@ namespace OpenMS
                           std::distance(fi_peptides_.begin(), right_it));
   }
 
+  std::pair<size_t, size_t> FragmentIndex::getPeptidesInMassBounds_(float lower_mass,
+                                                                    float upper_mass) const
+  {
+    if (lower_mass > upper_mass)
+    {
+      return {0u, 0u};
+    }
+
+    auto left_it = std::lower_bound(fi_peptides_.begin(), fi_peptides_.end(),
+                                    lower_mass,
+                                    [](const Peptide& a, float b) { return a.precursor_mz_ < b; });
+    auto right_it = std::upper_bound(fi_peptides_.begin(), fi_peptides_.end(),
+                                     upper_mass,
+                                     [](float b, const Peptide& a) { return b < a.precursor_mz_; });
+    return std::make_pair(std::distance(fi_peptides_.begin(), left_it),
+                          std::distance(fi_peptides_.begin(), right_it));
+  }
+
   std::pair<float, float> FragmentIndex::computeMassWindow_(float precursor_mass) const
   {
     if (precursor_mass_tolerance_unit_ppm_)
@@ -1338,7 +1356,7 @@ namespace OpenMS
 
   vector<FragmentIndex::Hit> FragmentIndex::query(const OpenMS::Peak1D& peak,
                                                   const pair<size_t, size_t>& peptide_idx_range,
-                                                  uint16_t peak_charge)
+                                                  uint16_t peak_charge) const
   {
       float adjusted_mass = peak.getMZ() * (float)peak_charge -((peak_charge-1) * Constants::PROTON_MASS_U);
 
@@ -1386,7 +1404,7 @@ namespace OpenMS
   void FragmentIndex::queryPeaks(SpectrumMatchesTopN& candidates, const MSSpectrum& spectrum,
                                 const std::pair<size_t, size_t>& candidates_range,
                                 const int16_t isotope_error,
-                                const uint16_t precursor_charge)
+                                const uint16_t precursor_charge) const
   {
 
 
@@ -1417,9 +1435,10 @@ namespace OpenMS
       }
   }
 
-  void FragmentIndex::trimHits(OpenMS::FragmentIndex::SpectrumMatchesTopN& init_hits) const
+  void FragmentIndex::finalizeHits_(OpenMS::FragmentIndex::SpectrumMatchesTopN& init_hits,
+                                    const bool trim_to_top_n) const
   {
-      if (init_hits.hits_.size() > max_processed_hits_)
+      if (trim_to_top_n && init_hits.hits_.size() > max_processed_hits_)
       {
         std::partial_sort(init_hits.hits_.begin(), init_hits.hits_.begin() + max_processed_hits_, init_hits.hits_.end(), [](const SpectrumMatch& a,const SpectrumMatch& b){
           if (a.num_matched_ != b.num_matched_)
@@ -2010,7 +2029,7 @@ init_hits.hits_.erase(it_zero, init_hits.hits_.end());
     // Top-K by num_matched is safe here because the fragment-index-as-precursor
     // filter has already tightly constrained candidates to mothers compatible
     // with the observed precursor — no length bias like in the v1 design.
-    trimHits(sms);
+    finalizeHits_(sms, true);
   }
 
   void FragmentIndex::querySpectrum(const OpenMS::MSSpectrum& spectrum,
@@ -2032,6 +2051,67 @@ init_hits.hits_.erase(it_zero, init_hits.hits_.end());
     }
     static const std::vector<FASTAFile::FASTAEntry> empty_fasta;
     querySpectrum(spectrum, empty_fasta, sms);
+  }
+
+  void FragmentIndex::querySpectrum(const OpenMS::MSSpectrum& spectrum,
+                                    const std::vector<PrecursorRangeQuery>& precursor_queries,
+                                    OpenMS::FragmentIndex::SpectrumMatchesTopN& sms,
+                                    const bool trim_to_top_n) const
+  {
+      if (!isBuild())
+      {
+        OPENMS_LOG_WARN << "FragmentIndex not yet build \n";
+        return;
+      }
+
+      if (spectrum.empty() || (spectrum.getMSLevel() != 2))
+      {
+        return;
+      }
+
+      if (is_snes_mode_)
+      {
+        OPENMS_LOG_WARN << "[FragmentIndex] Range-based querySpectrum overload is only supported in non-SNES mode.\n";
+        return;
+      }
+
+      const bool open_mode = isOpenSearchMode_();
+      const int16_t iso_lo = open_mode ? 0 : min_isotope_error_;
+      const int16_t iso_hi = open_mode ? 0 : max_isotope_error_;
+
+      for (const auto& precursor_query : precursor_queries)
+      {
+        if (precursor_query.precursor_charge == 0 ||
+            precursor_query.precursor_mass_lower > precursor_query.precursor_mass_upper)
+        {
+          continue;
+        }
+
+        for (int16_t isotope_error = iso_lo; isotope_error <= iso_hi; ++isotope_error)
+        {
+          const float iso_shift = static_cast<float>(isotope_error) *
+            static_cast<float>(Constants::C13C12_MASSDIFF_U);
+          const float shifted_lower = precursor_query.precursor_mass_lower + iso_shift;
+          const float shifted_upper = precursor_query.precursor_mass_upper + iso_shift;
+          const auto lower_window = computeMassWindow_(shifted_lower);
+          const auto upper_window = computeMassWindow_(shifted_upper);
+          const auto candidates_range = getPeptidesInMassBounds_(
+            shifted_lower + lower_window.first,
+            shifted_upper + upper_window.second);
+          if (candidates_range.second <= candidates_range.first)
+          {
+            continue;
+          }
+
+          SpectrumMatchesTopN candidates_charge;
+          candidates_charge.hits_.resize(candidates_range.second - candidates_range.first);
+          queryPeaks(candidates_charge, spectrum, candidates_range, isotope_error, precursor_query.precursor_charge);
+          finalizeHits_(candidates_charge, false);
+          sms += candidates_charge;
+        }
+      }
+
+      finalizeHits_(sms, trim_to_top_n);
   }
 
   void FragmentIndex::querySpectrum(const OpenMS::MSSpectrum& spectrum,
@@ -2086,7 +2166,7 @@ init_hits.hits_.erase(it_zero, init_hits.hits_.end());
 
         sms += candidates_charge;
       }
-      trimHits(sms);
+      finalizeHits_(sms, true);
   }
 
 
