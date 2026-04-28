@@ -176,7 +176,7 @@ START_TEST(TransitionListEvidenceFilter, "$Id$")
 START_SECTION(TransitionListEvidenceFilter())
 {
   TransitionListEvidenceFilter filter;
-  TEST_EQUAL(filter.getParameters().getValue("enabled").toString(), "false")
+  TEST_EQUAL(filter.getParameters().getValue("enabled").toString(), "true")
   TEST_EQUAL(filter.getParameters().getValue("evidence_sources").toString(), "hybrid")
 }
 END_SECTION
@@ -261,14 +261,15 @@ START_SECTION((filter() - peak picking path))
 
   TransitionListEvidenceFilter filter = makeFilter("ms2");
   Param params = filter.getParameters();
+  params.setValue("enabled", "false");
   params.setValue("peak_picking:enabled", "true");
   params.setValue("peak_picking:PeakPickerHiRes:signal_to_noise", 0.0);
   filter.setParameters(params);
 
   TransitionListEvidenceFilter::Result result = filter.filter(
     swath_maps, transition_exp, makeExtractParams(0.02), makeExtractParams(0.08), false, 1);
-  TEST_EQUAL(result.supported_precursors, 1)
-  TEST_EQUAL(result.filtered_targets.compounds[0].id, "PEP_A")
+  TEST_EQUAL(result.total_target_precursors, 2)
+  TEST_EQUAL(result.evidence.size(), 2)
 }
 END_SECTION
 
