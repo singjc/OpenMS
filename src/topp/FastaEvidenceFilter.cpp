@@ -10,6 +10,7 @@
 #include <OpenMS/ANALYSIS/OPENSWATH/FastaEvidenceFilter.h>
 #include <OpenMS/CONCEPT/Exception.h>
 #include <OpenMS/CONCEPT/LogStream.h>
+#include <OpenMS/DATASTRUCTURES/ListUtils.h>
 #include <OpenMS/FORMAT/FASTAFile.h>
 #include <OpenMS/SYSTEM/File.h>
 
@@ -287,16 +288,28 @@ private:
       throw Exception::FileNotWritable(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION, filename);
     }
 
-    out << "peptide_sequence\tmodified_peptide_sequence\tprecursor_mz\tprecursor_charge\tproduct_mz\tproduct_charge\tproduct_type\tproduct_ordinal\n";
+    out << "peptide_sequence\tmodified_peptide_sequence\tprecursor_mz\tprecursor_charge\tprotein_accession\tgene_name\tproduct_mz\tproduct_charge\tproduct_type\tproduct_ordinal\n";
     out << std::fixed << std::setprecision(6);
     for (const auto& peptide : peptides)
     {
+      std::vector<std::string> gene_names;
+      gene_names.reserve(peptide.protein_refs.size());
+      for (const auto& protein_ref : peptide.protein_refs)
+      {
+        const auto gene_name_it = peptide.protein_gene_names_by_accession.find(protein_ref);
+        gene_names.push_back(gene_name_it != peptide.protein_gene_names_by_accession.end() ? gene_name_it->second : std::string{});
+      }
+      const String protein_accessions = ListUtils::concatenate(peptide.protein_refs, ";");
+      const String joined_gene_names = ListUtils::concatenate(gene_names, ";");
+
       if (!export_fragments || peptide.fragments.empty())
       {
         out << peptide.peptide_sequence << '\t'
             << peptide.modified_peptide_sequence << '\t'
             << peptide.precursor_mz << '\t'
             << peptide.precursor_charge << '\t'
+            << protein_accessions << '\t'
+            << joined_gene_names << '\t'
             << '\t' << '\t' << '\t' << '\n';
         continue;
       }
@@ -307,6 +320,8 @@ private:
             << peptide.modified_peptide_sequence << '\t'
             << peptide.precursor_mz << '\t'
             << peptide.precursor_charge << '\t'
+            << protein_accessions << '\t'
+            << joined_gene_names << '\t'
             << fragment.product_mz << '\t'
             << fragment.product_charge << '\t'
             << fragment.product_type << '\t'
