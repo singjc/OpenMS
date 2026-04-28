@@ -17,6 +17,7 @@
 #include <OpenMS/SYSTEM/File.h>
 
 #include <memory>
+#include <map>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -60,6 +61,7 @@ public:
       double precursor_mz{0.0};
       int precursor_charge{0};
       std::vector<std::string> protein_refs;
+      std::map<std::string, std::string> protein_gene_names_by_accession;
       std::vector<FragmentRecord> fragments;
       bool decoy{false};
     };
@@ -188,7 +190,8 @@ private:
 
     OpenSwath::LightTargetedExperiment buildStage1Experiment_(const std::vector<PeptideEntry>& peptides,
                                                               Size begin_idx,
-                                                              Size end_idx) const;
+                                                              Size end_idx,
+                                                              int threads) const;
 
     void populateFragments_(std::vector<PeptideEntry>& peptides) const;
 
@@ -201,7 +204,8 @@ private:
                                    const std::vector<FASTAFile::FASTAEntry>& full_fasta,
                                    const std::vector<PeptideEntry>& candidates,
                                    const ChromExtractParams& ms1_params,
-                                   const ChromExtractParams& ms2_params) const;
+                                   const ChromExtractParams& ms2_params,
+                                   int threads) const;
 
     Param buildFragmentIndexParams_(const ChromExtractParams& ms1_params,
                                     const ChromExtractParams& ms2_params) const;

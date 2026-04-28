@@ -16,6 +16,7 @@
 #include <OpenMS/PROCESSING/CENTROIDING/PeakPickerHiRes.h>
 #include <OpenMS/PROCESSING/SMOOTHING/GaussFilter.h>
 #include <OpenMS/PROCESSING/SMOOTHING/SavitzkyGolayFilter.h>
+#include <OpenMS/SYSTEM/SysInfo.h>
 
 #include <algorithm>
 #include <cmath>
@@ -939,6 +940,7 @@ namespace OpenMS
                                        const Param& picker_params,
                                        bool peak_picking_use_gauss,
                                        int threads,
+                                       bool log_enabled,
                                        bool pasef,
                                        std::vector<EvidenceAccum>& merged_evidence)
     {
@@ -969,9 +971,18 @@ namespace OpenMS
       const std::vector<OpenSwathWorkflowScheduler::Wave> swath_waves =
         OpenSwathWorkflowScheduler::planWaves(swath_maps, scheduler_options, concurrency_estimate);
 
-      OPENMS_LOG_DEBUG << "TransitionListEvidenceFilter uses SWATH wave scheduler with "
-                       << swath_waves.size() << " waves and max_concurrent_swaths="
-                       << concurrency_estimate.max_concurrent_swaths << ".\n";
+      if (log_enabled)
+      {
+        OPENMS_LOG_INFO << "TransitionListEvidenceFilter uses SWATH wave scheduler with "
+                        << swath_waves.size() << " waves, max_concurrent_swaths="
+                        << concurrency_estimate.max_concurrent_swaths
+                        << ", estimated_swath="
+                        << bytesToHumanReadable(concurrency_estimate.estimated_bytes_per_swath)
+                        << ", memory_budget="
+                        << bytesToHumanReadable(concurrency_estimate.memory_budget_bytes)
+                        << ", scoring_threads=" << thread_count << "."
+                        << std::endl;
+      }
 
       std::vector<std::unordered_map<Size, EvidenceAccum>> local_results(static_cast<Size>(thread_count));
       for (const auto& wave : swath_waves)
@@ -1191,7 +1202,8 @@ namespace OpenMS
         scanMS2MapsWithWaveScheduler_(active_ms2_maps, candidates, precursor_index, ms2_params,
                                       ms2_top_peaks_per_spectrum_, ms2_min_fragment_hits_,
                                       peak_picking_enabled_, picker_params,
-                                      peak_picking_use_gauss_, threads, pasef, evidence);
+                                      peak_picking_use_gauss_, threads,
+                                      getLogType() != ProgressLogger::NONE, pasef, evidence);
       }
 
       if (evidence_sources_ == "ms1" && !has_ms1_map)
@@ -1278,7 +1290,10 @@ namespace OpenMS
               << ").";
       result.summary = summary.str();
 
-      OPENMS_LOG_INFO << result.summary << std::endl;
+      if (getLogType() != ProgressLogger::NONE)
+      {
+        OPENMS_LOG_INFO << result.summary << std::endl;
+      }
       endProgress();
       progress_started = false;
       return result;
