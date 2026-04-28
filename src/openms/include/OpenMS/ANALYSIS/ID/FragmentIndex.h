@@ -108,6 +108,22 @@ namespace OpenMS
 
       }
     };
+
+    /**
+     * @brief One precursor-mass interval to score against a spectrum.
+     *
+     * The bounds are inclusive and expressed as mono-isotopic (M+H)+ masses.
+     * FragmentIndex applies the configured precursor tolerances and isotope
+     * settings around this interval before scoring fragment evidence.
+     *
+     * This range-query path is only available for non-SNES searches.
+     */
+    struct PrecursorRangeQuery
+    {
+      float precursor_mass_lower{};  ///< Inclusive lower bound on precursor (M+H)+ mass
+      float precursor_mass_upper{};  ///< Inclusive upper bound on precursor (M+H)+ mass
+      uint16_t precursor_charge{};   ///< Charge hypothesis for this interval
+    };
     /**
      * @brief Default constructor.
      *
@@ -303,7 +319,7 @@ namespace OpenMS
      */
     std::vector<Hit> query(const Peak1D& peak,
                            const std::pair<size_t,size_t>& peptide_idx_range,
-                           uint16_t peak_charge);
+                           uint16_t peak_charge) const;
 
     /**
      * @brief: queries one complete experimental spectra against the Database. Loops over all precursor charges
@@ -329,6 +345,28 @@ namespace OpenMS
     void querySpectrum(const MSSpectrum& spectrum,
                        const std::vector<FASTAFile::FASTAEntry>& fasta_entries,
                        SpectrumMatchesTopN& sms);
+
+    /**
+     * @brief Query a spectrum against several precursor-mass intervals in one pass.
+     *
+     * This overload is intended for DIA-style workflows that need to score one
+     * spectrum against many precursor hypotheses in the same isolation window.
+     * It reuses fragment matching across each precursor-mass interval and
+     * returns the combined candidate list.
+     *
+     * This overload is only supported for non-SNES searches.
+     *
+     * @param[in]  spectrum       Experimental MS2 spectrum
+     * @param[in]  precursor_queries Precursor-mass intervals expressed as
+     *                               mono-isotopic (M+H)+ masses
+     * @param[out] sms            Accumulated candidate matches
+     * @param[in]  trim_to_top_n  Whether to apply the configured
+     *                            scoring:max_candidates_per_spectrum cap
+     */
+    void querySpectrum(const MSSpectrum& spectrum,
+                       const std::vector<PrecursorRangeQuery>& precursor_queries,
+                       SpectrumMatchesTopN& sms,
+                       bool trim_to_top_n) const;
 
     /** @brief Reconstruct a fully modified AASequence from a Peptide's bitmask.
      *
@@ -677,10 +715,10 @@ private:
      * @param[in] precursor_charge The applied precursor charge
      */
     void queryPeaks(SpectrumMatchesTopN& candidates,
-                   const MSSpectrum& spectrum,
-                   const std::pair<size_t, size_t>& candidates_range,
-                   const int16_t isotope_error,
-                   const uint16_t precursor_charge);
+                    const MSSpectrum& spectrum,
+                    const std::pair<size_t, size_t>& candidates_range,
+                    const int16_t isotope_error,
+                    const uint16_t precursor_charge) const;
     /**
      * @brief If closed search loops over all isotope errors. For each iteration loop over all peaks with queryPeaks.
      * @brief If open search applies a precursor-mass window
@@ -694,10 +732,13 @@ private:
                                         SpectrumMatchesTopN& sms,
                                         uint16_t charge);
 
-    /** @brief places the k-largest elements in the front of the input array. Inside of the k-largest elements and outside the elements are not sorted
-     *
-     */
-    void trimHits(SpectrumMatchesTopN& init_hits) const;
+    /// Return the half-open peptide-index range overlapping the given precursor-mass bounds.
+    std::pair<size_t, size_t> getPeptidesInMassBounds_(float lower_mass,
+                                                       float upper_mass) const;
+
+    /// Sort hits by score, remove below-threshold entries, and optionally cap to the configured top-N.
+    void finalizeHits_(SpectrumMatchesTopN& init_hits,
+                       bool trim_to_top_n) const;
 
     //since we work with TheoreticalSpectrumGenerator, we must transfer some of those member variables
     bool add_b_ions_;
