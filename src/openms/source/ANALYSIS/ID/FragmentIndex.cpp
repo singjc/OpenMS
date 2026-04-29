@@ -379,19 +379,19 @@ namespace OpenMS
           {
             float mz = static_cast<float>((cumulative + ion_offsets_.b_offset) / z);
             if (mz >= fragment_min_mz_ && mz <= fragment_max_mz_)
-              fragments.emplace_back(peptide_idx, mz);
+              fragments.emplace_back(peptide_idx, mz, 'b', static_cast<uint16_t>(i + 1));
           }
           if (add_a)
           {
             float mz = static_cast<float>((cumulative + ion_offsets_.a_offset) / z);
             if (mz >= fragment_min_mz_ && mz <= fragment_max_mz_)
-              fragments.emplace_back(peptide_idx, mz);
+              fragments.emplace_back(peptide_idx, mz, 'a', static_cast<uint16_t>(i + 1));
           }
           if (add_c)
           {
             float mz = static_cast<float>((cumulative + ion_offsets_.c_offset) / z);
             if (mz >= fragment_min_mz_ && mz <= fragment_max_mz_)
-              fragments.emplace_back(peptide_idx, mz);
+              fragments.emplace_back(peptide_idx, mz, 'c', static_cast<uint16_t>(i + 1));
           }
         }
       }
@@ -420,19 +420,19 @@ namespace OpenMS
           {
             float mz = static_cast<float>((cumulative + ion_offsets_.y_offset) / z);
             if (mz >= fragment_min_mz_ && mz <= fragment_max_mz_)
-              fragments.emplace_back(peptide_idx, mz);
+              fragments.emplace_back(peptide_idx, mz, 'y', static_cast<uint16_t>(suffix_ion_num));
           }
           if (add_x)
           {
             float mz = static_cast<float>((cumulative + ion_offsets_.x_offset) / z);
             if (mz >= fragment_min_mz_ && mz <= fragment_max_mz_)
-              fragments.emplace_back(peptide_idx, mz);
+              fragments.emplace_back(peptide_idx, mz, 'x', static_cast<uint16_t>(suffix_ion_num));
           }
           if (add_z)
           {
             float mz = static_cast<float>((cumulative + ion_offsets_.z_offset) / z);
             if (mz >= fragment_min_mz_ && mz <= fragment_max_mz_)
-              fragments.emplace_back(peptide_idx, mz);
+              fragments.emplace_back(peptide_idx, mz, 'z', static_cast<uint16_t>(suffix_ion_num));
           }
         }
       }
@@ -1288,6 +1288,164 @@ namespace OpenMS
       OPENMS_LOG_INFO << "Fragment index built!" << endl;
   }
 
+  void FragmentIndex::buildFromPeptideSequences(const std::vector<ExplicitPeptide>& peptides)
+  {
+      clear();
+      initResidueMassTable_();
+
+      UInt32 max_source_index = 0;
+      for (const auto& peptide : peptides)
+      {
+        max_source_index = std::max(max_source_index, peptide.source_index);
+      }
+      protein_lengths_.assign(peptides.empty() ? 0 : static_cast<Size>(max_source_index + 1), 0);
+
+      struct ExplicitBuildEntry
+      {
+        std::string_view modified_sequence;
+        float precursor_mass{};
+        UInt32 source_index{};
+      };
+
+      std::vector<ExplicitBuildEntry> sorted_entries;
+      sorted_entries.reserve(peptides.size());
+      for (const auto& peptide : peptides)
+      {
+        sorted_entries.push_back({peptide.modified_sequence, peptide.precursor_mass, peptide.source_index});
+      }
+
+      std::sort(sorted_entries.begin(), sorted_entries.end(),
+                [](const ExplicitBuildEntry& lhs, const ExplicitBuildEntry& rhs)
+                {
+                  if (lhs.precursor_mass != rhs.precursor_mass) return lhs.precursor_mass < rhs.precursor_mass;
+                  return lhs.source_index < rhs.source_index;
+                });
+
+      fi_peptides_.reserve(sorted_entries.size());
+      for (const auto& entry : sorted_entries)
+      {
+        fi_peptides_.emplace_back(entry.source_index, 0u, std::make_pair(uint16_t(0), uint16_t(0)), entry.precursor_mass);
+      }
+
+      OPENMS_LOG_INFO << "Generating fragments..." << std::endl;
+
+#ifdef _OPENMP
+      const int num_threads = omp_get_max_threads();
+#else
+      const int num_threads = 1;
+#endif
+      const size_t est_per_thread = (std::max<Size>(1, sorted_entries.size()) * 8) / num_threads + 1;
+      vector<vector<Fragment>> thread_fragments(num_threads);
+      for (int t = 0; t < num_threads; ++t)
+      {
+        thread_fragments[t].reserve(est_per_thread);
+      }
+
+      const ResidueDB* residue_db = ResidueDB::getInstance();
+      #pragma omp parallel for
+      for (SignedSize peptide_idx = 0; peptide_idx < static_cast<SignedSize>(sorted_entries.size()); ++peptide_idx)
+      {
+#ifdef _OPENMP
+        const int tid = omp_get_thread_num();
+#else
+        const int tid = 0;
+#endif
+        const auto& entry = sorted_entries[static_cast<Size>(peptide_idx)];
+        const AASequence peptide = AASequence::fromString(String(std::string(entry.modified_sequence)));
+        const Size peptide_length = peptide.size();
+        fi_peptides_[static_cast<Size>(peptide_idx)].sequence_.second = static_cast<uint16_t>(peptide_length);
+        protein_lengths_[fi_peptides_[static_cast<Size>(peptide_idx)].protein_idx] = static_cast<uint32_t>(peptide_length);
+
+        const std::string unmodified_sequence = peptide.toUnmodifiedString().c_str();
+        std::vector<double> residue_mod_masses(peptide_length, 0.0);
+        bool has_residue_mods = false;
+        for (Size residue_index = 0; residue_index < peptide_length; ++residue_index)
+        {
+          const Residue& modified_residue = peptide[residue_index];
+          const Residue* unmodified_residue =
+            residue_db->getResidue(static_cast<unsigned char>(modified_residue.getOneLetterCode()[0]));
+          if (unmodified_residue == nullptr)
+          {
+            continue;
+          }
+
+          const double delta_mass =
+            modified_residue.getMonoWeight(Residue::Internal) -
+            unmodified_residue->getMonoWeight(Residue::Internal);
+          if (std::abs(delta_mass) > 1e-12)
+          {
+            residue_mod_masses[residue_index] = delta_mass;
+            has_residue_mods = true;
+          }
+        }
+
+        double n_term_mod_mass = 0.0;
+        if (const auto* n_term_mod = peptide.getNTerminalModification())
+        {
+          n_term_mod_mass = n_term_mod->getDiffMonoMass();
+        }
+        double c_term_mod_mass = 0.0;
+        if (const auto* c_term_mod = peptide.getCTerminalModification())
+        {
+          c_term_mod_mass = c_term_mod->getDiffMonoMass();
+        }
+
+        generateFragmentsLightweight_(
+          thread_fragments[tid],
+          unmodified_sequence.c_str(),
+          unmodified_sequence.size(),
+          static_cast<UInt32>(peptide_idx),
+          n_term_mod_mass,
+          c_term_mod_mass,
+          has_residue_mods ? residue_mod_masses.data() : nullptr);
+      }
+
+      size_t total_fragments = 0;
+      for (int t = 0; t < num_threads; ++t) total_fragments += thread_fragments[t].size();
+      fi_fragments_.reserve(total_fragments);
+      for (int t = 0; t < num_threads; ++t)
+      {
+        fi_fragments_.insert(fi_fragments_.end(), thread_fragments[t].begin(), thread_fragments[t].end());
+        vector<Fragment>().swap(thread_fragments[t]);
+      }
+
+      OPENMS_LOG_INFO << "Sorting fragments..." << std::endl;
+
+      boost::sort::block_indirect_sort(fi_fragments_.begin(), fi_fragments_.end(), [](const Fragment& a, const Fragment& b)
+      {
+        return std::tie(a.fragment_mz_, a.peptide_idx_) < std::tie(b.fragment_mz_, b.peptide_idx_);
+      });
+
+      if (fi_fragments_.empty())
+      {
+        bucketsize_ = 1;
+        OPENMS_LOG_INFO << "[FragmentIndex] No fragments generated — index is empty." << std::endl;
+        is_build_ = true;
+        return;
+      }
+
+      bucketsize_ = 4096;
+      OPENMS_LOG_INFO << "Creating DB with bucket_size " << bucketsize_ << endl;
+
+      #pragma omp parallel for
+      for (SignedSize i = 0; i < (SignedSize)fi_fragments_.size(); i += bucketsize_)
+      {
+        #pragma omp critical
+        bucket_min_mz_.emplace_back(fi_fragments_[i].fragment_mz_);
+
+        auto bucket_start = fi_fragments_.begin() + i;
+        auto bucket_end = (i + bucketsize_) > fi_fragments_.size() ? fi_fragments_.end() : bucket_start + bucketsize_;
+        sort(bucket_start, bucket_end, [](const Fragment& a, const Fragment& b)
+        {
+          return a.peptide_idx_ < b.peptide_idx_;
+        });
+      }
+      OPENMS_LOG_INFO << "Sorting by bucket min m/z:" << bucketsize_ << endl;
+      std::sort(bucket_min_mz_.begin(), bucket_min_mz_.end());
+      is_build_ = true;
+      OPENMS_LOG_INFO << "Fragment index built!" << endl;
+  }
+
   void FragmentIndex::buildPeptidesOnly(const std::vector<FASTAFile::FASTAEntry>& fasta_entries)
   {
       clear();
@@ -1388,7 +1546,8 @@ namespace OpenMS
           if ((adjusted_mass >= left_iter->fragment_mz_ - frag_tol ) && adjusted_mass <= (left_iter->fragment_mz_+ frag_tol))
           {
 
-            hits.emplace_back(left_iter->peptide_idx_, left_iter->fragment_mz_);
+            hits.emplace_back(left_iter->peptide_idx_, left_iter->fragment_mz_,
+                              left_iter->ion_series_, left_iter->ion_ordinal_);
             #ifdef DEBUG_FRAGMENT_INDEX
             if (left_iter->peptide_idx_ < peptide_idx_range.first || left_iter->peptide_idx_ >= peptide_idx_range.second)
               OPENMS_LOG_WARN << "idx out of range" << endl;
@@ -1406,6 +1565,15 @@ namespace OpenMS
                                 const int16_t isotope_error,
                                 const uint16_t precursor_charge) const
   {
+      const auto set_matched_ordinal = [](std::array<uint64_t, 2>& words, const uint16_t ordinal)
+      {
+        if (ordinal == 0 || ordinal > 128)
+        {
+          return;
+        }
+        const size_t zero_based = static_cast<size_t>(ordinal - 1);
+        words[zero_based / 64] |= (uint64_t{1} << (zero_based % 64));
+      };
 
 
       for (const Peak1D& peak : spectrum)
@@ -1429,6 +1597,15 @@ namespace OpenMS
                 source.isotope_error_ = isotope_error;
               }
               ++source.num_matched_;
+              source.matched_intensity_sum_ += static_cast<float>(peak.getIntensity());
+              if (hit.ion_series == 'b')
+              {
+                set_matched_ordinal(source.matched_b_ordinal_words_, hit.ion_ordinal);
+              }
+              else if (hit.ion_series == 'y')
+              {
+                set_matched_ordinal(source.matched_y_ordinal_words_, hit.ion_ordinal);
+              }
             }
           }
         }
@@ -1444,6 +1621,10 @@ namespace OpenMS
           if (a.num_matched_ != b.num_matched_)
           {
             return a.num_matched_ > b.num_matched_;
+          }
+          if (a.matched_intensity_sum_ != b.matched_intensity_sum_)
+          {
+            return a.matched_intensity_sum_ > b.matched_intensity_sum_;
           }
           else
           {
@@ -1464,6 +1645,10 @@ namespace OpenMS
           if (a.num_matched_ != b.num_matched_)
           {
             return a.num_matched_ > b.num_matched_;
+          }
+          if (a.matched_intensity_sum_ != b.matched_intensity_sum_)
+          {
+            return a.matched_intensity_sum_ > b.matched_intensity_sum_;
           }
           else
           {

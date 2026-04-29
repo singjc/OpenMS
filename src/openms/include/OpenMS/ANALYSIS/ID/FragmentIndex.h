@@ -19,6 +19,7 @@
 
 #include <array>
 #include <mutex>
+#include <string_view>
 #include <vector>
 #include <functional>
 #include <algorithm>   // std::max (used by inline static isOpenSearchMode)
@@ -71,6 +72,9 @@ namespace OpenMS
     struct SpectrumMatch
     {
       uint32_t num_matched_{};       ///< Number of peaks-fragment hits
+      float    matched_intensity_sum_{}; ///< Sum of intensities of matched query peaks
+      std::array<uint64_t, 2> matched_b_ordinal_words_{}; ///< Unique matched b-ion ordinals packed into two 64-bit words
+      std::array<uint64_t, 2> matched_y_ordinal_words_{}; ///< Unique matched y-ion ordinals packed into two 64-bit words
       uint32_t subset_bitmask_{};    ///< SNES v1.1: active slots in the slot list returned by buildModSlots_. 0 = unmodified. Ignored in non-SNES mode.
       float    sigma_delta_{};       ///< SNES v1.1: Σ of variable-mod deltas for this match. 0 in non-SNES / unmodified SNES.
       uint16_t precursor_charge_{};  ///< The precursor_charge used for the performed search
@@ -123,6 +127,21 @@ namespace OpenMS
       float precursor_mass_lower{};  ///< Inclusive lower bound on precursor (M+H)+ mass
       float precursor_mass_upper{};  ///< Inclusive upper bound on precursor (M+H)+ mass
       uint16_t precursor_charge{};   ///< Charge hypothesis for this interval
+    };
+
+    /**
+     * @brief One explicit peptide entry used to build a queryable peptide library.
+     *
+     * The modified sequence is borrowed only for the duration of
+     * buildFromPeptideSequences(). The @p source_index value is copied into
+     * Peptide::protein_idx so callers can map query hits back to their original
+     * candidate ordering.
+     */
+    struct ExplicitPeptide
+    {
+      std::string_view modified_sequence;  ///< Borrowed modified peptide sequence
+      float precursor_mass{};              ///< Mono-isotopic (M+H)+ mass
+      UInt32 source_index{};               ///< Caller-defined source index copied into Peptide::protein_idx
     };
     /**
      * @brief Default constructor.
@@ -202,6 +221,21 @@ namespace OpenMS
      * @param[in] fasta_entries The FASTA entries used to build the index.
      */
     void build(const std::vector<FASTAFile::FASTAEntry> & fasta_entries);
+
+    /**
+     * @brief Build a fragment index from explicit modified peptide sequences.
+     *
+     * This query-only build path bypasses FASTA digestion and stores one
+     * library entry per explicit peptide. It is intended for workflows that
+     * already materialized the peptide search space and only need fast
+     * querySpectrum() access.
+     *
+     * The generated Peptide::protein_idx values refer to
+     * ExplicitPeptide::source_index, not to a FASTA entry.
+     *
+     * @param[in] peptides Explicit modified peptides to index
+     */
+    void buildFromPeptideSequences(const std::vector<ExplicitPeptide>& peptides);
 
     /** @brief Enumerate peptides and modification states without building fragment buckets.
      *
@@ -303,12 +337,16 @@ namespace OpenMS
      */
     struct Hit
     {
-      Hit(UInt32 peptide_idx, float fragment_mz) :
+      Hit(UInt32 peptide_idx, float fragment_mz, char ion_series, uint16_t ion_ordinal) :
         peptide_idx(peptide_idx),
-        fragment_mz(fragment_mz)
+        fragment_mz(fragment_mz),
+        ion_series(ion_series),
+        ion_ordinal(ion_ordinal)
       {}
       UInt32 peptide_idx; // index in database
       float fragment_mz;
+      char ion_series;
+      uint16_t ion_ordinal;
     };
 
     /**@brief Queries one peak
@@ -429,12 +467,16 @@ protected:
   struct Fragment
   {
       Fragment() = default;
-      Fragment(UInt32 peptide_idx, float fragment_mz):
+      Fragment(UInt32 peptide_idx, float fragment_mz, char ion_series, uint16_t ion_ordinal):
           peptide_idx_(peptide_idx),
-          fragment_mz_(fragment_mz)
+          fragment_mz_(fragment_mz),
+          ion_series_(ion_series),
+          ion_ordinal_(ion_ordinal)
       {}
       UInt32 peptide_idx_{}; // 32 bit in sage
       float fragment_mz_{};
+      char ion_series_{};
+      uint16_t ion_ordinal_{};
   };
 
     bool is_build_{false};              ///< true, if the database has been populated with fragments
