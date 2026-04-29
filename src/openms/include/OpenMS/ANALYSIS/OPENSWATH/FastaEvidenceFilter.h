@@ -66,7 +66,7 @@ public:
       bool decoy{false};
     };
 
-    /// One best-score record used for stage-2 filtering and q-value estimation.
+    /// One stage-2 score record used for target-decoy ranking and q-value estimation.
     struct PeptideScoreRecord
     {
       std::string peptide_key;
@@ -74,10 +74,43 @@ public:
       bool decoy{false};
     };
 
+    /// One scored stage-2 candidate exported for score-distribution inspection.
+    struct Stage2CandidateScore
+    {
+      std::string peptide_key;
+      std::string peptide_sequence;
+      std::string modified_peptide_sequence;
+      double precursor_mz{0.0};
+      int precursor_charge{0};
+      std::vector<std::string> protein_refs;
+      std::map<std::string, std::string> protein_gene_names_by_accession;
+      bool decoy{false};
+      std::string source_file;
+      std::string native_spectrum_id;
+      Size best_matched_ions{0};
+      Size supporting_spectra{0};
+      Size supporting_runs{0};
+      double best_spectrum_matched_intensity_fraction{0.0};
+      Size best_spectrum_matched_b_ions{0};
+      Size best_spectrum_matched_y_ions{0};
+      Size best_spectrum_longest_b_run{0};
+      Size best_spectrum_longest_y_run{0};
+      double best_spectrum_longest_y_pct{0.0};
+      double best_spectrum_poisson_proxy{0.0};
+      double best_spectrum_score{0.0};
+      double top_run_score_1{0.0};
+      double top_run_score_2{0.0};
+      double top_run_score_3{0.0};
+      double composite_score{0.0};
+      double qvalue{-1.0};
+      bool accepted{false};
+    };
+
     /// One DIA run loaded into OpenSWATH map containers.
     struct RunData
     {
       std::vector<OpenSwath::SwathMap> swath_maps;
+      std::vector<String> swath_map_sources;
       bool pasef{false};
       /// Keeps per-run cached mzML temp files alive for lightClone()-based readers.
       std::shared_ptr<File::TempDir> cache_dir_guard;
@@ -88,6 +121,7 @@ public:
     {
       std::vector<FASTAFile::FASTAEntry> filtered_fasta;
       std::vector<PeptideEntry> confirmed_peptides;
+      std::vector<Stage2CandidateScore> stage2_candidate_scores;
       Size stage1_supported_precursors{0};
       Size stage2_confirmed_precursors{0};
       Size retained_proteins{0};
@@ -147,21 +181,27 @@ public:
       @brief Estimate monotone peptide-level q-values from best target/decoy scores.
 
       @param[in] score_records One best-score record per peptide key
+      @param[in] total_target_candidates Total number of target peptide candidates in the stage-2 library
+      @param[in] total_decoy_candidates Total number of decoy peptide candidates in the stage-2 library
       @return Mapping from peptide key to empirical q-value
     */
-    static std::unordered_map<std::string, double> computePeptideQValues(const std::vector<PeptideScoreRecord>& score_records);
+    static std::unordered_map<std::string, double> computePeptideQValues(const std::vector<PeptideScoreRecord>& score_records,
+                                                                         Size total_target_candidates,
+                                                                         Size total_decoy_candidates);
 
     /**
       @brief Select confirmed target peptides under the configured stage-2 rule.
 
       @param[in] target_peptides Target peptide entries from stage 1
-      @param[in] best_scores Best stage-2 matched-ion counts keyed by peptide key
+      @param[in] best_matched_ions Best stage-2 matched-ion counts keyed by peptide key
       @param[in] score_records Target and decoy best-score records
+      @param[in] total_decoy_candidates Total number of stage-2 decoy candidates
       @return Confirmed target peptides
     */
     std::vector<PeptideEntry> selectConfirmedPeptides(const std::vector<PeptideEntry>& target_peptides,
-                                                      const std::unordered_map<std::string, double>& best_scores,
-                                                      const std::vector<PeptideScoreRecord>& score_records) const;
+                                                      const std::unordered_map<std::string, Size>& best_matched_ions,
+                                                      const std::vector<PeptideScoreRecord>& score_records,
+                                                      Size total_decoy_candidates) const;
 
     /**
       @brief Collapse confirmed peptides to supported proteins.
@@ -178,7 +218,8 @@ public:
 private:
     struct Stage2ScoreBundle
     {
-      std::unordered_map<std::string, double> best_scores;
+      std::unordered_map<std::string, Size> best_matched_ions;
+      std::unordered_map<std::string, Stage2CandidateScore> candidate_scores;
       std::vector<PeptideScoreRecord> score_records;
     };
 
@@ -198,10 +239,9 @@ private:
     std::vector<FASTAFile::FASTAEntry> buildReducedTargetFasta_(const std::vector<FASTAFile::FASTAEntry>& fasta_entries,
                                                                 const std::vector<PeptideEntry>& supported_peptides) const;
 
-    std::vector<FASTAFile::FASTAEntry> buildDecoyDatabase_(const std::vector<FASTAFile::FASTAEntry>& target_fasta) const;
+    std::vector<PeptideEntry> buildStage2DecoyPeptides_(const std::vector<PeptideEntry>& target_peptides) const;
 
     Stage2ScoreBundle scoreStage2_(const std::vector<RunData>& runs,
-                                   const std::vector<FASTAFile::FASTAEntry>& full_fasta,
                                    const std::vector<PeptideEntry>& candidates,
                                    const ChromExtractParams& ms1_params,
                                    const ChromExtractParams& ms2_params,
@@ -226,6 +266,7 @@ private:
     Size protein_min_confirmed_peptides_{1};
     bool protein_unique_peptides_only_{false};
     bool export_fragments_{false};
+    bool export_stage2_scores_{false};
     String enzyme_{"Trypsin"};
     String enzyme_specificity_{"full"};
     Int peptide_missed_cleavages_{1};

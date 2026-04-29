@@ -179,6 +179,28 @@ START_SECTION((std::unordered_set<std::string> selectSupportedProteins(const std
 }
 END_SECTION
 
+START_SECTION((computePeptideQValues() - score bins are tied and target/decoy imbalance is normalized))
+{
+  const vector<FastaEvidenceFilter::PeptideScoreRecord> tied_records{
+    {"target_top", 7.0, false},
+    {"decoy_top", 7.0, true},
+    {"target_lower", 6.0, false}
+  };
+  const auto tied_qvalues = FastaEvidenceFilter::computePeptideQValues(tied_records, 2, 1);
+  TEST_REAL_SIMILAR(tied_qvalues.at("target_top"), tied_qvalues.at("decoy_top"))
+  TEST_REAL_SIMILAR(tied_qvalues.at("target_top"), 1.0)
+
+  const vector<FastaEvidenceFilter::PeptideScoreRecord> normalized_records{
+    {"target_best", 8.0, false},
+    {"decoy_mid_a", 7.0, true},
+    {"decoy_mid_b", 7.0, true}
+  };
+  const auto normalized_qvalues = FastaEvidenceFilter::computePeptideQValues(normalized_records, 1, 2);
+  TEST_REAL_SIMILAR(normalized_qvalues.at("decoy_mid_a"), 1.0)
+  TEST_REAL_SIMILAR(normalized_qvalues.at("decoy_mid_b"), 1.0)
+}
+END_SECTION
+
 START_SECTION((selectConfirmedPeptides() - raw_score and qvalue modes))
 {
   FastaEvidenceFilter::PeptideEntry target_peptide;
@@ -188,7 +210,7 @@ START_SECTION((selectConfirmedPeptides() - raw_score and qvalue modes))
   target_peptide.precursor_charge = 2;
 
   const vector<FastaEvidenceFilter::PeptideEntry> target_peptides{target_peptide};
-  const unordered_map<string, double> best_scores{{"PEPTIDE/2", 6.0}};
+  const unordered_map<string, Size> best_matched_ions{{"PEPTIDE/2", 6}};
 
   FastaEvidenceFilter raw_filter;
   Param raw_params = raw_filter.getParameters();
@@ -196,7 +218,7 @@ START_SECTION((selectConfirmedPeptides() - raw_score and qvalue modes))
   raw_params.setValue("Stage2:min_matched_ions", 3);
   raw_filter.setParameters(raw_params);
 
-  const auto raw_confirmed = raw_filter.selectConfirmedPeptides(target_peptides, best_scores, {});
+  const auto raw_confirmed = raw_filter.selectConfirmedPeptides(target_peptides, best_matched_ions, {}, 0);
   TEST_EQUAL(raw_confirmed.size(), 1)
 
   FastaEvidenceFilter qvalue_keep_filter;
@@ -210,7 +232,7 @@ START_SECTION((selectConfirmedPeptides() - raw_score and qvalue modes))
     {"PEPTIDE/2", 6.0, false},
     {"DECOY_PEPTIDE/2", 4.0, true}
   };
-  const auto qvalue_confirmed = qvalue_keep_filter.selectConfirmedPeptides(target_peptides, best_scores, keep_records);
+  const auto qvalue_confirmed = qvalue_keep_filter.selectConfirmedPeptides(target_peptides, best_matched_ions, keep_records, 1);
   TEST_EQUAL(qvalue_confirmed.size(), 1)
 
   FastaEvidenceFilter qvalue_drop_filter;
@@ -224,8 +246,26 @@ START_SECTION((selectConfirmedPeptides() - raw_score and qvalue modes))
     {"DECOY_PEPTIDE/2", 7.0, true},
     {"PEPTIDE/2", 6.0, false}
   };
-  const auto qvalue_dropped = qvalue_drop_filter.selectConfirmedPeptides(target_peptides, best_scores, drop_records);
+  const auto qvalue_dropped = qvalue_drop_filter.selectConfirmedPeptides(target_peptides, best_matched_ions, drop_records, 1);
   TEST_EQUAL(qvalue_dropped.size(), 0)
+
+  FastaEvidenceFilter qvalue_floor_filter;
+  Param qvalue_floor_params = qvalue_floor_filter.getParameters();
+  qvalue_floor_params.setValue("Stage2:mode", "qvalue");
+  qvalue_floor_params.setValue("Stage2:max_qvalue", 0.05);
+  qvalue_floor_params.setValue("Stage2:min_matched_ions", 3);
+  qvalue_floor_filter.setParameters(qvalue_floor_params);
+
+  const unordered_map<string, Size> insufficient_matched_ions{{"PEPTIDE/2", 2}};
+  const vector<FastaEvidenceFilter::PeptideScoreRecord> floor_records{
+    {"PEPTIDE/2", 10.0, false},
+    {"DECOY_PEPTIDE/2", 8.0, true}
+  };
+  const auto qvalue_floor_dropped = qvalue_floor_filter.selectConfirmedPeptides(target_peptides,
+                                                                                insufficient_matched_ions,
+                                                                                floor_records,
+                                                                                1);
+  TEST_EQUAL(qvalue_floor_dropped.size(), 0)
 }
 END_SECTION
 
@@ -308,6 +348,63 @@ START_SECTION((filter() - stage2 can confirm a supported precursor))
   TEST_EQUAL(result.filtered_fasta.size(), 1)
   TEST_EQUAL(result.filtered_fasta[0].identifier, "protA")
   TEST_EQUAL(result.summary.hasSubstring("1 of 1"), true)
+}
+END_SECTION
+
+START_SECTION((filter() - optional stage2 score export captures target candidate diagnostics))
+{
+  FastaEvidenceFilter filter = makeFilterForSingleChargePeptides();
+  Param params = filter.getParameters();
+  params.setValue("SearchSpace:min_size", 7);
+  params.setValue("SearchSpace:max_size", 7);
+  params.setValue("Stage1:evidence_sources", "ms1");
+  params.setValue("Stage1:min_supported_precursors", 1);
+  params.setValue("Stage2:mode", "raw_score");
+  params.setValue("Stage2:decoys", "false");
+  params.setValue("Stage2:min_matched_ions", 1);
+  params.setValue("Export:export_stage2_scores", "true");
+  filter.setParameters(params);
+
+  const vector<FASTAFile::FASTAEntry> fasta_entries{
+    makeFastaEntry("protA", "AAAAAAK", "Protein A OS=Homo sapiens GN=GENEA")
+  };
+  const auto peptides = filter.generatePeptideEntries(fasta_entries);
+  TEST_EQUAL(peptides.size(), 1)
+
+  vector<pair<double, double>> stage2_peaks;
+  for (const auto& fragment : peptides[0].fragments)
+  {
+    stage2_peaks.emplace_back(fragment.product_mz, 1000.0);
+  }
+
+  MSSpectrum ms1 = makeSpectrum(10.0, {{peptides[0].precursor_mz, 1000.0}});
+  ms1.setNativeID("scan=ms1");
+  MSSpectrum ms2 = makeSpectrum(12.0, stage2_peaks);
+  ms2.setNativeID("scan=ms2");
+
+  vector<OpenSwath::SwathMap> swath_maps;
+  swath_maps.push_back(makeSwathMap(true, 0.0, 0.0, {ms1}));
+  swath_maps.push_back(makeSwathMap(false, peptides[0].precursor_mz - 10.0, peptides[0].precursor_mz + 10.0,
+                                    {ms2}));
+
+  FastaEvidenceFilter::RunData run;
+  run.swath_maps = std::move(swath_maps);
+  run.swath_map_sources = {String("run.mzML"), String("run.mzML")};
+  run.pasef = false;
+
+  const auto result = filter.filter({run}, fasta_entries, makeExtractParams(0.01), makeExtractParams(0.01), 1);
+  TEST_EQUAL(result.stage2_candidate_scores.size(), 1)
+  TEST_EQUAL(result.stage2_candidate_scores[0].decoy, false)
+  TEST_EQUAL(result.stage2_candidate_scores[0].source_file, "run.mzML")
+  TEST_EQUAL(result.stage2_candidate_scores[0].native_spectrum_id, "scan=ms2")
+  TEST_EQUAL(result.stage2_candidate_scores[0].accepted, true)
+  TEST_EQUAL(result.stage2_candidate_scores[0].supporting_runs, 1)
+  TEST_TRUE(result.stage2_candidate_scores[0].composite_score > 0.0)
+  TEST_TRUE(result.stage2_candidate_scores[0].best_spectrum_score > 0.0)
+  TEST_TRUE(result.stage2_candidate_scores[0].top_run_score_1 > 0.0)
+  TEST_EQUAL(result.stage2_candidate_scores[0].protein_refs.size(), 1)
+  TEST_EQUAL(result.stage2_candidate_scores[0].protein_refs[0], "protA")
+  TEST_EQUAL(result.stage2_candidate_scores[0].protein_gene_names_by_accession.at("protA"), "GENEA")
 }
 END_SECTION
 
