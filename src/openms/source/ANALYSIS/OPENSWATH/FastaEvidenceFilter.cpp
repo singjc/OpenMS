@@ -25,6 +25,8 @@
 #include <OpenMS/KERNEL/MSSpectrum.h>
 #include <OpenMS/MATH/MathFunctions.h>
 
+#include <boost/math/distributions/chi_squared.hpp>
+
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -326,6 +328,10 @@ namespace OpenMS
       Size best_matched_ions{0};
       Size supporting_spectra{0};
       std::uint64_t supporting_run_mask{0};
+      Size strong_supporting_spectra{0};
+      std::uint64_t strong_supporting_run_mask{0};
+      std::uint64_t streak_ge_2_run_mask{0};
+      std::uint64_t streak_ge_3_run_mask{0};
       double best_spectrum_matched_intensity_fraction{0.0};
       Size best_spectrum_matched_b_ions{0};
       Size best_spectrum_matched_y_ions{0};
@@ -334,11 +340,40 @@ namespace OpenMS
       double best_spectrum_longest_y_pct{0.0};
       double best_spectrum_poisson_proxy{0.0};
       double best_spectrum_score{0.0};
+      Size best_run_streak_length{0};
+      double best_run_streak_score{0.0};
       std::array<double, STAGE2_AGGREGATED_RUN_SCORES> top_run_scores{};
+      std::array<Size, STAGE2_AGGREGATED_RUN_SCORES> top_run_streak_lengths{};
       std::array<Size, STAGE2_AGGREGATED_RUN_SCORES> top_run_ids{
         STAGE2_UNASSIGNED_RUN_ID, STAGE2_UNASSIGNED_RUN_ID, STAGE2_UNASSIGNED_RUN_ID};
       std::string best_source_file;
       std::string best_native_spectrum_id;
+    };
+
+    struct Stage2RunStreakState
+    {
+      Size last_supported_spectrum_index{std::numeric_limits<Size>::max()};
+      Size current_streak_length{0};
+      Size best_streak_length{0};
+      double best_spectrum_score{0.0};
+      double best_streak_score{0.0};
+    };
+
+    struct Stage2ScoredSpectrumCandidate
+    {
+      Size candidate_id{0};
+      FragmentIndex::SpectrumMatch match;
+      double matched_intensity_fraction{0.0};
+      double spectrum_score{0.0};
+    };
+
+    struct Stage2LowerOrderObservation
+    {
+      Size candidate_id{0};
+      Size run_index{0};
+      std::uint16_t precursor_charge{0};
+      Size rank{0};
+      double spectrum_score{0.0};
     };
 
     bool betterStage2SpectrumMatch_(const FragmentIndex::SpectrumMatch& lhs,
@@ -429,18 +464,25 @@ namespace OpenMS
     }
 
     double computeStage2SpectrumScore_(const FragmentIndex::SpectrumMatch& match,
-                                       Size theoretical_b_ions,
-                                       Size theoretical_y_ions,
-                                       Size spectrum_peak_count,
-                                       double spectrum_mz_span,
-                                       double matched_intensity_fraction,
-                                       double fragment_tolerance_da,
-                                       double& poisson_proxy,
-                                       double& longest_y_pct,
-                                       Size& matched_b_ions,
-                                       Size& matched_y_ions,
-                                       Size& longest_b_run,
-                                       Size& longest_y_run)
+                                       double matched_intensity_fraction)
+    {
+      const double bounded_fraction = std::clamp(matched_intensity_fraction, 0.0, 1.0);
+      return static_cast<double>(match.num_matched_) +
+             0.5 * std::log1p(1000.0 * bounded_fraction);
+    }
+
+    void computeStage2SpectrumDiagnostics_(const FragmentIndex::SpectrumMatch& match,
+                                           Size theoretical_b_ions,
+                                           Size theoretical_y_ions,
+                                           Size spectrum_peak_count,
+                                           double spectrum_mz_span,
+                                           double fragment_tolerance_da,
+                                           double& poisson_proxy,
+                                           double& longest_y_pct,
+                                           Size& matched_b_ions,
+                                           Size& matched_y_ions,
+                                           Size& longest_b_run,
+                                           Size& longest_y_run)
     {
       matched_b_ions = popcountStage2OrdinalBits_(match.matched_b_ordinal_words_);
       matched_y_ions = popcountStage2OrdinalBits_(match.matched_y_ordinal_words_);
@@ -457,18 +499,42 @@ namespace OpenMS
         spectrum_peak_count,
         fragment_tolerance_da,
         spectrum_mz_span);
-
-      const double sage_like_fallback = std::log1p(poisson_proxy) + (longest_y_pct / 3.0);
-      const double hyperscore =
-        std::lgamma(static_cast<double>(matched_b_ions) + 1.0) +
-        std::lgamma(static_cast<double>(matched_y_ions) + 1.0);
-      const double bounded_fraction = std::clamp(matched_intensity_fraction, 0.0, 1.0);
-      const double intensity_term = 0.5 * std::log1p(1000.0 * bounded_fraction);
-      return sage_like_fallback + hyperscore + intensity_term;
     }
 
-    void sortStage2RunScores_(std::array<Size, STAGE2_AGGREGATED_RUN_SCORES>& run_ids,
-                              std::array<double, STAGE2_AGGREGATED_RUN_SCORES>& run_scores)
+    double computeStage2RunStreakScore_(double best_spectrum_score, Size streak_length)
+    {
+      if (best_spectrum_score <= 0.0)
+      {
+        return 0.0;
+      }
+      return best_spectrum_score + 0.35 * std::log1p(static_cast<double>(streak_length));
+    }
+
+    void updateStage2RunStreak_(Stage2RunStreakState& state,
+                                Size spectrum_index,
+                                double spectrum_score)
+    {
+      if (state.current_streak_length > 0 &&
+          state.last_supported_spectrum_index + 1 == spectrum_index)
+      {
+        ++state.current_streak_length;
+      }
+      else
+      {
+        state.current_streak_length = 1;
+      }
+      state.last_supported_spectrum_index = spectrum_index;
+      state.best_streak_length = std::max(state.best_streak_length, state.current_streak_length);
+      state.best_spectrum_score = std::max(state.best_spectrum_score, spectrum_score);
+
+      const double streak_score =
+        computeStage2RunStreakScore_(state.best_spectrum_score, state.best_streak_length);
+      state.best_streak_score = std::max(state.best_streak_score, streak_score);
+    }
+
+    void sortStage2RunSummaries_(std::array<Size, STAGE2_AGGREGATED_RUN_SCORES>& run_ids,
+                                 std::array<double, STAGE2_AGGREGATED_RUN_SCORES>& run_scores,
+                                 std::array<Size, STAGE2_AGGREGATED_RUN_SCORES>& run_streak_lengths)
     {
       for (Size outer_idx = 0; outer_idx < run_scores.size(); ++outer_idx)
       {
@@ -477,6 +543,9 @@ namespace OpenMS
           const bool swap_entries =
             run_scores[inner_idx] > run_scores[outer_idx] ||
             (run_scores[inner_idx] == run_scores[outer_idx] &&
+             run_streak_lengths[inner_idx] > run_streak_lengths[outer_idx]) ||
+            (run_scores[inner_idx] == run_scores[outer_idx] &&
+             run_streak_lengths[inner_idx] == run_streak_lengths[outer_idx] &&
              run_ids[outer_idx] == STAGE2_UNASSIGNED_RUN_ID &&
              run_ids[inner_idx] != STAGE2_UNASSIGNED_RUN_ID);
           if (!swap_entries)
@@ -484,18 +553,36 @@ namespace OpenMS
             continue;
           }
           std::swap(run_scores[outer_idx], run_scores[inner_idx]);
+          std::swap(run_streak_lengths[outer_idx], run_streak_lengths[inner_idx]);
           std::swap(run_ids[outer_idx], run_ids[inner_idx]);
         }
       }
     }
 
-    void upsertStage2RunScore_(Stage2CandidateStats& stats,
-                               Size run_index,
-                               double run_score)
+    void upsertStage2RunSummary_(Stage2CandidateStats& stats,
+                                 Size run_index,
+                                 double run_score,
+                                 Size run_streak_length)
     {
       if (run_index < 64)
       {
         stats.supporting_run_mask |= (std::uint64_t{1} << run_index);
+        if (run_streak_length >= 2)
+        {
+          stats.streak_ge_2_run_mask |= (std::uint64_t{1} << run_index);
+        }
+        if (run_streak_length >= 3)
+        {
+          stats.streak_ge_3_run_mask |= (std::uint64_t{1} << run_index);
+        }
+      }
+
+      if (run_score > stats.best_run_streak_score ||
+          (run_score == stats.best_run_streak_score &&
+           run_streak_length > stats.best_run_streak_length))
+      {
+        stats.best_run_streak_score = run_score;
+        stats.best_run_streak_length = run_streak_length;
       }
 
       for (Size run_slot = 0; run_slot < stats.top_run_ids.size(); ++run_slot)
@@ -505,7 +592,9 @@ namespace OpenMS
           continue;
         }
         stats.top_run_scores[run_slot] = std::max(stats.top_run_scores[run_slot], run_score);
-        sortStage2RunScores_(stats.top_run_ids, stats.top_run_scores);
+        stats.top_run_streak_lengths[run_slot] =
+          std::max(stats.top_run_streak_lengths[run_slot], run_streak_length);
+        sortStage2RunSummaries_(stats.top_run_ids, stats.top_run_scores, stats.top_run_streak_lengths);
         return;
       }
 
@@ -517,7 +606,8 @@ namespace OpenMS
         }
         stats.top_run_ids[run_slot] = run_index;
         stats.top_run_scores[run_slot] = run_score;
-        sortStage2RunScores_(stats.top_run_ids, stats.top_run_scores);
+        stats.top_run_streak_lengths[run_slot] = run_streak_length;
+        sortStage2RunSummaries_(stats.top_run_ids, stats.top_run_scores, stats.top_run_streak_lengths);
         return;
       }
 
@@ -525,7 +615,8 @@ namespace OpenMS
       {
         stats.top_run_ids.back() = run_index;
         stats.top_run_scores.back() = run_score;
-        sortStage2RunScores_(stats.top_run_ids, stats.top_run_scores);
+        stats.top_run_streak_lengths.back() = run_streak_length;
+        sortStage2RunSummaries_(stats.top_run_ids, stats.top_run_scores, stats.top_run_streak_lengths);
       }
     }
 
@@ -548,6 +639,39 @@ namespace OpenMS
       return tracked_support;
     }
 
+    Size countStage2StrongSupportingRuns_(const Stage2CandidateStats& stats)
+    {
+      return static_cast<Size>(std::popcount(stats.strong_supporting_run_mask));
+    }
+
+    Size countStage2RunsWithMinStreak_(const Stage2CandidateStats& stats, Size min_streak_length)
+    {
+      if (min_streak_length <= 1)
+      {
+        return countStage2SupportingRuns_(stats);
+      }
+
+      const std::uint64_t streak_mask =
+        min_streak_length <= 2 ? stats.streak_ge_2_run_mask :
+        stats.streak_ge_3_run_mask;
+      const Size masked_support = static_cast<Size>(std::popcount(streak_mask));
+      if (masked_support > 0)
+      {
+        return masked_support;
+      }
+
+      Size tracked_support = 0;
+      for (Size run_slot = 0; run_slot < stats.top_run_ids.size(); ++run_slot)
+      {
+        if (stats.top_run_ids[run_slot] != STAGE2_UNASSIGNED_RUN_ID &&
+            stats.top_run_streak_lengths[run_slot] >= min_streak_length)
+        {
+          ++tracked_support;
+        }
+      }
+      return tracked_support;
+    }
+
     double composeStage2PeptideScore_(const Stage2CandidateStats& stats)
     {
       double score = 0.0;
@@ -555,8 +679,51 @@ namespace OpenMS
       {
         score += STAGE2_TOP_RUN_WEIGHTS[i] * stats.top_run_scores[i];
       }
-      score += 0.35 * std::log1p(static_cast<double>(countStage2SupportingRuns_(stats)));
+      score += 1.5 * static_cast<double>(countStage2StrongSupportingRuns_(stats));
+      score += 0.35 * std::log1p(static_cast<double>(stats.strong_supporting_spectra));
+      score += 0.1 * std::log1p(static_cast<double>(countStage2SupportingRuns_(stats)));
       return score;
+    }
+
+    double empiricalStage2TailPValue_(const std::vector<double>& sorted_null_scores,
+                                      double observed_score)
+    {
+      if (sorted_null_scores.empty())
+      {
+        return 1.0;
+      }
+
+      const auto first_ge = std::lower_bound(
+        sorted_null_scores.begin(), sorted_null_scores.end(), observed_score);
+      const Size exceed_count = static_cast<Size>(sorted_null_scores.end() - first_ge);
+      return (static_cast<double>(exceed_count) + 1.0) /
+             (static_cast<double>(sorted_null_scores.size()) + 1.0);
+    }
+
+    double combineStage2RunPValues_(const std::vector<double>& run_pvalues)
+    {
+      if (run_pvalues.empty())
+      {
+        return 1.0;
+      }
+      if (run_pvalues.size() == 1)
+      {
+        return std::clamp(run_pvalues.front(), 0.0, 1.0);
+      }
+
+      double fisher_statistic = 0.0;
+      for (double pvalue : run_pvalues)
+      {
+        fisher_statistic += -2.0 * std::log(std::clamp(pvalue, 1e-300, 1.0));
+      }
+
+      const boost::math::chi_squared fisher_null(2.0 * static_cast<double>(run_pvalues.size()));
+      const double combined_pvalue = boost::math::cdf(boost::math::complement(fisher_null, fisher_statistic));
+      if (!std::isfinite(combined_pvalue))
+      {
+        return 1.0;
+      }
+      return std::clamp(combined_pvalue, 0.0, 1.0);
     }
 
     void mergeStage2CandidateStats_(Stage2CandidateStats& destination,
@@ -565,6 +732,10 @@ namespace OpenMS
       destination.best_matched_ions = std::max(destination.best_matched_ions, source.best_matched_ions);
       destination.supporting_spectra += source.supporting_spectra;
       destination.supporting_run_mask |= source.supporting_run_mask;
+      destination.strong_supporting_spectra += source.strong_supporting_spectra;
+      destination.strong_supporting_run_mask |= source.strong_supporting_run_mask;
+      destination.streak_ge_2_run_mask |= source.streak_ge_2_run_mask;
+      destination.streak_ge_3_run_mask |= source.streak_ge_3_run_mask;
       if (source.best_spectrum_score > destination.best_spectrum_score)
       {
         destination.best_spectrum_matched_intensity_fraction = source.best_spectrum_matched_intensity_fraction;
@@ -578,14 +749,24 @@ namespace OpenMS
         destination.best_source_file = source.best_source_file;
         destination.best_native_spectrum_id = source.best_native_spectrum_id;
       }
+      if (source.best_run_streak_score > destination.best_run_streak_score ||
+          (source.best_run_streak_score == destination.best_run_streak_score &&
+           source.best_run_streak_length > destination.best_run_streak_length))
+      {
+        destination.best_run_streak_score = source.best_run_streak_score;
+        destination.best_run_streak_length = source.best_run_streak_length;
+      }
       for (Size run_slot = 0; run_slot < source.top_run_ids.size(); ++run_slot)
       {
         if (source.top_run_ids[run_slot] == STAGE2_UNASSIGNED_RUN_ID)
         {
           continue;
         }
-        upsertStage2RunScore_(
-          destination, source.top_run_ids[run_slot], source.top_run_scores[run_slot]);
+        upsertStage2RunSummary_(
+          destination,
+          source.top_run_ids[run_slot],
+          source.top_run_scores[run_slot],
+          source.top_run_streak_lengths[run_slot]);
       }
     }
   }
@@ -608,7 +789,7 @@ namespace OpenMS
 
     defaults_.setValue("Stage2:mode", "qvalue",
                        "How to accept stage-2 confirmed peptides.");
-    defaults_.setValidStrings("Stage2:mode", {"qvalue", "raw_score"});
+    defaults_.setValidStrings("Stage2:mode", {"qvalue", "raw_score", "lower_order_null"});
     defaults_.setValue("Stage2:max_qvalue", 0.01,
                        "Maximum peptide-level q-value in Stage2:mode=qvalue.");
     defaults_.setMinFloat("Stage2:max_qvalue", 0.0);
@@ -616,6 +797,25 @@ namespace OpenMS
     defaults_.setValue("Stage2:min_matched_ions", 5,
                        "Minimum matched fragment ions required in stage 2.");
     defaults_.setMinInt("Stage2:min_matched_ions", 0);
+    defaults_.setValue("Stage2:strong_min_matched_ions", 6,
+                       "Minimum matched fragment ions needed for a spectrum to count as strong stage-2 support.");
+    defaults_.setMinInt("Stage2:strong_min_matched_ions", 0);
+    defaults_.setValue("Stage2:strong_min_intensity_fraction", 0.05,
+                       "Minimum matched-intensity fraction needed for a spectrum to count as strong stage-2 support.");
+    defaults_.setMinFloat("Stage2:strong_min_intensity_fraction", 0.0);
+    defaults_.setMaxFloat("Stage2:strong_min_intensity_fraction", 1.0);
+    defaults_.setValue("Stage2:lower_order_min_rank", 5,
+                       "Lowest spectrum-rank position contributing to the decoy-free lower-order null model.");
+    defaults_.setMinInt("Stage2:lower_order_min_rank", 2);
+    defaults_.setValue("Stage2:lower_order_max_rank", 10,
+                       "Highest spectrum-rank position contributing to the decoy-free lower-order null model.");
+    defaults_.setMinInt("Stage2:lower_order_max_rank", 2);
+    defaults_.setValue("Stage2:lower_order_scored_ranks", 3,
+                       "Maximum number of top-ranked spectrum candidates per spectrum kept for decoy-free lower-order scoring.");
+    defaults_.setMinInt("Stage2:lower_order_scored_ranks", 1);
+    defaults_.setValue("Stage2:lower_order_min_null_scores", 256,
+                       "Minimum number of lower-order null scores needed before a charge-specific null model is used.");
+    defaults_.setMinInt("Stage2:lower_order_min_null_scores", 1);
     defaults_.setValue("Stage2:decoys", "true",
                        "Generate target-decoy peptides for stage-2 q-value estimation.");
     defaults_.setValidStrings("Stage2:decoys", {"true", "false"});
@@ -705,6 +905,12 @@ namespace OpenMS
     stage2_mode_ = param_.getValue("Stage2:mode").toString();
     stage2_max_qvalue_ = static_cast<double>(param_.getValue("Stage2:max_qvalue"));
     stage2_min_matched_ions_ = static_cast<Int>(param_.getValue("Stage2:min_matched_ions"));
+    stage2_strong_min_matched_ions_ = static_cast<Int>(param_.getValue("Stage2:strong_min_matched_ions"));
+    stage2_strong_min_intensity_fraction_ = static_cast<double>(param_.getValue("Stage2:strong_min_intensity_fraction"));
+    stage2_lower_order_min_rank_ = static_cast<Int>(param_.getValue("Stage2:lower_order_min_rank"));
+    stage2_lower_order_max_rank_ = static_cast<Int>(param_.getValue("Stage2:lower_order_max_rank"));
+    stage2_lower_order_scored_ranks_ = static_cast<Int>(param_.getValue("Stage2:lower_order_scored_ranks"));
+    stage2_lower_order_min_null_scores_ = static_cast<Int>(param_.getValue("Stage2:lower_order_min_null_scores"));
     stage2_decoys_ = param_.getValue("Stage2:decoys").toString() == "true";
     stage2_decoy_prefix_ = param_.getValue("Stage2:decoy_prefix").toString();
 
@@ -1343,6 +1549,17 @@ namespace OpenMS
     const Size per_thread_reserve = std::min<Size>(
       std::max<Size>(4096, candidates.size() / (static_cast<Size>(thread_count) * 16) + 1),
       static_cast<Size>(65536));
+    const bool use_lower_order_null = stage2_mode_ == "lower_order_null";
+    const Size lower_order_min_rank = static_cast<Size>(std::max<Int>(2, stage2_lower_order_min_rank_));
+    const Size lower_order_max_rank = static_cast<Size>(std::max<Int>(
+      stage2_lower_order_max_rank_, stage2_lower_order_min_rank_));
+    const Size lower_order_scored_ranks = static_cast<Size>(std::max<Int>(1, stage2_lower_order_scored_ranks_));
+    const Size lower_order_min_null_scores = static_cast<Size>(std::max<Int>(1, stage2_lower_order_min_null_scores_));
+    const Size per_thread_observation_reserve = std::min<Size>(
+      std::max<Size>(
+        1024,
+        ((total_spectra / static_cast<Size>(thread_count)) + 1) * lower_order_scored_ranks),
+      static_cast<Size>(262144));
 
     OPENMS_LOG_INFO << "Stage 2: scoring " << jobs.size() << " SWATH maps across "
                     << total_spectra << " spectra and " << total_progress
@@ -1354,9 +1571,20 @@ namespace OpenMS
     std::atomic<SignedSize> next_progress_update{progress_step};
     std::mutex progress_mutex;
     std::vector<std::unordered_map<Size, Stage2CandidateStats>> local_candidate_stats(static_cast<Size>(thread_count));
+    std::vector<std::unordered_map<int, std::vector<double>>> local_lower_order_null_scores_by_charge(
+      static_cast<Size>(thread_count));
+    std::vector<std::vector<Stage2LowerOrderObservation>> local_lower_order_observations(
+      static_cast<Size>(thread_count));
     for (auto& local_scores : local_candidate_stats)
     {
       local_scores.reserve(per_thread_reserve);
+    }
+    if (use_lower_order_null)
+    {
+      for (auto& observations : local_lower_order_observations)
+      {
+        observations.reserve(per_thread_observation_reserve);
+      }
     }
 
 #ifdef _OPENMP
@@ -1370,8 +1598,15 @@ namespace OpenMS
       const int thread_id = 0;
 #endif
       auto& local_scores = local_candidate_stats[static_cast<Size>(thread_id)];
+      auto& local_null_scores_by_charge = local_lower_order_null_scores_by_charge[static_cast<Size>(thread_id)];
+      auto& local_observations = local_lower_order_observations[static_cast<Size>(thread_id)];
+      std::unordered_map<Size, Stage2RunStreakState> run_streak_states;
       const auto& job = jobs[static_cast<Size>(job_index)];
       FragmentIndex::SpectrumMatchesTopN matches;
+      if (export_stage2_scores_)
+      {
+        run_streak_states.reserve(std::min(job.candidate_count, per_thread_reserve));
+      }
 
       for (Size spectrum_index = 0; spectrum_index < job.spectrum_count; ++spectrum_index)
       {
@@ -1456,55 +1691,122 @@ namespace OpenMS
               }
             }
 
+            std::vector<Stage2ScoredSpectrumCandidate> ranked_candidates;
+            ranked_candidates.reserve(spectrum_best_matches.size());
             for (const auto& spectrum_match_item : spectrum_best_matches)
             {
-              const Size candidate_id = spectrum_match_item.first;
               const auto& match = spectrum_match_item.second;
-              auto& stats = local_scores[candidate_id];
-              stats.best_matched_ions = std::max(stats.best_matched_ions,
-                                                 static_cast<Size>(match.num_matched_));
-              ++stats.supporting_spectra;
-
               const double matched_intensity_fraction =
                 total_spectrum_intensity > 0.0 ?
                 static_cast<double>(match.matched_intensity_sum_) / total_spectrum_intensity :
                 0.0;
-              double poisson_proxy = 0.0;
-              double longest_y_pct = 0.0;
-              Size matched_b_ions = 0;
-              Size matched_y_ions = 0;
-              Size longest_b_run = 0;
-              Size longest_y_run = 0;
-              const double spectrum_score =
-                computeStage2SpectrumScore_(
-                  match,
-                  theoretical_b_ions_by_candidate[candidate_id],
-                  theoretical_y_ions_by_candidate[candidate_id],
-                  openms_spectrum.size(),
-                  spectrum_mz_span,
-                  matched_intensity_fraction,
-                  fragment_tolerance_da,
-                  poisson_proxy,
-                  longest_y_pct,
-                  matched_b_ions,
-                  matched_y_ions,
-                  longest_b_run,
-                  longest_y_run);
-              upsertStage2RunScore_(stats, job.run_index, spectrum_score);
+              ranked_candidates.push_back({
+                spectrum_match_item.first,
+                match,
+                matched_intensity_fraction,
+                computeStage2SpectrumScore_(match, matched_intensity_fraction)
+              });
+            }
+
+            std::sort(ranked_candidates.begin(), ranked_candidates.end(),
+                      [](const Stage2ScoredSpectrumCandidate& lhs,
+                         const Stage2ScoredSpectrumCandidate& rhs)
+                      {
+                        if (lhs.spectrum_score != rhs.spectrum_score) return lhs.spectrum_score > rhs.spectrum_score;
+                        return betterStage2SpectrumMatch_(lhs.match, rhs.match);
+                      });
+
+            for (const auto& scored_candidate : ranked_candidates)
+            {
+              const Size candidate_id = scored_candidate.candidate_id;
+              const auto& match = scored_candidate.match;
+              auto& stats = local_scores[candidate_id];
+              stats.best_matched_ions = std::max(stats.best_matched_ions,
+                                                 static_cast<Size>(match.num_matched_));
+              ++stats.supporting_spectra;
+              if (job.run_index < 64)
+              {
+                stats.supporting_run_mask |= (std::uint64_t{1} << job.run_index);
+              }
+
+              const double matched_intensity_fraction = scored_candidate.matched_intensity_fraction;
+              const double spectrum_score = scored_candidate.spectrum_score;
+              const bool strong_support =
+                static_cast<Int>(match.num_matched_) >= stage2_strong_min_matched_ions_ &&
+                matched_intensity_fraction >= stage2_strong_min_intensity_fraction_;
+              if (strong_support)
+              {
+                ++stats.strong_supporting_spectra;
+                if (job.run_index < 64)
+                {
+                  stats.strong_supporting_run_mask |= (std::uint64_t{1} << job.run_index);
+                }
+              }
+              upsertStage2RunSummary_(stats, job.run_index, spectrum_score, 1);
+              if (export_stage2_scores_)
+              {
+                updateStage2RunStreak_(
+                  run_streak_states[candidate_id], spectrum_index, spectrum_score);
+              }
               if (spectrum_score > stats.best_spectrum_score)
               {
-                stats.best_spectrum_matched_b_ions = matched_b_ions;
-                stats.best_spectrum_matched_y_ions = matched_y_ions;
-                stats.best_spectrum_longest_b_run = longest_b_run;
-                stats.best_spectrum_longest_y_run = longest_y_run;
-                stats.best_spectrum_longest_y_pct = longest_y_pct;
-                stats.best_spectrum_poisson_proxy = poisson_proxy;
                 stats.best_spectrum_score = spectrum_score;
                 stats.best_spectrum_matched_intensity_fraction = matched_intensity_fraction;
                 if (export_stage2_scores_)
                 {
+                  double poisson_proxy = 0.0;
+                  double longest_y_pct = 0.0;
+                  Size matched_b_ions = 0;
+                  Size matched_y_ions = 0;
+                  Size longest_b_run = 0;
+                  Size longest_y_run = 0;
+                  computeStage2SpectrumDiagnostics_(
+                    match,
+                    theoretical_b_ions_by_candidate[candidate_id],
+                    theoretical_y_ions_by_candidate[candidate_id],
+                    openms_spectrum.size(),
+                    spectrum_mz_span,
+                    fragment_tolerance_da,
+                    poisson_proxy,
+                    longest_y_pct,
+                    matched_b_ions,
+                    matched_y_ions,
+                    longest_b_run,
+                    longest_y_run);
+                  stats.best_spectrum_matched_b_ions = matched_b_ions;
+                  stats.best_spectrum_matched_y_ions = matched_y_ions;
+                  stats.best_spectrum_longest_b_run = longest_b_run;
+                  stats.best_spectrum_longest_y_run = longest_y_run;
+                  stats.best_spectrum_longest_y_pct = longest_y_pct;
+                  stats.best_spectrum_poisson_proxy = poisson_proxy;
                   stats.best_source_file = job.source_file;
                   stats.best_native_spectrum_id = native_spectrum_id;
+                }
+              }
+            }
+
+            if (use_lower_order_null)
+            {
+              for (Size rank_idx = 0; rank_idx < ranked_candidates.size(); ++rank_idx)
+              {
+                const auto& scored_candidate = ranked_candidates[rank_idx];
+                const auto& candidate = candidates[scored_candidate.candidate_id];
+                const Size rank = rank_idx + 1;
+
+                if (rank >= lower_order_min_rank && rank <= lower_order_max_rank)
+                {
+                  local_null_scores_by_charge[candidate.precursor_charge].push_back(
+                    scored_candidate.spectrum_score);
+                }
+                if (rank <= lower_order_scored_ranks)
+                {
+                  local_observations.push_back({
+                    scored_candidate.candidate_id,
+                    job.run_index,
+                    static_cast<std::uint16_t>(candidate.precursor_charge),
+                    rank,
+                    scored_candidate.spectrum_score
+                  });
                 }
               }
             }
@@ -1528,6 +1830,41 @@ namespace OpenMS
           }
         }
       }
+
+      for (const auto& streak_item : run_streak_states)
+      {
+        auto& stats = local_scores[streak_item.first];
+        if (streak_item.second.best_streak_score > stats.best_run_streak_score ||
+            (streak_item.second.best_streak_score == stats.best_run_streak_score &&
+             streak_item.second.best_streak_length > stats.best_run_streak_length))
+        {
+          stats.best_run_streak_score = streak_item.second.best_streak_score;
+          stats.best_run_streak_length = streak_item.second.best_streak_length;
+        }
+
+        if (job.run_index < 64)
+        {
+          if (streak_item.second.best_streak_length >= 2)
+          {
+            stats.streak_ge_2_run_mask |= (std::uint64_t{1} << job.run_index);
+          }
+          if (streak_item.second.best_streak_length >= 3)
+          {
+            stats.streak_ge_3_run_mask |= (std::uint64_t{1} << job.run_index);
+          }
+        }
+
+        for (Size run_slot = 0; run_slot < stats.top_run_ids.size(); ++run_slot)
+        {
+          if (stats.top_run_ids[run_slot] == job.run_index)
+          {
+            stats.top_run_streak_lengths[run_slot] = std::max(
+              stats.top_run_streak_lengths[run_slot],
+              streak_item.second.best_streak_length);
+            break;
+          }
+        }
+      }
     }
 
     endProgress();
@@ -1542,7 +1879,119 @@ namespace OpenMS
       }
     }
 
+    std::unordered_map<Size, double> lower_order_combined_pvalues_by_candidate;
+    std::unordered_map<Size, double> lower_order_best_local_pvalues_by_candidate;
+    std::unordered_map<Size, Size> lower_order_best_local_ranks_by_candidate;
+    if (use_lower_order_null)
+    {
+      std::unordered_map<int, std::vector<double>> null_scores_by_charge;
+      std::vector<double> pooled_null_scores;
+      std::vector<Stage2LowerOrderObservation> observations;
+
+      for (Size thread_slot = 0; thread_slot < static_cast<Size>(thread_count); ++thread_slot)
+      {
+        for (auto& item : local_lower_order_null_scores_by_charge[thread_slot])
+        {
+          pooled_null_scores.insert(
+            pooled_null_scores.end(), item.second.begin(), item.second.end());
+          auto& destination = null_scores_by_charge[item.first];
+          destination.insert(destination.end(), item.second.begin(), item.second.end());
+        }
+        auto& thread_observations = local_lower_order_observations[thread_slot];
+        observations.insert(
+          observations.end(), thread_observations.begin(), thread_observations.end());
+      }
+
+      std::sort(pooled_null_scores.begin(), pooled_null_scores.end());
+      for (auto& item : null_scores_by_charge)
+      {
+        std::sort(item.second.begin(), item.second.end());
+      }
+
+      struct ScoredObservation
+      {
+        Size candidate_id{0};
+        Size run_index{0};
+        Size rank{0};
+        double local_pvalue{1.0};
+      };
+
+      std::vector<ScoredObservation> scored_observations;
+      scored_observations.reserve(observations.size());
+      for (const auto& observation : observations)
+      {
+        const auto charge_null_it = null_scores_by_charge.find(static_cast<int>(observation.precursor_charge));
+        const std::vector<double>* active_null = &pooled_null_scores;
+        if (charge_null_it != null_scores_by_charge.end() &&
+            charge_null_it->second.size() >= lower_order_min_null_scores)
+        {
+          active_null = &charge_null_it->second;
+        }
+
+        const double local_pvalue = empiricalStage2TailPValue_(*active_null, observation.spectrum_score);
+        scored_observations.push_back({
+          observation.candidate_id,
+          observation.run_index,
+          observation.rank,
+          local_pvalue
+        });
+      }
+
+      std::sort(scored_observations.begin(), scored_observations.end(),
+                [](const ScoredObservation& lhs, const ScoredObservation& rhs)
+                {
+                  if (lhs.candidate_id != rhs.candidate_id) return lhs.candidate_id < rhs.candidate_id;
+                  if (lhs.run_index != rhs.run_index) return lhs.run_index < rhs.run_index;
+                  if (lhs.local_pvalue != rhs.local_pvalue) return lhs.local_pvalue < rhs.local_pvalue;
+                  return lhs.rank < rhs.rank;
+                });
+
+      for (Size observation_idx = 0; observation_idx < scored_observations.size();)
+      {
+        const Size candidate_id = scored_observations[observation_idx].candidate_id;
+        std::vector<double> run_pvalues;
+        double best_local_pvalue = 1.0;
+        Size best_local_rank = 0;
+
+        while (observation_idx < scored_observations.size() &&
+               scored_observations[observation_idx].candidate_id == candidate_id)
+        {
+          const Size run_index = scored_observations[observation_idx].run_index;
+          double min_run_pvalue = scored_observations[observation_idx].local_pvalue;
+          Size min_run_rank = scored_observations[observation_idx].rank;
+          ++observation_idx;
+          while (observation_idx < scored_observations.size() &&
+                 scored_observations[observation_idx].candidate_id == candidate_id &&
+                 scored_observations[observation_idx].run_index == run_index)
+          {
+            if (scored_observations[observation_idx].local_pvalue < min_run_pvalue ||
+                (scored_observations[observation_idx].local_pvalue == min_run_pvalue &&
+                 scored_observations[observation_idx].rank < min_run_rank))
+            {
+              min_run_pvalue = scored_observations[observation_idx].local_pvalue;
+              min_run_rank = scored_observations[observation_idx].rank;
+            }
+            ++observation_idx;
+          }
+
+          run_pvalues.push_back(min_run_pvalue);
+          if (min_run_pvalue < best_local_pvalue ||
+              (min_run_pvalue == best_local_pvalue &&
+               (best_local_rank == 0 || min_run_rank < best_local_rank)))
+          {
+            best_local_pvalue = min_run_pvalue;
+            best_local_rank = min_run_rank;
+          }
+        }
+
+        lower_order_combined_pvalues_by_candidate[candidate_id] = combineStage2RunPValues_(run_pvalues);
+        lower_order_best_local_pvalues_by_candidate[candidate_id] = best_local_pvalue;
+        lower_order_best_local_ranks_by_candidate[candidate_id] = best_local_rank;
+      }
+    }
+
     bundle.best_matched_ions.reserve(merged_candidate_stats.size());
+    bundle.peptide_pvalues.reserve(lower_order_combined_pvalues_by_candidate.size());
     bundle.score_records.reserve(merged_candidate_stats.size());
     if (export_stage2_scores_)
     {
@@ -1554,6 +2003,14 @@ namespace OpenMS
       const double composite_score = composeStage2PeptideScore_(score_item.second);
       bundle.best_matched_ions[candidate.internal_key] = score_item.second.best_matched_ions;
       bundle.score_records.push_back({candidate.internal_key, composite_score, candidate.decoy});
+      if (use_lower_order_null)
+      {
+        const auto combined_pvalue_it = lower_order_combined_pvalues_by_candidate.find(score_item.first);
+        if (combined_pvalue_it != lower_order_combined_pvalues_by_candidate.end())
+        {
+          bundle.peptide_pvalues[candidate.internal_key] = combined_pvalue_it->second;
+        }
+      }
       if (export_stage2_scores_)
       {
         Stage2CandidateScore score_row;
@@ -1570,6 +2027,10 @@ namespace OpenMS
         score_row.best_matched_ions = score_item.second.best_matched_ions;
         score_row.supporting_spectra = score_item.second.supporting_spectra;
         score_row.supporting_runs = countStage2SupportingRuns_(score_item.second);
+        score_row.strong_supporting_spectra = score_item.second.strong_supporting_spectra;
+        score_row.strong_supporting_runs = countStage2StrongSupportingRuns_(score_item.second);
+        score_row.runs_with_streak_ge_2 = countStage2RunsWithMinStreak_(score_item.second, 2);
+        score_row.runs_with_streak_ge_3 = countStage2RunsWithMinStreak_(score_item.second, 3);
         score_row.best_spectrum_matched_intensity_fraction = score_item.second.best_spectrum_matched_intensity_fraction;
         score_row.best_spectrum_matched_b_ions = score_item.second.best_spectrum_matched_b_ions;
         score_row.best_spectrum_matched_y_ions = score_item.second.best_spectrum_matched_y_ions;
@@ -1578,9 +2039,29 @@ namespace OpenMS
         score_row.best_spectrum_longest_y_pct = score_item.second.best_spectrum_longest_y_pct;
         score_row.best_spectrum_poisson_proxy = score_item.second.best_spectrum_poisson_proxy;
         score_row.best_spectrum_score = score_item.second.best_spectrum_score;
+        score_row.best_run_streak_length = score_item.second.best_run_streak_length;
+        score_row.best_run_streak_score = score_item.second.best_run_streak_score;
         score_row.top_run_score_1 = score_item.second.top_run_scores[0];
         score_row.top_run_score_2 = score_item.second.top_run_scores[1];
         score_row.top_run_score_3 = score_item.second.top_run_scores[2];
+        score_row.top_run_streak_length_1 = score_item.second.top_run_streak_lengths[0];
+        score_row.top_run_streak_length_2 = score_item.second.top_run_streak_lengths[1];
+        score_row.top_run_streak_length_3 = score_item.second.top_run_streak_lengths[2];
+        const auto best_local_rank_it = lower_order_best_local_ranks_by_candidate.find(score_item.first);
+        if (best_local_rank_it != lower_order_best_local_ranks_by_candidate.end())
+        {
+          score_row.best_local_rank = best_local_rank_it->second;
+        }
+        const auto best_local_pvalue_it = lower_order_best_local_pvalues_by_candidate.find(score_item.first);
+        if (best_local_pvalue_it != lower_order_best_local_pvalues_by_candidate.end())
+        {
+          score_row.best_local_pvalue = best_local_pvalue_it->second;
+        }
+        const auto combined_pvalue_it = lower_order_combined_pvalues_by_candidate.find(score_item.first);
+        if (combined_pvalue_it != lower_order_combined_pvalues_by_candidate.end())
+        {
+          score_row.combined_pvalue = combined_pvalue_it->second;
+        }
         score_row.composite_score = composite_score;
         bundle.candidate_scores.emplace(score_row.peptide_key, std::move(score_row));
       }
@@ -1650,14 +2131,60 @@ namespace OpenMS
     return qvalues;
   }
 
+  std::unordered_map<std::string, double> FastaEvidenceFilter::computeBenjaminiHochbergQValues(
+    const std::unordered_map<std::string, double>& peptide_pvalues)
+  {
+    std::vector<std::pair<std::string, double>> sorted_pvalues;
+    sorted_pvalues.reserve(peptide_pvalues.size());
+    for (const auto& item : peptide_pvalues)
+    {
+      sorted_pvalues.push_back(item);
+    }
+
+    std::sort(sorted_pvalues.begin(), sorted_pvalues.end(),
+              [](const auto& lhs, const auto& rhs)
+              {
+                if (lhs.second != rhs.second) return lhs.second < rhs.second;
+                return lhs.first < rhs.first;
+              });
+
+    std::vector<double> qvalue_buffer(sorted_pvalues.size(), 1.0);
+    const double num_tests = static_cast<double>(sorted_pvalues.size());
+    for (Size i = 0; i < sorted_pvalues.size(); ++i)
+    {
+      const double rank = static_cast<double>(i + 1);
+      qvalue_buffer[i] = std::clamp(sorted_pvalues[i].second * num_tests / rank, 0.0, 1.0);
+    }
+
+    for (SignedSize i = static_cast<SignedSize>(qvalue_buffer.size()) - 2; i >= 0; --i)
+    {
+      qvalue_buffer[static_cast<Size>(i)] = std::min(
+        qvalue_buffer[static_cast<Size>(i)],
+        qvalue_buffer[static_cast<Size>(i + 1)]);
+    }
+
+    std::unordered_map<std::string, double> qvalues;
+    qvalues.reserve(sorted_pvalues.size());
+    for (Size i = 0; i < sorted_pvalues.size(); ++i)
+    {
+      qvalues[sorted_pvalues[i].first] = qvalue_buffer[i];
+    }
+    return qvalues;
+  }
+
   std::vector<FastaEvidenceFilter::PeptideEntry> FastaEvidenceFilter::selectConfirmedPeptides(
     const std::vector<PeptideEntry>& target_peptides,
     const std::unordered_map<std::string, Size>& best_matched_ions,
     const std::vector<PeptideScoreRecord>& score_records,
-    Size total_decoy_candidates) const
+    Size total_decoy_candidates,
+    const std::unordered_map<std::string, double>* peptide_qvalues) const
   {
     std::unordered_map<std::string, double> qvalues;
-    if (stage2_mode_ == "qvalue")
+    if (peptide_qvalues != nullptr)
+    {
+      qvalues = *peptide_qvalues;
+    }
+    else if (stage2_mode_ == "qvalue")
     {
       qvalues = computePeptideQValues(score_records, target_peptides.size(), total_decoy_candidates);
     }
@@ -1929,6 +2456,13 @@ namespace OpenMS
       stage2_space_message << "; target/decoy normalization factor "
                            << std::fixed << std::setprecision(3) << normalization_factor;
     }
+    else if (stage2_mode_ == "lower_order_null")
+    {
+      stage2_space_message << "; decoy-free lower-order null over spectrum ranks "
+                           << stage2_lower_order_min_rank_ << "-" << stage2_lower_order_max_rank_
+                           << " with top " << stage2_lower_order_scored_ranks_
+                           << " scored ranks per spectrum";
+    }
     stage2_space_message << ".";
     OPENMS_LOG_INFO << stage2_space_message.str() << std::endl;
 
@@ -1940,10 +2474,15 @@ namespace OpenMS
                                              selected_target_peptides.size(),
                                              stage2_decoy_peptides);
     }
+    else if (stage2_mode_ == "lower_order_null")
+    {
+      stage2_qvalues = computeBenjaminiHochbergQValues(stage2_scores.peptide_pvalues);
+    }
     std::vector<PeptideEntry> confirmed_target_peptides = selectConfirmedPeptides(selected_target_peptides,
                                                                                   stage2_scores.best_matched_ions,
                                                                                   stage2_scores.score_records,
-                                                                                  stage2_decoy_peptides);
+                                                                                  stage2_decoy_peptides,
+                                                                                  stage2_mode_ == "raw_score" ? nullptr : &stage2_qvalues);
 
     const std::unordered_set<std::string> supported_proteins = selectSupportedProteins(confirmed_target_peptides,
                                                                                         protein_min_confirmed_peptides_,
@@ -1985,7 +2524,7 @@ namespace OpenMS
           matched_ions_it != stage2_scores.best_matched_ions.end() &&
           matched_ions_it->second >= static_cast<Size>(stage2_min_matched_ions_);
 
-        if (stage2_mode_ == "qvalue")
+        if (stage2_mode_ == "qvalue" || stage2_mode_ == "lower_order_null")
         {
           const auto qvalue_it = stage2_qvalues.find(item.first);
           if (qvalue_it != stage2_qvalues.end())

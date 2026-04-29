@@ -201,6 +201,20 @@ START_SECTION((computePeptideQValues() - score bins are tied and target/decoy im
 }
 END_SECTION
 
+START_SECTION((computeBenjaminiHochbergQValues() - peptide p-values become monotone q-values))
+{
+  const unordered_map<string, double> peptide_pvalues{
+    {"pep_a", 0.01},
+    {"pep_b", 0.02},
+    {"pep_c", 0.20}
+  };
+  const auto qvalues = FastaEvidenceFilter::computeBenjaminiHochbergQValues(peptide_pvalues);
+  TEST_REAL_SIMILAR(qvalues.at("pep_a"), 0.03)
+  TEST_REAL_SIMILAR(qvalues.at("pep_b"), 0.03)
+  TEST_REAL_SIMILAR(qvalues.at("pep_c"), 0.20)
+}
+END_SECTION
+
 START_SECTION((selectConfirmedPeptides() - raw_score and qvalue modes))
 {
   FastaEvidenceFilter::PeptideEntry target_peptide;
@@ -266,6 +280,36 @@ START_SECTION((selectConfirmedPeptides() - raw_score and qvalue modes))
                                                                                 floor_records,
                                                                                 1);
   TEST_EQUAL(qvalue_floor_dropped.size(), 0)
+
+  FastaEvidenceFilter lower_order_keep_filter;
+  Param lower_order_keep_params = lower_order_keep_filter.getParameters();
+  lower_order_keep_params.setValue("Stage2:mode", "lower_order_null");
+  lower_order_keep_params.setValue("Stage2:max_qvalue", 0.05);
+  lower_order_keep_params.setValue("Stage2:min_matched_ions", 3);
+  lower_order_keep_filter.setParameters(lower_order_keep_params);
+
+  const unordered_map<string, double> lower_order_keep_qvalues{{"PEPTIDE/2", 0.01}};
+  const auto lower_order_confirmed = lower_order_keep_filter.selectConfirmedPeptides(target_peptides,
+                                                                                     best_matched_ions,
+                                                                                     {},
+                                                                                     0,
+                                                                                     &lower_order_keep_qvalues);
+  TEST_EQUAL(lower_order_confirmed.size(), 1)
+
+  FastaEvidenceFilter lower_order_drop_filter;
+  Param lower_order_drop_params = lower_order_drop_filter.getParameters();
+  lower_order_drop_params.setValue("Stage2:mode", "lower_order_null");
+  lower_order_drop_params.setValue("Stage2:max_qvalue", 0.05);
+  lower_order_drop_params.setValue("Stage2:min_matched_ions", 3);
+  lower_order_drop_filter.setParameters(lower_order_drop_params);
+
+  const unordered_map<string, double> lower_order_drop_qvalues{{"PEPTIDE/2", 0.2}};
+  const auto lower_order_dropped = lower_order_drop_filter.selectConfirmedPeptides(target_peptides,
+                                                                                   best_matched_ions,
+                                                                                   {},
+                                                                                   0,
+                                                                                   &lower_order_drop_qvalues);
+  TEST_EQUAL(lower_order_dropped.size(), 0)
 }
 END_SECTION
 
@@ -362,6 +406,8 @@ START_SECTION((filter() - optional stage2 score export captures target candidate
   params.setValue("Stage2:mode", "raw_score");
   params.setValue("Stage2:decoys", "false");
   params.setValue("Stage2:min_matched_ions", 1);
+  params.setValue("Stage2:strong_min_matched_ions", 1);
+  params.setValue("Stage2:strong_min_intensity_fraction", 0.0);
   params.setValue("Export:export_stage2_scores", "true");
   filter.setParameters(params);
 
@@ -399,12 +445,82 @@ START_SECTION((filter() - optional stage2 score export captures target candidate
   TEST_EQUAL(result.stage2_candidate_scores[0].native_spectrum_id, "scan=ms2")
   TEST_EQUAL(result.stage2_candidate_scores[0].accepted, true)
   TEST_EQUAL(result.stage2_candidate_scores[0].supporting_runs, 1)
+  TEST_EQUAL(result.stage2_candidate_scores[0].strong_supporting_spectra, 1)
+  TEST_EQUAL(result.stage2_candidate_scores[0].strong_supporting_runs, 1)
+  TEST_EQUAL(result.stage2_candidate_scores[0].runs_with_streak_ge_2, 0)
+  TEST_EQUAL(result.stage2_candidate_scores[0].runs_with_streak_ge_3, 0)
   TEST_TRUE(result.stage2_candidate_scores[0].composite_score > 0.0)
   TEST_TRUE(result.stage2_candidate_scores[0].best_spectrum_score > 0.0)
   TEST_TRUE(result.stage2_candidate_scores[0].top_run_score_1 > 0.0)
+  TEST_EQUAL(result.stage2_candidate_scores[0].best_run_streak_length, 1)
+  TEST_TRUE(result.stage2_candidate_scores[0].best_run_streak_score > 0.0)
+  TEST_EQUAL(result.stage2_candidate_scores[0].top_run_streak_length_1, 1)
   TEST_EQUAL(result.stage2_candidate_scores[0].protein_refs.size(), 1)
   TEST_EQUAL(result.stage2_candidate_scores[0].protein_refs[0], "protA")
   TEST_EQUAL(result.stage2_candidate_scores[0].protein_gene_names_by_accession.at("protA"), "GENEA")
+}
+END_SECTION
+
+START_SECTION((filter() - stage2 score export captures chromatographic streak support))
+{
+  FastaEvidenceFilter filter = makeFilterForSingleChargePeptides();
+  Param params = filter.getParameters();
+  params.setValue("SearchSpace:min_size", 7);
+  params.setValue("SearchSpace:max_size", 7);
+  params.setValue("Stage1:evidence_sources", "ms1");
+  params.setValue("Stage1:min_supported_precursors", 1);
+  params.setValue("Stage2:mode", "raw_score");
+  params.setValue("Stage2:decoys", "false");
+  params.setValue("Stage2:min_matched_ions", 1);
+  params.setValue("Stage2:strong_min_matched_ions", 1);
+  params.setValue("Stage2:strong_min_intensity_fraction", 0.0);
+  params.setValue("Export:export_stage2_scores", "true");
+  filter.setParameters(params);
+
+  const vector<FASTAFile::FASTAEntry> fasta_entries{
+    makeFastaEntry("protA", "AAAAAAK", "Protein A OS=Homo sapiens GN=GENEA")
+  };
+  const auto peptides = filter.generatePeptideEntries(fasta_entries);
+  TEST_EQUAL(peptides.size(), 1)
+
+  vector<pair<double, double>> stage2_peaks;
+  for (const auto& fragment : peptides[0].fragments)
+  {
+    stage2_peaks.emplace_back(fragment.product_mz, 1000.0);
+  }
+
+  MSSpectrum ms1 = makeSpectrum(10.0, {{peptides[0].precursor_mz, 1000.0}});
+  ms1.setNativeID("scan=ms1");
+  MSSpectrum ms2_a = makeSpectrum(12.0, stage2_peaks);
+  ms2_a.setNativeID("scan=ms2_a");
+  MSSpectrum ms2_b = makeSpectrum(13.0, stage2_peaks);
+  ms2_b.setNativeID("scan=ms2_b");
+  MSSpectrum ms2_c = makeSpectrum(14.0, stage2_peaks);
+  ms2_c.setNativeID("scan=ms2_c");
+
+  vector<OpenSwath::SwathMap> swath_maps;
+  swath_maps.push_back(makeSwathMap(true, 0.0, 0.0, {ms1}));
+  swath_maps.push_back(makeSwathMap(false, peptides[0].precursor_mz - 10.0, peptides[0].precursor_mz + 10.0,
+                                    {ms2_a, ms2_b, ms2_c}));
+
+  FastaEvidenceFilter::RunData run;
+  run.swath_maps = std::move(swath_maps);
+  run.swath_map_sources = {String("run.mzML"), String("run.mzML")};
+  run.pasef = false;
+
+  const auto result = filter.filter({run}, fasta_entries, makeExtractParams(0.01), makeExtractParams(0.01), 1);
+  TEST_EQUAL(result.stage2_candidate_scores.size(), 1)
+  TEST_EQUAL(result.stage2_candidate_scores[0].supporting_spectra, 3)
+  TEST_EQUAL(result.stage2_candidate_scores[0].supporting_runs, 1)
+  TEST_EQUAL(result.stage2_candidate_scores[0].strong_supporting_spectra, 3)
+  TEST_EQUAL(result.stage2_candidate_scores[0].strong_supporting_runs, 1)
+  TEST_EQUAL(result.stage2_candidate_scores[0].runs_with_streak_ge_2, 1)
+  TEST_EQUAL(result.stage2_candidate_scores[0].runs_with_streak_ge_3, 1)
+  TEST_EQUAL(result.stage2_candidate_scores[0].best_run_streak_length, 3)
+  TEST_EQUAL(result.stage2_candidate_scores[0].top_run_streak_length_1, 3)
+  TEST_TRUE(result.stage2_candidate_scores[0].best_run_streak_score >=
+            result.stage2_candidate_scores[0].best_spectrum_score)
+  TEST_TRUE(result.stage2_candidate_scores[0].top_run_score_1 > 0.0)
 }
 END_SECTION
 

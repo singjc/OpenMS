@@ -90,6 +90,10 @@ public:
       Size best_matched_ions{0};
       Size supporting_spectra{0};
       Size supporting_runs{0};
+      Size strong_supporting_spectra{0};
+      Size strong_supporting_runs{0};
+      Size runs_with_streak_ge_2{0};
+      Size runs_with_streak_ge_3{0};
       double best_spectrum_matched_intensity_fraction{0.0};
       Size best_spectrum_matched_b_ions{0};
       Size best_spectrum_matched_y_ions{0};
@@ -98,9 +102,17 @@ public:
       double best_spectrum_longest_y_pct{0.0};
       double best_spectrum_poisson_proxy{0.0};
       double best_spectrum_score{0.0};
+      Size best_run_streak_length{0};
+      double best_run_streak_score{0.0};
       double top_run_score_1{0.0};
       double top_run_score_2{0.0};
       double top_run_score_3{0.0};
+      Size top_run_streak_length_1{0};
+      Size top_run_streak_length_2{0};
+      Size top_run_streak_length_3{0};
+      Size best_local_rank{0};
+      double best_local_pvalue{-1.0};
+      double combined_pvalue{-1.0};
       double composite_score{0.0};
       double qvalue{-1.0};
       bool accepted{false};
@@ -190,18 +202,29 @@ public:
                                                                          Size total_decoy_candidates);
 
     /**
+      @brief Estimate monotone peptide-level q-values from peptide p-values with BH.
+
+      @param[in] peptide_pvalues One peptide-level p-value per peptide key
+      @return Mapping from peptide key to monotone Benjamini-Hochberg q-value
+    */
+    static std::unordered_map<std::string, double> computeBenjaminiHochbergQValues(
+      const std::unordered_map<std::string, double>& peptide_pvalues);
+
+    /**
       @brief Select confirmed target peptides under the configured stage-2 rule.
 
       @param[in] target_peptides Target peptide entries from stage 1
       @param[in] best_matched_ions Best stage-2 matched-ion counts keyed by peptide key
       @param[in] score_records Target and decoy best-score records
       @param[in] total_decoy_candidates Total number of stage-2 decoy candidates
+      @param[in] peptide_qvalues Optional precomputed peptide-level q-values
       @return Confirmed target peptides
     */
     std::vector<PeptideEntry> selectConfirmedPeptides(const std::vector<PeptideEntry>& target_peptides,
                                                       const std::unordered_map<std::string, Size>& best_matched_ions,
                                                       const std::vector<PeptideScoreRecord>& score_records,
-                                                      Size total_decoy_candidates) const;
+                                                      Size total_decoy_candidates,
+                                                      const std::unordered_map<std::string, double>* peptide_qvalues = nullptr) const;
 
     /**
       @brief Collapse confirmed peptides to supported proteins.
@@ -220,6 +243,7 @@ private:
     {
       std::unordered_map<std::string, Size> best_matched_ions;
       std::unordered_map<std::string, Stage2CandidateScore> candidate_scores;
+      std::unordered_map<std::string, double> peptide_pvalues;
       std::vector<PeptideScoreRecord> score_records;
     };
 
@@ -261,6 +285,12 @@ private:
     String stage2_mode_{"qvalue"};
     double stage2_max_qvalue_{0.01};
     Int stage2_min_matched_ions_{5};
+    Int stage2_strong_min_matched_ions_{6};
+    double stage2_strong_min_intensity_fraction_{0.05};
+    Int stage2_lower_order_min_rank_{5};
+    Int stage2_lower_order_max_rank_{10};
+    Int stage2_lower_order_scored_ranks_{3};
+    Int stage2_lower_order_min_null_scores_{256};
     bool stage2_decoys_{true};
     String stage2_decoy_prefix_{"DECOY_"};
     Size protein_min_confirmed_peptides_{1};

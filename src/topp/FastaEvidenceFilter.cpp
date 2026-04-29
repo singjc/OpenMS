@@ -355,7 +355,7 @@ private:
       throw Exception::FileNotWritable(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION, filename);
     }
 
-    out << "protein_accession\tgene_name\tpeptide_sequence\tmodified_peptide_sequence\tprecursor_mz\tprecursor_charge\tdecoy\tsource_file\tnative_spectrum_id\tbest_matched_ions\tsupporting_spectra\tsupporting_runs\tbest_spectrum_matched_intensity_fraction\tbest_spectrum_matched_b_ions\tbest_spectrum_matched_y_ions\tbest_spectrum_longest_b_run\tbest_spectrum_longest_y_run\tbest_spectrum_longest_y_pct\tbest_spectrum_poisson_proxy\tbest_spectrum_score\ttop_run_score_1\ttop_run_score_2\ttop_run_score_3\tcomposite_score\tqvalue\taccepted\n";
+    out << "protein_accession\tgene_name\tpeptide_sequence\tmodified_peptide_sequence\tprecursor_mz\tprecursor_charge\tdecoy\tsource_file\tnative_spectrum_id\tbest_matched_ions\tsupporting_spectra\tsupporting_runs\tstrong_supporting_spectra\tstrong_supporting_runs\truns_with_streak_ge_2\truns_with_streak_ge_3\tbest_spectrum_matched_intensity_fraction\tbest_spectrum_matched_b_ions\tbest_spectrum_matched_y_ions\tbest_spectrum_longest_b_run\tbest_spectrum_longest_y_run\tbest_spectrum_longest_y_pct\tbest_spectrum_poisson_proxy\tbest_spectrum_score\tbest_run_streak_length\tbest_run_streak_score\ttop_run_score_1\ttop_run_score_2\ttop_run_score_3\ttop_run_streak_length_1\ttop_run_streak_length_2\ttop_run_streak_length_3\tbest_local_rank\tbest_local_pvalue\tcombined_pvalue\tcomposite_score\tqvalue\taccepted\n";
     out << std::fixed << std::setprecision(6);
     for (const auto& score : scores)
     {
@@ -381,6 +381,10 @@ private:
           << score.best_matched_ions << '\t'
           << score.supporting_spectra << '\t'
           << score.supporting_runs << '\t'
+          << score.strong_supporting_spectra << '\t'
+          << score.strong_supporting_runs << '\t'
+          << score.runs_with_streak_ge_2 << '\t'
+          << score.runs_with_streak_ge_3 << '\t'
           << score.best_spectrum_matched_intensity_fraction << '\t'
           << score.best_spectrum_matched_b_ions << '\t'
           << score.best_spectrum_matched_y_ions << '\t'
@@ -389,9 +393,26 @@ private:
           << score.best_spectrum_longest_y_pct << '\t'
           << score.best_spectrum_poisson_proxy << '\t'
           << score.best_spectrum_score << '\t'
+          << score.best_run_streak_length << '\t'
+          << score.best_run_streak_score << '\t'
           << score.top_run_score_1 << '\t'
           << score.top_run_score_2 << '\t'
           << score.top_run_score_3 << '\t'
+          << score.top_run_streak_length_1 << '\t'
+          << score.top_run_streak_length_2 << '\t'
+          << score.top_run_streak_length_3 << '\t'
+          << score.best_local_rank << '\t';
+
+      if (score.best_local_pvalue >= 0.0)
+      {
+        out << score.best_local_pvalue;
+      }
+      out << '\t';
+      if (score.combined_pvalue >= 0.0)
+      {
+        out << score.combined_pvalue;
+      }
+      out << '\t'
           << score.composite_score << '\t';
 
       if (score.qvalue >= 0.0)
