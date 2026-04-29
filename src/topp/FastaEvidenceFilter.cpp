@@ -69,6 +69,10 @@ protected:
     setValidFormats_("out_fasta", {"fasta"});
     registerOutputFile_("out_peptides", "<file>", "", "Filtered peptide precursor table in TSV format.");
     setValidFormats_("out_peptides", {"tsv"});
+    registerOutputFile_("out_stage2_scores", "<file>", "",
+                        "Optional Stage-2 target/decoy score table in TSV format for score-distribution inspection.",
+                        false);
+    setValidFormats_("out_stage2_scores", {"tsv"});
 
     registerStringOption_("aggregation_method", "<any|all>", "any",
                           "How to combine stage-1 evidence across multiple DIA runs.",
@@ -145,6 +149,7 @@ protected:
     const String database_file = getStringOption_("database");
     const String out_fasta_file = getStringOption_("out_fasta");
     const String out_peptides_file = getStringOption_("out_peptides");
+    const String out_stage2_scores_file = getStringOption_("out_stage2_scores");
 
     if (File::isDirectory(database_file))
     {
@@ -159,6 +164,11 @@ protected:
     if (File::exists(out_peptides_file) && File::isDirectory(out_peptides_file))
     {
       writeLogError_("Error: Parameter '-out_peptides' must point to a TSV file, not a directory: '" + out_peptides_file + "'.");
+      return ILLEGAL_PARAMETERS;
+    }
+    if (!out_stage2_scores_file.empty() && File::exists(out_stage2_scores_file) && File::isDirectory(out_stage2_scores_file))
+    {
+      writeLogError_("Error: Parameter '-out_stage2_scores' must point to a TSV file, not a directory: '" + out_stage2_scores_file + "'.");
       return ILLEGAL_PARAMETERS;
     }
 
@@ -239,6 +249,7 @@ protected:
 
       FastaEvidenceFilter::RunData run;
       run.swath_maps = std::move(swath_maps);
+      run.swath_map_sources = std::move(swath_map_sources);
       run.pasef = run_pasef;
       run.cache_dir_guard = per_run_temp_dir;
       runs.push_back(std::move(run));
@@ -252,6 +263,7 @@ protected:
     algorithm_params.update(getParam_().copy("Protein:"));
     algorithm_params.update(getParam_().copy("SearchSpace:"));
     algorithm_params.update(getParam_().copy("Export:"));
+    algorithm_params.setValue("Export:export_stage2_scores", out_stage2_scores_file.empty() ? "false" : "true");
     algorithm.setParameters(algorithm_params);
     algorithm.setLogType(log_type_);
 
@@ -259,6 +271,10 @@ protected:
     FASTAFile().store(out_fasta_file, result.filtered_fasta);
     writePeptideTable_(out_peptides_file, result.confirmed_peptides,
                        getParam_().getValue("Export:export_fragments").toString() == "true");
+    if (!out_stage2_scores_file.empty())
+    {
+      writeStage2ScoreTable_(out_stage2_scores_file, result.stage2_candidate_scores);
+    }
 
     OPENMS_LOG_INFO << result.summary << "\n";
     return EXECUTION_OK;
@@ -327,6 +343,63 @@ private:
             << fragment.product_type << '\t'
             << fragment.product_ordinal << '\n';
       }
+    }
+  }
+
+  static void writeStage2ScoreTable_(const String& filename,
+                                     const std::vector<FastaEvidenceFilter::Stage2CandidateScore>& scores)
+  {
+    std::ofstream out(filename.c_str());
+    if (!out)
+    {
+      throw Exception::FileNotWritable(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION, filename);
+    }
+
+    out << "protein_accession\tgene_name\tpeptide_sequence\tmodified_peptide_sequence\tprecursor_mz\tprecursor_charge\tdecoy\tsource_file\tnative_spectrum_id\tbest_matched_ions\tsupporting_spectra\tsupporting_runs\tbest_spectrum_matched_intensity_fraction\tbest_spectrum_matched_b_ions\tbest_spectrum_matched_y_ions\tbest_spectrum_longest_b_run\tbest_spectrum_longest_y_run\tbest_spectrum_longest_y_pct\tbest_spectrum_poisson_proxy\tbest_spectrum_score\ttop_run_score_1\ttop_run_score_2\ttop_run_score_3\tcomposite_score\tqvalue\taccepted\n";
+    out << std::fixed << std::setprecision(6);
+    for (const auto& score : scores)
+    {
+      std::vector<std::string> gene_names;
+      gene_names.reserve(score.protein_refs.size());
+      for (const auto& protein_ref : score.protein_refs)
+      {
+        const auto gene_name_it = score.protein_gene_names_by_accession.find(protein_ref);
+        gene_names.push_back(gene_name_it != score.protein_gene_names_by_accession.end() ? gene_name_it->second : std::string{});
+      }
+      const String protein_accessions = ListUtils::concatenate(score.protein_refs, ";");
+      const String joined_gene_names = ListUtils::concatenate(gene_names, ";");
+
+      out << protein_accessions << '\t'
+          << joined_gene_names << '\t'
+          << score.peptide_sequence << '\t'
+          << score.modified_peptide_sequence << '\t'
+          << score.precursor_mz << '\t'
+          << score.precursor_charge << '\t'
+          << (score.decoy ? 1 : 0) << '\t'
+          << score.source_file << '\t'
+          << score.native_spectrum_id << '\t'
+          << score.best_matched_ions << '\t'
+          << score.supporting_spectra << '\t'
+          << score.supporting_runs << '\t'
+          << score.best_spectrum_matched_intensity_fraction << '\t'
+          << score.best_spectrum_matched_b_ions << '\t'
+          << score.best_spectrum_matched_y_ions << '\t'
+          << score.best_spectrum_longest_b_run << '\t'
+          << score.best_spectrum_longest_y_run << '\t'
+          << score.best_spectrum_longest_y_pct << '\t'
+          << score.best_spectrum_poisson_proxy << '\t'
+          << score.best_spectrum_score << '\t'
+          << score.top_run_score_1 << '\t'
+          << score.top_run_score_2 << '\t'
+          << score.top_run_score_3 << '\t'
+          << score.composite_score << '\t';
+
+      if (score.qvalue >= 0.0)
+      {
+        out << score.qvalue;
+      }
+      out << '\t'
+          << (score.accepted ? 1 : 0) << '\n';
     }
   }
 };

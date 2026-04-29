@@ -85,6 +85,7 @@ namespace OpenMS
     OPENMS_PRECONDITION(id < (int)getNrSpectra(), "Id cannot be larger than number of spectra");
 
     OpenSwath::SpectrumMeta meta;
+    meta.id = (*ms_experiment_)[id].getNativeID().c_str();
     meta.RT = (*ms_experiment_)[id].getRT();
     meta.ms_level = (*ms_experiment_)[id].getMSLevel();
     return meta;
