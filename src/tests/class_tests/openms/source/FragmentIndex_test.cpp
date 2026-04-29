@@ -577,6 +577,7 @@ START_SECTION(tolerance)
     {
       found = true;
       TEST_TRUE(hit.num_matched_ >= theo_spec.size());
+      TEST_TRUE(hit.matched_intensity_sum_ > 0.0f);
     }
   }
   TEST_TRUE(found);
@@ -1745,6 +1746,7 @@ START_SECTION((SpectrumMatch default-initializes subset_bitmask_ and sigma_delta
 {
   FragmentIndex::SpectrumMatch sm;
   TEST_EQUAL(sm.num_matched_, 0u)
+  TEST_REAL_SIMILAR(sm.matched_intensity_sum_, 0.0f)
   TEST_EQUAL(sm.subset_bitmask_, 0u)
   TEST_REAL_SIMILAR(sm.sigma_delta_, 0.0f)
   TEST_EQUAL(sm.precursor_charge_, 0u)
@@ -2623,6 +2625,76 @@ START_SECTION((SNES query honors multi-charge precursor when charge is unset))
     }
   }
   TEST_EQUAL(found_multi_charge, true)
+}
+END_SECTION
+
+START_SECTION((buildFromPeptideSequences() - explicit modified peptide libraries are queryable))
+{
+  FragmentIndex_test fi;
+  auto p = fi.getParameters();
+  p.setValue("modifications:fixed", std::vector<std::string>{});
+  p.setValue("modifications:variable", std::vector<std::string>{});
+  p.setValue("fragment:min_mz", 0);
+  p.setValue("fragment:max_mz", 2000);
+  p.setValue("fragment:mass_tolerance", 0.02);
+  p.setValue("fragment:mass_tolerance_unit", "Da");
+  p.setValue("precursor:mass_tolerance_lower", 0.02);
+  p.setValue("precursor:mass_tolerance_upper", 0.02);
+  p.setValue("precursor:mass_tolerance_unit", "Da");
+  p.setValue("fragment:min_matched_ions", 3);
+  p.setValue("precursor:isotope_error_min", 0);
+  p.setValue("precursor:isotope_error_max", 0);
+  fi.setParameters(p);
+
+  const AASequence peptide = AASequence::fromString("AAC(Carbamidomethyl)DM(Oxidation)K");
+  const std::string modified_string = peptide.toString().c_str();
+  const vector<FragmentIndex::ExplicitPeptide> peptides{
+    {modified_string, static_cast<float>(peptide.getMonoWeight(Residue::Full, 1)), 7}
+  };
+  fi.buildFromPeptideSequences(peptides);
+
+  TEST_EQUAL(fi.isBuild(), true)
+  TEST_EQUAL(fi.getPeptides().size(), 1)
+  TEST_EQUAL(fi.getPeptides()[0].protein_idx, 7)
+  TEST_EQUAL(fi.fragmentCountForPeptide(0) > 0, true)
+  TEST_EQUAL(fi.fragmentsSorted(), true)
+
+  TheoreticalSpectrumGenerator tsg;
+  Param tsg_params = tsg.getParameters();
+  tsg_params.setValue("add_metainfo", "true");
+  tsg_params.setValue("add_losses", "false");
+  tsg_params.setValue("add_precursor_peaks", "false");
+  tsg.setParameters(tsg_params);
+
+  PeakSpectrum theoretical_spectrum;
+  tsg.getSpectrum(theoretical_spectrum, peptide, 1, 1);
+
+  MSSpectrum spectrum;
+  spectrum.setMSLevel(2);
+  Precursor precursor;
+  precursor.setMZ(peptide.getMZ(2));
+  precursor.setCharge(2);
+  spectrum.setPrecursors({precursor});
+  for (const auto& peak : theoretical_spectrum)
+  {
+    spectrum.push_back(peak);
+  }
+
+  FragmentIndex::SpectrumMatchesTopN sms;
+  fi.querySpectrum(spectrum, sms);
+
+  bool found = false;
+  for (const auto& hit : sms.hits_)
+  {
+    if (fi.getPeptides()[hit.peptide_idx_].protein_idx == 7 &&
+        hit.precursor_charge_ == 2 &&
+        hit.num_matched_ >= 4)
+    {
+      found = true;
+      break;
+    }
+  }
+  TEST_EQUAL(found, true)
 }
 END_SECTION
 
