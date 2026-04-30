@@ -12,7 +12,6 @@
 #include <OpenMS/ANALYSIS/OPENSWATH/DATAACCESS/DataAccessHelper.h>
 #include <OpenMS/ANALYSIS/OPENSWATH/TransitionListEvidenceFilter.h>
 #include <OpenMS/CHEMISTRY/AASequence.h>
-#include <OpenMS/CHEMISTRY/DecoyGenerator.h>
 #include <OpenMS/CHEMISTRY/ModificationsDB.h>
 #include <OpenMS/CHEMISTRY/ProteaseDB.h>
 #include <OpenMS/CHEMISTRY/Residue.h>
@@ -237,87 +236,6 @@ namespace OpenMS
       return gene_name;
     }
 
-    std::string makeStage2DecoyUnmodifiedSequence_(const std::string& target_unmodified,
-                                                   DecoyGenerator& decoy_generator)
-    {
-      AASequence decoy_sequence = decoy_generator.shufflePeptides(
-        AASequence::fromString(target_unmodified), "no cleavage");
-      std::string decoy_unmodified = decoy_sequence.toUnmodifiedString().c_str();
-      if (decoy_unmodified != target_unmodified)
-      {
-        return decoy_unmodified;
-      }
-
-      decoy_unmodified = target_unmodified;
-      std::reverse(decoy_unmodified.begin(), decoy_unmodified.end());
-      if (decoy_unmodified != target_unmodified)
-      {
-        return decoy_unmodified;
-      }
-
-      if (target_unmodified.size() > 1)
-      {
-        std::string rotated = target_unmodified;
-        for (Size shift = 1; shift < rotated.size(); ++shift)
-        {
-          std::rotate(rotated.begin(), rotated.begin() + 1, rotated.end());
-          if (rotated != target_unmodified)
-          {
-            return rotated;
-          }
-        }
-      }
-
-      return target_unmodified;
-    }
-
-    void transferResidueModificationsToDecoy_(const AASequence& target_sequence,
-                                              AASequence& decoy_sequence)
-    {
-      if (target_sequence.hasNTerminalModification())
-      {
-        decoy_sequence.setNTerminalModification(target_sequence.getNTerminalModification());
-      }
-      if (target_sequence.hasCTerminalModification())
-      {
-        decoy_sequence.setCTerminalModification(target_sequence.getCTerminalModification());
-      }
-
-      std::array<std::vector<Size>, 128> decoy_positions_by_residue;
-      std::array<Size, 128> next_decoy_position{};
-      for (Size residue_index = 0; residue_index < decoy_sequence.size(); ++residue_index)
-      {
-        const unsigned char residue_code =
-          static_cast<unsigned char>(decoy_sequence[residue_index].getOneLetterCode()[0]);
-        decoy_positions_by_residue[residue_code].push_back(residue_index);
-      }
-
-      for (Size residue_index = 0; residue_index < target_sequence.size(); ++residue_index)
-      {
-        const Residue& target_residue = target_sequence[residue_index];
-        if (!target_residue.isModified())
-        {
-          continue;
-        }
-
-        const auto* modification = target_residue.getModification();
-        if (modification == nullptr)
-        {
-          continue;
-        }
-
-        const unsigned char residue_code = static_cast<unsigned char>(target_residue.getOneLetterCode()[0]);
-        auto& candidate_positions = decoy_positions_by_residue[residue_code];
-        if (next_decoy_position[residue_code] >= candidate_positions.size())
-        {
-          continue;
-        }
-
-        decoy_sequence.setModification(candidate_positions[next_decoy_position[residue_code]], modification);
-        ++next_decoy_position[residue_code];
-      }
-    }
-
     constexpr Size STAGE2_AGGREGATED_RUN_SCORES = 3;
     constexpr Size STAGE2_UNASSIGNED_RUN_ID = std::numeric_limits<Size>::max();
     constexpr std::array<double, STAGE2_AGGREGATED_RUN_SCORES> STAGE2_TOP_RUN_WEIGHTS{
@@ -373,7 +291,14 @@ namespace OpenMS
       Size run_index{0};
       std::uint16_t precursor_charge{0};
       Size rank{0};
+      Size matched_ions{0};
+      double matched_intensity_fraction{0.0};
       double spectrum_score{0.0};
+      std::string source_file;
+      std::string native_spectrum_id;
+      bool used_for_scoring{false};
+      bool used_for_null{false};
+      double local_pvalue{-1.0};
     };
 
     bool betterStage2SpectrumMatch_(const FragmentIndex::SpectrumMatch& lhs,
@@ -787,11 +712,11 @@ namespace OpenMS
                        "Maximum number of precursors materialized in one stage-1 transition batch.");
     defaults_.setMinInt("Stage1:precursor_batch_size", 1);
 
-    defaults_.setValue("Stage2:mode", "qvalue",
+    defaults_.setValue("Stage2:mode", "lower_order_null",
                        "How to accept stage-2 confirmed peptides.");
-    defaults_.setValidStrings("Stage2:mode", {"qvalue", "raw_score", "lower_order_null"});
+    defaults_.setValidStrings("Stage2:mode", {"raw_score", "lower_order_null"});
     defaults_.setValue("Stage2:max_qvalue", 0.01,
-                       "Maximum peptide-level q-value in Stage2:mode=qvalue.");
+                       "Maximum peptide-level q-value in Stage2:mode=lower_order_null.");
     defaults_.setMinFloat("Stage2:max_qvalue", 0.0);
     defaults_.setMaxFloat("Stage2:max_qvalue", 1.0);
     defaults_.setValue("Stage2:min_matched_ions", 5,
@@ -816,12 +741,6 @@ namespace OpenMS
     defaults_.setValue("Stage2:lower_order_min_null_scores", 256,
                        "Minimum number of lower-order null scores needed before a charge-specific null model is used.");
     defaults_.setMinInt("Stage2:lower_order_min_null_scores", 1);
-    defaults_.setValue("Stage2:decoys", "true",
-                       "Generate target-decoy peptides for stage-2 q-value estimation.");
-    defaults_.setValidStrings("Stage2:decoys", {"true", "false"});
-    defaults_.setValue("Stage2:decoy_prefix", "DECOY_",
-                       "Prefix added to generated stage-2 decoy protein accessions.");
-
     defaults_.setValue("Protein:min_confirmed_peptides", 1,
                        "Minimum number of confirmed peptides needed to keep a protein.");
     defaults_.setMinInt("Protein:min_confirmed_peptides", 1);
@@ -833,7 +752,7 @@ namespace OpenMS
                        "If true, emit one TSV row per precursor-fragment pair instead of one row per precursor.");
     defaults_.setValidStrings("Export:export_fragments", {"true", "false"});
     defaults_.setValue("Export:export_stage2_scores", "false",
-                       "If true, keep one scored Stage-2 target/decoy row per candidate for optional TSV export.");
+                       "If true, keep scored Stage-2 export rows for optional TSV export.");
     defaults_.setValidStrings("Export:export_stage2_scores", {"true", "false"});
 
     std::vector<String> all_mods;
@@ -911,8 +830,6 @@ namespace OpenMS
     stage2_lower_order_max_rank_ = static_cast<Int>(param_.getValue("Stage2:lower_order_max_rank"));
     stage2_lower_order_scored_ranks_ = static_cast<Int>(param_.getValue("Stage2:lower_order_scored_ranks"));
     stage2_lower_order_min_null_scores_ = static_cast<Int>(param_.getValue("Stage2:lower_order_min_null_scores"));
-    stage2_decoys_ = param_.getValue("Stage2:decoys").toString() == "true";
-    stage2_decoy_prefix_ = param_.getValue("Stage2:decoy_prefix").toString();
 
     protein_min_confirmed_peptides_ = static_cast<Size>(param_.getValue("Protein:min_confirmed_peptides"));
     protein_unique_peptides_only_ = param_.getValue("Protein:unique_peptides_only").toString() == "true";
@@ -1297,51 +1214,6 @@ namespace OpenMS
       }
     }
     return reduced_fasta;
-  }
-
-  std::vector<FastaEvidenceFilter::PeptideEntry> FastaEvidenceFilter::buildStage2DecoyPeptides_(const std::vector<PeptideEntry>& target_peptides) const
-  {
-    std::vector<PeptideEntry> decoy_peptides;
-    decoy_peptides.reserve(target_peptides.size());
-    DecoyGenerator decoy_generator;
-    decoy_generator.setSeed(4711);
-
-    for (const auto& target_peptide : target_peptides)
-    {
-      const AASequence target_sequence = AASequence::fromString(target_peptide.modified_peptide_sequence);
-      const std::string decoy_unmodified =
-        makeStage2DecoyUnmodifiedSequence_(target_sequence.toUnmodifiedString().c_str(), decoy_generator);
-
-      AASequence decoy_sequence = AASequence::fromString(decoy_unmodified);
-      transferResidueModificationsToDecoy_(target_sequence, decoy_sequence);
-
-      PeptideEntry decoy_peptide;
-      decoy_peptide.peptide_sequence = decoy_sequence.toUnmodifiedString().c_str();
-      decoy_peptide.modified_peptide_sequence = decoy_sequence.toString().c_str();
-      decoy_peptide.precursor_charge = target_peptide.precursor_charge;
-      decoy_peptide.precursor_mz = decoy_sequence.getMZ(target_peptide.precursor_charge);
-      decoy_peptide.canonical_key = makeCanonicalPeptideKey(decoy_peptide.modified_peptide_sequence,
-                                                            decoy_peptide.precursor_charge);
-      decoy_peptide.internal_key = buildInternalKey_(decoy_peptide.modified_peptide_sequence,
-                                                     decoy_peptide.precursor_charge,
-                                                     true);
-      decoy_peptide.decoy = true;
-
-      decoy_peptide.protein_refs.reserve(target_peptide.protein_refs.size());
-      for (const auto& protein_ref : target_peptide.protein_refs)
-      {
-        const std::string decoy_protein_ref = stage2_decoy_prefix_.c_str() + protein_ref;
-        decoy_peptide.protein_refs.push_back(decoy_protein_ref);
-        const auto gene_name_it = target_peptide.protein_gene_names_by_accession.find(protein_ref);
-        if (gene_name_it != target_peptide.protein_gene_names_by_accession.end())
-        {
-          decoy_peptide.protein_gene_names_by_accession[decoy_protein_ref] = gene_name_it->second;
-        }
-      }
-      decoy_peptides.push_back(std::move(decoy_peptide));
-    }
-
-    return decoy_peptides;
   }
 
   Param FastaEvidenceFilter::buildFragmentIndexParams_(const ChromExtractParams& ms1_params,
@@ -1792,20 +1664,29 @@ namespace OpenMS
                 const auto& scored_candidate = ranked_candidates[rank_idx];
                 const auto& candidate = candidates[scored_candidate.candidate_id];
                 const Size rank = rank_idx + 1;
+                const bool used_for_null =
+                  rank >= lower_order_min_rank && rank <= lower_order_max_rank;
+                const bool used_for_scoring = rank <= lower_order_scored_ranks;
 
-                if (rank >= lower_order_min_rank && rank <= lower_order_max_rank)
+                if (used_for_null)
                 {
                   local_null_scores_by_charge[candidate.precursor_charge].push_back(
                     scored_candidate.spectrum_score);
                 }
-                if (rank <= lower_order_scored_ranks)
+                if (used_for_scoring || (export_stage2_scores_ && used_for_null))
                 {
                   local_observations.push_back({
                     scored_candidate.candidate_id,
                     job.run_index,
                     static_cast<std::uint16_t>(candidate.precursor_charge),
                     rank,
-                    scored_candidate.spectrum_score
+                    static_cast<Size>(scored_candidate.match.num_matched_),
+                    scored_candidate.matched_intensity_fraction,
+                    scored_candidate.spectrum_score,
+                    job.source_file,
+                    native_spectrum_id,
+                    used_for_scoring,
+                    used_for_null
                   });
                 }
               }
@@ -1908,17 +1789,7 @@ namespace OpenMS
         std::sort(item.second.begin(), item.second.end());
       }
 
-      struct ScoredObservation
-      {
-        Size candidate_id{0};
-        Size run_index{0};
-        Size rank{0};
-        double local_pvalue{1.0};
-      };
-
-      std::vector<ScoredObservation> scored_observations;
-      scored_observations.reserve(observations.size());
-      for (const auto& observation : observations)
+      for (auto& observation : observations)
       {
         const auto charge_null_it = null_scores_by_charge.find(static_cast<int>(observation.precursor_charge));
         const std::vector<double>* active_null = &pooled_null_scores;
@@ -1928,50 +1799,62 @@ namespace OpenMS
           active_null = &charge_null_it->second;
         }
 
-        const double local_pvalue = empiricalStage2TailPValue_(*active_null, observation.spectrum_score);
-        scored_observations.push_back({
-          observation.candidate_id,
-          observation.run_index,
-          observation.rank,
-          local_pvalue
-        });
+        observation.local_pvalue = empiricalStage2TailPValue_(*active_null, observation.spectrum_score);
       }
 
-      std::sort(scored_observations.begin(), scored_observations.end(),
-                [](const ScoredObservation& lhs, const ScoredObservation& rhs)
+      std::vector<Size> scored_observation_indices;
+      scored_observation_indices.reserve(observations.size());
+      for (Size observation_idx = 0; observation_idx < observations.size(); ++observation_idx)
+      {
+        if (observations[observation_idx].used_for_scoring)
+        {
+          scored_observation_indices.push_back(observation_idx);
+        }
+      }
+
+      std::sort(scored_observation_indices.begin(), scored_observation_indices.end(),
+                [&observations](Size lhs_idx, Size rhs_idx)
                 {
+                  const auto& lhs = observations[lhs_idx];
+                  const auto& rhs = observations[rhs_idx];
                   if (lhs.candidate_id != rhs.candidate_id) return lhs.candidate_id < rhs.candidate_id;
                   if (lhs.run_index != rhs.run_index) return lhs.run_index < rhs.run_index;
                   if (lhs.local_pvalue != rhs.local_pvalue) return lhs.local_pvalue < rhs.local_pvalue;
                   return lhs.rank < rhs.rank;
                 });
 
-      for (Size observation_idx = 0; observation_idx < scored_observations.size();)
+      for (Size scored_idx = 0; scored_idx < scored_observation_indices.size();)
       {
-        const Size candidate_id = scored_observations[observation_idx].candidate_id;
+        const Size candidate_id = observations[scored_observation_indices[scored_idx]].candidate_id;
         std::vector<double> run_pvalues;
         double best_local_pvalue = 1.0;
         Size best_local_rank = 0;
 
-        while (observation_idx < scored_observations.size() &&
-               scored_observations[observation_idx].candidate_id == candidate_id)
+        while (scored_idx < scored_observation_indices.size() &&
+               observations[scored_observation_indices[scored_idx]].candidate_id == candidate_id)
         {
-          const Size run_index = scored_observations[observation_idx].run_index;
-          double min_run_pvalue = scored_observations[observation_idx].local_pvalue;
-          Size min_run_rank = scored_observations[observation_idx].rank;
-          ++observation_idx;
-          while (observation_idx < scored_observations.size() &&
-                 scored_observations[observation_idx].candidate_id == candidate_id &&
-                 scored_observations[observation_idx].run_index == run_index)
+          const auto& first_observation = observations[scored_observation_indices[scored_idx]];
+          const Size run_index = first_observation.run_index;
+          double min_run_pvalue = first_observation.local_pvalue;
+          Size min_run_rank = first_observation.rank;
+          ++scored_idx;
+          while (scored_idx < scored_observation_indices.size())
           {
-            if (scored_observations[observation_idx].local_pvalue < min_run_pvalue ||
-                (scored_observations[observation_idx].local_pvalue == min_run_pvalue &&
-                 scored_observations[observation_idx].rank < min_run_rank))
+            const auto& current_observation = observations[scored_observation_indices[scored_idx]];
+            if (current_observation.candidate_id != candidate_id ||
+                current_observation.run_index != run_index)
             {
-              min_run_pvalue = scored_observations[observation_idx].local_pvalue;
-              min_run_rank = scored_observations[observation_idx].rank;
+              break;
             }
-            ++observation_idx;
+
+            if (current_observation.local_pvalue < min_run_pvalue ||
+                (current_observation.local_pvalue == min_run_pvalue &&
+                 current_observation.rank < min_run_rank))
+            {
+              min_run_pvalue = current_observation.local_pvalue;
+              min_run_rank = current_observation.rank;
+            }
+            ++scored_idx;
           }
 
           run_pvalues.push_back(min_run_pvalue);
@@ -1988,11 +1871,31 @@ namespace OpenMS
         lower_order_best_local_pvalues_by_candidate[candidate_id] = best_local_pvalue;
         lower_order_best_local_ranks_by_candidate[candidate_id] = best_local_rank;
       }
+
+      if (export_stage2_scores_)
+      {
+        bundle.observation_scores.reserve(observations.size());
+        for (const auto& observation : observations)
+        {
+          bundle.observation_scores.push_back({
+            candidates[observation.candidate_id].internal_key,
+            observation.source_file,
+            observation.native_spectrum_id,
+            observation.run_index,
+            observation.rank,
+            observation.used_for_scoring,
+            observation.used_for_null,
+            observation.matched_ions,
+            observation.matched_intensity_fraction,
+            observation.spectrum_score,
+            observation.local_pvalue
+          });
+        }
+      }
     }
 
     bundle.best_matched_ions.reserve(merged_candidate_stats.size());
     bundle.peptide_pvalues.reserve(lower_order_combined_pvalues_by_candidate.size());
-    bundle.score_records.reserve(merged_candidate_stats.size());
     if (export_stage2_scores_)
     {
       bundle.candidate_scores.reserve(merged_candidate_stats.size());
@@ -2002,7 +1905,6 @@ namespace OpenMS
       const auto& candidate = candidates[score_item.first];
       const double composite_score = composeStage2PeptideScore_(score_item.second);
       bundle.best_matched_ions[candidate.internal_key] = score_item.second.best_matched_ions;
-      bundle.score_records.push_back({candidate.internal_key, composite_score, candidate.decoy});
       if (use_lower_order_null)
       {
         const auto combined_pvalue_it = lower_order_combined_pvalues_by_candidate.find(score_item.first);
@@ -2069,68 +1971,6 @@ namespace OpenMS
     return bundle;
   }
 
-  std::unordered_map<std::string, double> FastaEvidenceFilter::computePeptideQValues(const std::vector<PeptideScoreRecord>& score_records,
-                                                                                     Size total_target_candidates,
-                                                                                     Size total_decoy_candidates)
-  {
-    std::vector<PeptideScoreRecord> sorted_records = score_records;
-    std::sort(sorted_records.begin(), sorted_records.end(),
-              [](const PeptideScoreRecord& lhs, const PeptideScoreRecord& rhs)
-              {
-                if (lhs.score != rhs.score) return lhs.score > rhs.score;
-                return lhs.peptide_key < rhs.peptide_key;
-              });
-
-    std::vector<double> threshold_fdr(sorted_records.size(), 1.0);
-    const double library_ratio =
-      total_decoy_candidates == 0 ? 1.0 :
-      static_cast<double>(total_target_candidates) / static_cast<double>(total_decoy_candidates);
-
-    Size target_count = 0;
-    Size decoy_count = 0;
-    for (Size bin_begin = 0; bin_begin < sorted_records.size();)
-    {
-      Size bin_end = bin_begin + 1;
-      while (bin_end < sorted_records.size() && sorted_records[bin_end].score == sorted_records[bin_begin].score)
-      {
-        ++bin_end;
-      }
-
-      Size bin_target_count = 0;
-      Size bin_decoy_count = 0;
-      for (Size i = bin_begin; i < bin_end; ++i)
-      {
-        if (sorted_records[i].decoy) ++bin_decoy_count;
-        else ++bin_target_count;
-      }
-
-      target_count += bin_target_count;
-      decoy_count += bin_decoy_count;
-      const double fdr =
-        target_count == 0 ? 1.0 :
-        std::min(1.0, library_ratio * static_cast<double>(decoy_count) / static_cast<double>(target_count));
-      for (Size i = bin_begin; i < bin_end; ++i)
-      {
-        threshold_fdr[i] = fdr;
-      }
-      bin_begin = bin_end;
-    }
-
-    for (SignedSize i = static_cast<SignedSize>(threshold_fdr.size()) - 2; i >= 0; --i)
-    {
-      threshold_fdr[static_cast<Size>(i)] = std::min(threshold_fdr[static_cast<Size>(i)],
-                                                     threshold_fdr[static_cast<Size>(i + 1)]);
-    }
-
-    std::unordered_map<std::string, double> qvalues;
-    qvalues.reserve(sorted_records.size());
-    for (Size i = 0; i < sorted_records.size(); ++i)
-    {
-      qvalues[sorted_records[i].peptide_key] = threshold_fdr[i];
-    }
-    return qvalues;
-  }
-
   std::unordered_map<std::string, double> FastaEvidenceFilter::computeBenjaminiHochbergQValues(
     const std::unordered_map<std::string, double>& peptide_pvalues)
   {
@@ -2175,20 +2015,8 @@ namespace OpenMS
   std::vector<FastaEvidenceFilter::PeptideEntry> FastaEvidenceFilter::selectConfirmedPeptides(
     const std::vector<PeptideEntry>& target_peptides,
     const std::unordered_map<std::string, Size>& best_matched_ions,
-    const std::vector<PeptideScoreRecord>& score_records,
-    Size total_decoy_candidates,
     const std::unordered_map<std::string, double>* peptide_qvalues) const
   {
-    std::unordered_map<std::string, double> qvalues;
-    if (peptide_qvalues != nullptr)
-    {
-      qvalues = *peptide_qvalues;
-    }
-    else if (stage2_mode_ == "qvalue")
-    {
-      qvalues = computePeptideQValues(score_records, target_peptides.size(), total_decoy_candidates);
-    }
-
     std::vector<PeptideEntry> confirmed;
     for (const auto& peptide : target_peptides)
     {
@@ -2206,8 +2034,12 @@ namespace OpenMS
       }
       else
       {
-        const auto qvalue_it = qvalues.find(peptide.internal_key);
-        keep = qvalue_it != qvalues.end() && qvalue_it->second <= stage2_max_qvalue_;
+        if (peptide_qvalues != nullptr)
+        {
+          const auto qvalue_it = peptide_qvalues->find(peptide.internal_key);
+          keep = qvalue_it != peptide_qvalues->end() &&
+                 qvalue_it->second <= stage2_max_qvalue_;
+        }
       }
 
       if (keep)
@@ -2263,12 +2095,6 @@ namespace OpenMS
       throw Exception::IllegalArgument(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION,
                                        "FastaEvidenceFilter requires a non-empty FASTA database.");
     }
-    if (stage2_mode_ == "qvalue" && !stage2_decoys_)
-    {
-      throw Exception::IllegalArgument(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION,
-                                       "Stage2:mode=qvalue requires Stage2:decoys=true.");
-    }
-
     const std::vector<PeptideEntry> all_target_peptides = generatePeptideEntries_(fasta_entries, false);
     if (all_target_peptides.empty())
     {
@@ -2430,33 +2256,13 @@ namespace OpenMS
                     << formatRetentionRatio_(reduced_target_fasta.size(), fasta_entries.size())
                     << " proteins." << std::endl;
 
-    const bool use_stage2_decoys = stage2_mode_ == "qvalue" && stage2_decoys_;
     std::vector<PeptideEntry> stage2_candidates = selected_target_peptides;
-    Size stage2_decoy_peptides = 0;
-    if (use_stage2_decoys)
-    {
-      std::vector<PeptideEntry> decoy_peptides = buildStage2DecoyPeptides_(selected_target_peptides);
-      stage2_decoy_peptides = decoy_peptides.size();
-      stage2_candidates.insert(stage2_candidates.end(), decoy_peptides.begin(), decoy_peptides.end());
-    }
     std::ostringstream stage2_space_message;
     stage2_space_message << "Stage 2 scoring space: "
-                         << selected_target_peptides.size() << " target peptide precursors";
-    if (use_stage2_decoys)
-    {
-      stage2_space_message << " + " << stage2_decoy_peptides << " decoy peptide precursors";
-    }
-    stage2_space_message << " (" << stage2_candidates.size() << " total), "
+                         << selected_target_peptides.size() << " target peptide precursors ("
+                         << stage2_candidates.size() << " total), "
                          << reduced_target_fasta.size() << " target proteins";
-    if (use_stage2_decoys)
-    {
-      const double normalization_factor =
-        stage2_decoy_peptides == 0 ? 1.0 :
-        static_cast<double>(selected_target_peptides.size()) / static_cast<double>(stage2_decoy_peptides);
-      stage2_space_message << "; target/decoy normalization factor "
-                           << std::fixed << std::setprecision(3) << normalization_factor;
-    }
-    else if (stage2_mode_ == "lower_order_null")
+    if (stage2_mode_ == "lower_order_null")
     {
       stage2_space_message << "; decoy-free lower-order null over spectrum ranks "
                            << stage2_lower_order_min_rank_ << "-" << stage2_lower_order_max_rank_
@@ -2468,20 +2274,12 @@ namespace OpenMS
 
     const Stage2ScoreBundle stage2_scores = scoreStage2_(runs, stage2_candidates, ms1_params, ms2_params, threads);
     std::unordered_map<std::string, double> stage2_qvalues;
-    if (stage2_mode_ == "qvalue")
-    {
-      stage2_qvalues = computePeptideQValues(stage2_scores.score_records,
-                                             selected_target_peptides.size(),
-                                             stage2_decoy_peptides);
-    }
-    else if (stage2_mode_ == "lower_order_null")
+    if (stage2_mode_ == "lower_order_null")
     {
       stage2_qvalues = computeBenjaminiHochbergQValues(stage2_scores.peptide_pvalues);
     }
     std::vector<PeptideEntry> confirmed_target_peptides = selectConfirmedPeptides(selected_target_peptides,
                                                                                   stage2_scores.best_matched_ions,
-                                                                                  stage2_scores.score_records,
-                                                                                  stage2_decoy_peptides,
                                                                                   stage2_mode_ == "raw_score" ? nullptr : &stage2_qvalues);
 
     const std::unordered_set<std::string> supported_proteins = selectSupportedProteins(confirmed_target_peptides,
@@ -2515,18 +2313,35 @@ namespace OpenMS
     result.confirmed_peptides = confirmed_target_peptides;
     if (export_stage2_scores_)
     {
-      result.stage2_candidate_scores.reserve(stage2_scores.candidate_scores.size());
-      for (const auto& item : stage2_scores.candidate_scores)
+      if (stage2_mode_ == "lower_order_null" && !stage2_scores.observation_scores.empty())
       {
-        Stage2CandidateScore score_row = item.second;
-        const auto matched_ions_it = stage2_scores.best_matched_ions.find(item.first);
-        const bool passes_matched_ions =
-          matched_ions_it != stage2_scores.best_matched_ions.end() &&
-          matched_ions_it->second >= static_cast<Size>(stage2_min_matched_ions_);
-
-        if (stage2_mode_ == "qvalue" || stage2_mode_ == "lower_order_null")
+        result.stage2_candidate_scores.reserve(stage2_scores.observation_scores.size());
+        for (const auto& observation : stage2_scores.observation_scores)
         {
-          const auto qvalue_it = stage2_qvalues.find(item.first);
+          const auto summary_it = stage2_scores.candidate_scores.find(observation.peptide_key);
+          if (summary_it == stage2_scores.candidate_scores.end())
+          {
+            continue;
+          }
+
+          Stage2CandidateScore score_row = summary_it->second;
+          score_row.source_file = observation.source_file;
+          score_row.native_spectrum_id = observation.native_spectrum_id;
+          score_row.run_index = observation.run_index;
+          score_row.spectrum_rank = observation.spectrum_rank;
+          score_row.used_for_scoring = observation.used_for_scoring;
+          score_row.used_for_null = observation.used_for_null;
+          score_row.observation_matched_ions = observation.observation_matched_ions;
+          score_row.observation_matched_intensity_fraction = observation.observation_matched_intensity_fraction;
+          score_row.observation_score = observation.observation_score;
+          score_row.local_pvalue = observation.local_pvalue;
+
+          const auto matched_ions_it = stage2_scores.best_matched_ions.find(observation.peptide_key);
+          const bool passes_matched_ions =
+            matched_ions_it != stage2_scores.best_matched_ions.end() &&
+            matched_ions_it->second >= static_cast<Size>(stage2_min_matched_ions_);
+
+          const auto qvalue_it = stage2_qvalues.find(observation.peptide_key);
           if (qvalue_it != stage2_qvalues.end())
           {
             score_row.qvalue = qvalue_it->second;
@@ -2534,19 +2349,43 @@ namespace OpenMS
           score_row.accepted = passes_matched_ions &&
                                score_row.qvalue >= 0.0 &&
                                score_row.qvalue <= stage2_max_qvalue_;
+          result.stage2_candidate_scores.push_back(std::move(score_row));
         }
-        else
-        {
-          score_row.accepted = passes_matched_ions;
-        }
-        result.stage2_candidate_scores.push_back(std::move(score_row));
       }
-      std::sort(result.stage2_candidate_scores.begin(), result.stage2_candidate_scores.end(),
-                [](const Stage2CandidateScore& lhs, const Stage2CandidateScore& rhs)
-                {
-                  if (lhs.composite_score != rhs.composite_score) return lhs.composite_score > rhs.composite_score;
-                  return lhs.peptide_key < rhs.peptide_key;
-                });
+      else
+      {
+        result.stage2_candidate_scores.reserve(stage2_scores.candidate_scores.size());
+        for (const auto& item : stage2_scores.candidate_scores)
+        {
+          Stage2CandidateScore score_row = item.second;
+          const auto matched_ions_it = stage2_scores.best_matched_ions.find(item.first);
+          const bool passes_matched_ions =
+            matched_ions_it != stage2_scores.best_matched_ions.end() &&
+            matched_ions_it->second >= static_cast<Size>(stage2_min_matched_ions_);
+          if (stage2_mode_ == "lower_order_null")
+          {
+            const auto qvalue_it = stage2_qvalues.find(item.first);
+            if (qvalue_it != stage2_qvalues.end())
+            {
+              score_row.qvalue = qvalue_it->second;
+            }
+            score_row.accepted = passes_matched_ions &&
+                                 score_row.qvalue >= 0.0 &&
+                                 score_row.qvalue <= stage2_max_qvalue_;
+          }
+          else
+          {
+            score_row.accepted = passes_matched_ions;
+          }
+          result.stage2_candidate_scores.push_back(std::move(score_row));
+        }
+        std::sort(result.stage2_candidate_scores.begin(), result.stage2_candidate_scores.end(),
+                  [](const Stage2CandidateScore& lhs, const Stage2CandidateScore& rhs)
+                  {
+                    if (lhs.composite_score != rhs.composite_score) return lhs.composite_score > rhs.composite_score;
+                    return lhs.peptide_key < rhs.peptide_key;
+                  });
+      }
     }
     result.stage1_supported_precursors = selected_target_peptides.size();
     result.stage2_confirmed_precursors = confirmed_target_peptides.size();

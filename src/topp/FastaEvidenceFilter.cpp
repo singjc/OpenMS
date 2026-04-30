@@ -70,7 +70,7 @@ protected:
     registerOutputFile_("out_peptides", "<file>", "", "Filtered peptide precursor table in TSV format.");
     setValidFormats_("out_peptides", {"tsv"});
     registerOutputFile_("out_stage2_scores", "<file>", "",
-                        "Optional Stage-2 target/decoy score table in TSV format for score-distribution inspection.",
+                        "Optional Stage-2 scored observation table in TSV format for score-distribution inspection.",
                         false);
     setValidFormats_("out_stage2_scores", {"tsv"});
 
@@ -281,6 +281,30 @@ protected:
   }
 
 private:
+  static std::string normalizeProteinAccession_(const std::string& protein_ref)
+  {
+    const Size first_pipe = protein_ref.find('|');
+    if (first_pipe == std::string::npos) return protein_ref;
+
+    const Size second_pipe = protein_ref.find('|', first_pipe + 1);
+    if (second_pipe == std::string::npos || second_pipe == first_pipe + 1)
+    {
+      return protein_ref;
+    }
+    return protein_ref.substr(first_pipe + 1, second_pipe - first_pipe - 1);
+  }
+
+  static String joinNormalizedProteinAccessions_(const std::vector<std::string>& protein_refs)
+  {
+    std::vector<std::string> normalized_refs;
+    normalized_refs.reserve(protein_refs.size());
+    for (const auto& protein_ref : protein_refs)
+    {
+      normalized_refs.push_back(normalizeProteinAccession_(protein_ref));
+    }
+    return ListUtils::concatenate(normalized_refs, ";");
+  }
+
   static ChromExtractParams makeChromExtractParams_(double mz_window, bool ppm, double im_window)
   {
     ChromExtractParams params;
@@ -315,7 +339,7 @@ private:
         const auto gene_name_it = peptide.protein_gene_names_by_accession.find(protein_ref);
         gene_names.push_back(gene_name_it != peptide.protein_gene_names_by_accession.end() ? gene_name_it->second : std::string{});
       }
-      const String protein_accessions = ListUtils::concatenate(peptide.protein_refs, ";");
+      const String protein_accessions = joinNormalizedProteinAccessions_(peptide.protein_refs);
       const String joined_gene_names = ListUtils::concatenate(gene_names, ";");
 
       if (!export_fragments || peptide.fragments.empty())
@@ -355,7 +379,7 @@ private:
       throw Exception::FileNotWritable(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION, filename);
     }
 
-    out << "protein_accession\tgene_name\tpeptide_sequence\tmodified_peptide_sequence\tprecursor_mz\tprecursor_charge\tdecoy\tsource_file\tnative_spectrum_id\tbest_matched_ions\tsupporting_spectra\tsupporting_runs\tstrong_supporting_spectra\tstrong_supporting_runs\truns_with_streak_ge_2\truns_with_streak_ge_3\tbest_spectrum_matched_intensity_fraction\tbest_spectrum_matched_b_ions\tbest_spectrum_matched_y_ions\tbest_spectrum_longest_b_run\tbest_spectrum_longest_y_run\tbest_spectrum_longest_y_pct\tbest_spectrum_poisson_proxy\tbest_spectrum_score\tbest_run_streak_length\tbest_run_streak_score\ttop_run_score_1\ttop_run_score_2\ttop_run_score_3\ttop_run_streak_length_1\ttop_run_streak_length_2\ttop_run_streak_length_3\tbest_local_rank\tbest_local_pvalue\tcombined_pvalue\tcomposite_score\tqvalue\taccepted\n";
+    out << "peptide_key\tprotein_accession\tgene_name\tpeptide_sequence\tmodified_peptide_sequence\tprecursor_mz\tprecursor_charge\tdecoy\tsource_file\tnative_spectrum_id\trun_index\tspectrum_rank\tused_for_scoring\tused_for_null\tobservation_matched_ions\tobservation_matched_intensity_fraction\tobservation_score\tlocal_pvalue\tbest_matched_ions\tsupporting_spectra\tsupporting_runs\tstrong_supporting_spectra\tstrong_supporting_runs\truns_with_streak_ge_2\truns_with_streak_ge_3\tbest_spectrum_matched_intensity_fraction\tbest_spectrum_matched_b_ions\tbest_spectrum_matched_y_ions\tbest_spectrum_longest_b_run\tbest_spectrum_longest_y_run\tbest_spectrum_longest_y_pct\tbest_spectrum_poisson_proxy\tbest_spectrum_score\tbest_run_streak_length\tbest_run_streak_score\ttop_run_score_1\ttop_run_score_2\ttop_run_score_3\ttop_run_streak_length_1\ttop_run_streak_length_2\ttop_run_streak_length_3\tbest_local_rank\tbest_local_pvalue\tcombined_pvalue\tcomposite_score\tqvalue\taccepted\n";
     out << std::fixed << std::setprecision(6);
     for (const auto& score : scores)
     {
@@ -366,10 +390,11 @@ private:
         const auto gene_name_it = score.protein_gene_names_by_accession.find(protein_ref);
         gene_names.push_back(gene_name_it != score.protein_gene_names_by_accession.end() ? gene_name_it->second : std::string{});
       }
-      const String protein_accessions = ListUtils::concatenate(score.protein_refs, ";");
+      const String protein_accessions = joinNormalizedProteinAccessions_(score.protein_refs);
       const String joined_gene_names = ListUtils::concatenate(gene_names, ";");
 
-      out << protein_accessions << '\t'
+      out << score.peptide_key << '\t'
+          << protein_accessions << '\t'
           << joined_gene_names << '\t'
           << score.peptide_sequence << '\t'
           << score.modified_peptide_sequence << '\t'
@@ -378,6 +403,19 @@ private:
           << (score.decoy ? 1 : 0) << '\t'
           << score.source_file << '\t'
           << score.native_spectrum_id << '\t'
+          << score.run_index << '\t'
+          << score.spectrum_rank << '\t'
+          << (score.used_for_scoring ? 1 : 0) << '\t'
+          << (score.used_for_null ? 1 : 0) << '\t'
+          << score.observation_matched_ions << '\t'
+          << score.observation_matched_intensity_fraction << '\t'
+          << score.observation_score << '\t';
+
+      if (score.local_pvalue >= 0.0)
+      {
+        out << score.local_pvalue;
+      }
+      out << '\t'
           << score.best_matched_ions << '\t'
           << score.supporting_spectra << '\t'
           << score.supporting_runs << '\t'
