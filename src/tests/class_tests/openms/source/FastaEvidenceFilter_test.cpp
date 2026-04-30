@@ -103,6 +103,7 @@ START_SECTION(FastaEvidenceFilter())
   FastaEvidenceFilter filter;
   TEST_EQUAL(filter.getParameters().getValue("aggregation_method").toString(), "any")
   TEST_EQUAL(filter.getParameters().getValue("Stage2:mode").toString(), "lower_order_null")
+  TEST_EQUAL(filter.getParameters().getValue("Export:modified_sequence_format").toString(), "unimod_accession")
   TEST_EQUAL(static_cast<Int>(filter.getParameters().getValue("Protein:min_confirmed_peptides")), 1)
 }
 END_SECTION

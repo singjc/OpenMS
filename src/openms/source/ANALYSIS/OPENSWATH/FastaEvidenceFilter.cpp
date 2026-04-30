@@ -754,6 +754,9 @@ namespace OpenMS
     defaults_.setValue("Export:export_stage2_scores", "false",
                        "If true, keep scored Stage-2 export rows for optional TSV export.");
     defaults_.setValidStrings("Export:export_stage2_scores", {"true", "false"});
+    defaults_.setValue("Export:modified_sequence_format", "unimod_accession",
+                       "Format used when exporting modified peptide sequences to TSV outputs.");
+    defaults_.setValidStrings("Export:modified_sequence_format", {"unimod_accession", "codename"});
 
     std::vector<String> all_mods;
     ModificationsDB::getInstance()->getAllSearchModifications(all_mods);

@@ -8,6 +8,7 @@
 
 #include <OpenMS/APPLICATIONS/OpenSwathBase.h>
 #include <OpenMS/ANALYSIS/OPENSWATH/FastaEvidenceFilter.h>
+#include <OpenMS/CHEMISTRY/AASequence.h>
 #include <OpenMS/CONCEPT/Exception.h>
 #include <OpenMS/CONCEPT/LogStream.h>
 #include <OpenMS/DATASTRUCTURES/ListUtils.h>
@@ -17,6 +18,7 @@
 #include <fstream>
 #include <iomanip>
 #include <memory>
+#include <unordered_map>
 #include <vector>
 
 using namespace OpenMS;
@@ -269,11 +271,13 @@ protected:
 
     const auto result = algorithm.filter(runs, fasta_db, ms1_params, ms2_params, static_cast<int>(getIntOption_("threads")));
     FASTAFile().store(out_fasta_file, result.filtered_fasta);
+    const String modified_sequence_format = getParam_().getValue("Export:modified_sequence_format").toString();
     writePeptideTable_(out_peptides_file, result.confirmed_peptides,
-                       getParam_().getValue("Export:export_fragments").toString() == "true");
+                       getParam_().getValue("Export:export_fragments").toString() == "true",
+                       modified_sequence_format);
     if (!out_stage2_scores_file.empty())
     {
-      writeStage2ScoreTable_(out_stage2_scores_file, result.stage2_candidate_scores);
+      writeStage2ScoreTable_(out_stage2_scores_file, result.stage2_candidate_scores, modified_sequence_format);
     }
 
     OPENMS_LOG_INFO << result.summary << "\n";
@@ -305,6 +309,29 @@ private:
     return ListUtils::concatenate(normalized_refs, ";");
   }
 
+  static const String& formatModifiedPeptideSequence_(const std::string& modified_peptide_sequence,
+                                                      const String& modified_sequence_format,
+                                                      std::unordered_map<std::string, String>& cache)
+  {
+    const auto cached_it = cache.find(modified_peptide_sequence);
+    if (cached_it != cache.end())
+    {
+      return cached_it->second;
+    }
+
+    String formatted_sequence;
+    if (modified_sequence_format == "codename")
+    {
+      formatted_sequence = modified_peptide_sequence.c_str();
+    }
+    else
+    {
+      formatted_sequence = AASequence::fromString(modified_peptide_sequence).toUniModString();
+    }
+
+    return cache.emplace(modified_peptide_sequence, std::move(formatted_sequence)).first->second;
+  }
+
   static ChromExtractParams makeChromExtractParams_(double mz_window, bool ppm, double im_window)
   {
     ChromExtractParams params;
@@ -320,7 +347,8 @@ private:
 
   static void writePeptideTable_(const String& filename,
                                  const std::vector<FastaEvidenceFilter::PeptideEntry>& peptides,
-                                 bool export_fragments)
+                                 bool export_fragments,
+                                 const String& modified_sequence_format)
   {
     std::ofstream out(filename.c_str());
     if (!out)
@@ -330,6 +358,8 @@ private:
 
     out << "peptide_sequence\tmodified_peptide_sequence\tprecursor_mz\tprecursor_charge\tprotein_accession\tgene_name\tproduct_mz\tproduct_charge\tproduct_type\tproduct_ordinal\n";
     out << std::fixed << std::setprecision(6);
+    std::unordered_map<std::string, String> modified_sequence_cache;
+    modified_sequence_cache.reserve(peptides.size());
     for (const auto& peptide : peptides)
     {
       std::vector<std::string> gene_names;
@@ -341,11 +371,14 @@ private:
       }
       const String protein_accessions = joinNormalizedProteinAccessions_(peptide.protein_refs);
       const String joined_gene_names = ListUtils::concatenate(gene_names, ";");
+      const String& exported_modified_sequence = formatModifiedPeptideSequence_(peptide.modified_peptide_sequence,
+                                                                                modified_sequence_format,
+                                                                                modified_sequence_cache);
 
       if (!export_fragments || peptide.fragments.empty())
       {
         out << peptide.peptide_sequence << '\t'
-            << peptide.modified_peptide_sequence << '\t'
+            << exported_modified_sequence << '\t'
             << peptide.precursor_mz << '\t'
             << peptide.precursor_charge << '\t'
             << protein_accessions << '\t'
@@ -357,7 +390,7 @@ private:
       for (const auto& fragment : peptide.fragments)
       {
         out << peptide.peptide_sequence << '\t'
-            << peptide.modified_peptide_sequence << '\t'
+            << exported_modified_sequence << '\t'
             << peptide.precursor_mz << '\t'
             << peptide.precursor_charge << '\t'
             << protein_accessions << '\t'
@@ -371,7 +404,8 @@ private:
   }
 
   static void writeStage2ScoreTable_(const String& filename,
-                                     const std::vector<FastaEvidenceFilter::Stage2CandidateScore>& scores)
+                                     const std::vector<FastaEvidenceFilter::Stage2CandidateScore>& scores,
+                                     const String& modified_sequence_format)
   {
     std::ofstream out(filename.c_str());
     if (!out)
@@ -381,6 +415,8 @@ private:
 
     out << "peptide_key\tprotein_accession\tgene_name\tpeptide_sequence\tmodified_peptide_sequence\tprecursor_mz\tprecursor_charge\tdecoy\tsource_file\tnative_spectrum_id\trun_index\tspectrum_rank\tused_for_scoring\tused_for_null\tobservation_matched_ions\tobservation_matched_intensity_fraction\tobservation_score\tlocal_pvalue\tbest_matched_ions\tsupporting_spectra\tsupporting_runs\tstrong_supporting_spectra\tstrong_supporting_runs\truns_with_streak_ge_2\truns_with_streak_ge_3\tbest_spectrum_matched_intensity_fraction\tbest_spectrum_matched_b_ions\tbest_spectrum_matched_y_ions\tbest_spectrum_longest_b_run\tbest_spectrum_longest_y_run\tbest_spectrum_longest_y_pct\tbest_spectrum_poisson_proxy\tbest_spectrum_score\tbest_run_streak_length\tbest_run_streak_score\ttop_run_score_1\ttop_run_score_2\ttop_run_score_3\ttop_run_streak_length_1\ttop_run_streak_length_2\ttop_run_streak_length_3\tbest_local_rank\tbest_local_pvalue\tcombined_pvalue\tcomposite_score\tqvalue\taccepted\n";
     out << std::fixed << std::setprecision(6);
+    std::unordered_map<std::string, String> modified_sequence_cache;
+    modified_sequence_cache.reserve(std::min<Size>(scores.size(), 100000));
     for (const auto& score : scores)
     {
       std::vector<std::string> gene_names;
@@ -392,12 +428,15 @@ private:
       }
       const String protein_accessions = joinNormalizedProteinAccessions_(score.protein_refs);
       const String joined_gene_names = ListUtils::concatenate(gene_names, ";");
+      const String& exported_modified_sequence = formatModifiedPeptideSequence_(score.modified_peptide_sequence,
+                                                                                modified_sequence_format,
+                                                                                modified_sequence_cache);
 
       out << score.peptide_key << '\t'
           << protein_accessions << '\t'
           << joined_gene_names << '\t'
           << score.peptide_sequence << '\t'
-          << score.modified_peptide_sequence << '\t'
+          << exported_modified_sequence << '\t'
           << score.precursor_mz << '\t'
           << score.precursor_charge << '\t'
           << (score.decoy ? 1 : 0) << '\t'
