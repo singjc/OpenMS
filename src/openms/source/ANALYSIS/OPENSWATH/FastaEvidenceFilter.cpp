@@ -250,65 +250,66 @@ namespace OpenMS
 
     void appendShardEntryBuffer_(std::string& buffer, const FastaEvidenceFilter::PeptideEntry& peptide)
     {
-      buffer += peptide.canonical_key;
-      buffer.push_back('\t');
-      buffer += peptide.internal_key;
-      buffer.push_back('\t');
-      buffer += peptide.peptide_sequence;
-      buffer.push_back('\t');
-      buffer += peptide.modified_peptide_sequence;
-      buffer.push_back('\t');
-      buffer += std::to_string(peptide.precursor_mz);
-      buffer.push_back('\t');
-      buffer += std::to_string(peptide.precursor_charge);
-      buffer.push_back('\t');
-      buffer += serializeProteinGenePairs_(peptide);
-      buffer.push_back('\n');
+      std::ostringstream line_buffer;
+      line_buffer << std::quoted(peptide.canonical_key) << ' '
+                  << std::quoted(peptide.internal_key) << ' '
+                  << std::quoted(peptide.peptide_sequence) << ' '
+                  << std::quoted(peptide.modified_peptide_sequence) << ' '
+                  << std::setprecision(std::numeric_limits<double>::max_digits10)
+                  << peptide.precursor_mz << ' '
+                  << peptide.precursor_charge << ' '
+                  << std::quoted(serializeProteinGenePairs_(peptide))
+                  << '\n';
+      buffer += line_buffer.str();
     }
 
     void mergeShardEntryLine_(std::map<std::string, FastaEvidenceFilter::PeptideEntry>& peptide_map,
-                              const std::string& line)
+                              const std::string& line,
+                              const String& shard_path,
+                              Size line_number)
     {
       if (line.empty())
       {
         return;
       }
 
-      std::vector<std::string> fields;
-      Size begin = 0;
-      while (begin <= line.size())
-      {
-        const Size end = line.find('\t', begin);
-        fields.push_back(line.substr(
-          begin, end == std::string::npos ? std::string::npos : end - begin));
-        if (end == std::string::npos)
-        {
-          break;
-        }
-        begin = end + 1;
-      }
-
-      if (fields.size() < 7)
+      std::istringstream line_stream(line);
+      std::string canonical_key;
+      std::string internal_key;
+      std::string peptide_sequence;
+      std::string modified_peptide_sequence;
+      std::string serialized_pairs;
+      double precursor_mz = 0.0;
+      int precursor_charge = 0;
+      if (!(line_stream >> std::quoted(canonical_key) >>
+            std::quoted(internal_key) >>
+            std::quoted(peptide_sequence) >>
+            std::quoted(modified_peptide_sequence) >>
+            precursor_mz >>
+            precursor_charge >>
+            std::quoted(serialized_pairs)))
       {
         throw Exception::ParseError(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION,
-                                    line.c_str(), "Invalid sharded peptide entry.");
+                                    line.c_str(),
+                                    "Invalid sharded peptide entry at line " +
+                                    String(line_number) + " in '" + shard_path + "'.");
       }
 
-      auto [it, inserted] = peptide_map.emplace(fields[1], FastaEvidenceFilter::PeptideEntry{});
+      auto [it, inserted] = peptide_map.emplace(internal_key, FastaEvidenceFilter::PeptideEntry{});
       auto& peptide = it->second;
       if (inserted)
       {
-        peptide.canonical_key = fields[0];
-        peptide.internal_key = fields[1];
-        peptide.peptide_sequence = fields[2];
-        peptide.modified_peptide_sequence = fields[3];
-        peptide.precursor_mz = std::stod(fields[4]);
-        peptide.precursor_charge = std::stoi(fields[5]);
+        peptide.canonical_key = canonical_key;
+        peptide.internal_key = internal_key;
+        peptide.peptide_sequence = peptide_sequence;
+        peptide.modified_peptide_sequence = modified_peptide_sequence;
+        peptide.precursor_mz = precursor_mz;
+        peptide.precursor_charge = precursor_charge;
       }
 
       std::vector<std::string> protein_refs;
       std::map<std::string, std::string> gene_names_by_accession;
-      parseProteinGenePairs_(fields[6], protein_refs, gene_names_by_accession);
+      parseProteinGenePairs_(serialized_pairs, protein_refs, gene_names_by_accession);
       peptide.protein_refs.insert(peptide.protein_refs.end(), protein_refs.begin(), protein_refs.end());
       for (const auto& gene_name_item : gene_names_by_accession)
       {
@@ -330,9 +331,11 @@ namespace OpenMS
 
       std::map<std::string, FastaEvidenceFilter::PeptideEntry> peptide_map;
       std::string line;
+      Size line_number = 0;
       while (std::getline(input, line))
       {
-        mergeShardEntryLine_(peptide_map, line);
+        ++line_number;
+        mergeShardEntryLine_(peptide_map, line, shard_path, line_number);
       }
 
       std::vector<FastaEvidenceFilter::PeptideEntry> peptides;
