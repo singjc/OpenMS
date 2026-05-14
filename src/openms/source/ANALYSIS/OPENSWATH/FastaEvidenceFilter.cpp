@@ -34,6 +34,7 @@
 #include <cmath>
 #include <cstdint>
 #include <future>
+#include <fstream>
 #include <limits>
 #include <map>
 #include <iomanip>
@@ -192,6 +193,167 @@ namespace OpenMS
         }
       }
       return filtered;
+    }
+
+    std::string serializeProteinGenePairs_(const FastaEvidenceFilter::PeptideEntry& peptide)
+    {
+      std::vector<std::string> pairs;
+      pairs.reserve(peptide.protein_refs.size());
+      for (const auto& protein_ref : peptide.protein_refs)
+      {
+        auto gene_name_it = peptide.protein_gene_names_by_accession.find(protein_ref);
+        const std::string gene_name =
+          gene_name_it != peptide.protein_gene_names_by_accession.end() ?
+          gene_name_it->second : std::string();
+        pairs.push_back(protein_ref + "=" + gene_name);
+      }
+      return ListUtils::concatenate(pairs, ";").c_str();
+    }
+
+    void parseProteinGenePairs_(const std::string& serialized_pairs,
+                                std::vector<std::string>& protein_refs,
+                                std::map<std::string, std::string>& gene_names_by_accession)
+    {
+      protein_refs.clear();
+      gene_names_by_accession.clear();
+      if (serialized_pairs.empty())
+      {
+        return;
+      }
+
+      Size begin = 0;
+      while (begin <= serialized_pairs.size())
+      {
+        const Size end = serialized_pairs.find(';', begin);
+        const std::string token = serialized_pairs.substr(
+          begin, end == std::string::npos ? std::string::npos : end - begin);
+        if (!token.empty())
+        {
+          const Size separator = token.find('=');
+          const std::string accession = token.substr(0, separator);
+          const std::string gene_name =
+            separator == std::string::npos ? std::string() : token.substr(separator + 1);
+          protein_refs.push_back(accession);
+          if (!accession.empty())
+          {
+            gene_names_by_accession[accession] = gene_name;
+          }
+        }
+
+        if (end == std::string::npos)
+        {
+          break;
+        }
+        begin = end + 1;
+      }
+    }
+
+    void appendShardEntryBuffer_(std::string& buffer, const FastaEvidenceFilter::PeptideEntry& peptide)
+    {
+      buffer += peptide.canonical_key;
+      buffer.push_back('\t');
+      buffer += peptide.internal_key;
+      buffer.push_back('\t');
+      buffer += peptide.peptide_sequence;
+      buffer.push_back('\t');
+      buffer += peptide.modified_peptide_sequence;
+      buffer.push_back('\t');
+      buffer += std::to_string(peptide.precursor_mz);
+      buffer.push_back('\t');
+      buffer += std::to_string(peptide.precursor_charge);
+      buffer.push_back('\t');
+      buffer += serializeProteinGenePairs_(peptide);
+      buffer.push_back('\n');
+    }
+
+    void mergeShardEntryLine_(std::map<std::string, FastaEvidenceFilter::PeptideEntry>& peptide_map,
+                              const std::string& line)
+    {
+      if (line.empty())
+      {
+        return;
+      }
+
+      std::vector<std::string> fields;
+      Size begin = 0;
+      while (begin <= line.size())
+      {
+        const Size end = line.find('\t', begin);
+        fields.push_back(line.substr(
+          begin, end == std::string::npos ? std::string::npos : end - begin));
+        if (end == std::string::npos)
+        {
+          break;
+        }
+        begin = end + 1;
+      }
+
+      if (fields.size() < 7)
+      {
+        throw Exception::ParseError(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION,
+                                    line.c_str(), "Invalid sharded peptide entry.");
+      }
+
+      auto [it, inserted] = peptide_map.emplace(fields[1], FastaEvidenceFilter::PeptideEntry{});
+      auto& peptide = it->second;
+      if (inserted)
+      {
+        peptide.canonical_key = fields[0];
+        peptide.internal_key = fields[1];
+        peptide.peptide_sequence = fields[2];
+        peptide.modified_peptide_sequence = fields[3];
+        peptide.precursor_mz = std::stod(fields[4]);
+        peptide.precursor_charge = std::stoi(fields[5]);
+      }
+
+      std::vector<std::string> protein_refs;
+      std::map<std::string, std::string> gene_names_by_accession;
+      parseProteinGenePairs_(fields[6], protein_refs, gene_names_by_accession);
+      peptide.protein_refs.insert(peptide.protein_refs.end(), protein_refs.begin(), protein_refs.end());
+      for (const auto& gene_name_item : gene_names_by_accession)
+      {
+        std::string& stored_gene_name = peptide.protein_gene_names_by_accession[gene_name_item.first];
+        if (stored_gene_name.empty())
+        {
+          stored_gene_name = gene_name_item.second;
+        }
+      }
+    }
+
+    std::vector<FastaEvidenceFilter::PeptideEntry> loadMergedShardEntries_(const String& shard_path)
+    {
+      std::ifstream input(shard_path.c_str());
+      if (!input.good())
+      {
+        return {};
+      }
+
+      std::map<std::string, FastaEvidenceFilter::PeptideEntry> peptide_map;
+      std::string line;
+      while (std::getline(input, line))
+      {
+        mergeShardEntryLine_(peptide_map, line);
+      }
+
+      std::vector<FastaEvidenceFilter::PeptideEntry> peptides;
+      peptides.reserve(peptide_map.size());
+      for (auto& item : peptide_map)
+      {
+        auto& refs = item.second.protein_refs;
+        std::sort(refs.begin(), refs.end());
+        refs.erase(std::unique(refs.begin(), refs.end()), refs.end());
+        peptides.push_back(std::move(item.second));
+      }
+
+      std::sort(peptides.begin(), peptides.end(),
+                [](const FastaEvidenceFilter::PeptideEntry& lhs,
+                   const FastaEvidenceFilter::PeptideEntry& rhs)
+                {
+                  if (lhs.precursor_mz != rhs.precursor_mz) return lhs.precursor_mz < rhs.precursor_mz;
+                  if (lhs.precursor_charge != rhs.precursor_charge) return lhs.precursor_charge < rhs.precursor_charge;
+                  return lhs.modified_peptide_sequence < rhs.modified_peptide_sequence;
+                });
+      return peptides;
     }
 
     std::string formatRetentionRatio_(Size retained, Size total)
@@ -812,6 +974,12 @@ namespace OpenMS
     defaults_.setValue("SearchSpace:fragment:min_ion_index", 2,
                        "Skip theoretical fragment ions with ordinal less than or equal to this value.");
     defaults_.setMinInt("SearchSpace:fragment:min_ion_index", 0);
+    defaults_.setValue("SearchSpace:sharding:max_proteins_per_chunk", 1000,
+                       "Maximum number of FASTA proteins materialized per in-memory peptide-generation chunk before sharding to disk. Set to 0 to disable sharding.");
+    defaults_.setMinInt("SearchSpace:sharding:max_proteins_per_chunk", 0);
+    defaults_.setValue("SearchSpace:sharding:num_shards", 128,
+                       "Number of on-disk precursor shards used when sharded Stage-1 search-space generation is enabled.");
+    defaults_.setMinInt("SearchSpace:sharding:num_shards", 1);
 
     defaultsToParam_();
     updateMembers_();
@@ -856,6 +1024,8 @@ namespace OpenMS
     fragment_max_charge_ = static_cast<Int>(param_.getValue("SearchSpace:fragment:max_charge"));
     max_fragments_per_precursor_ = static_cast<Size>(param_.getValue("SearchSpace:fragment:max_per_precursor"));
     fragment_min_ion_index_ = static_cast<Int>(param_.getValue("SearchSpace:fragment:min_ion_index"));
+    search_space_max_proteins_per_chunk_ = static_cast<Size>(param_.getValue("SearchSpace:sharding:max_proteins_per_chunk"));
+    search_space_num_shards_ = static_cast<Size>(param_.getValue("SearchSpace:sharding:num_shards"));
   }
 
   std::string FastaEvidenceFilter::makeCanonicalPeptideKey(const std::string& modified_peptide_sequence, int precursor_charge)
@@ -2098,112 +2268,288 @@ namespace OpenMS
       throw Exception::IllegalArgument(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION,
                                        "FastaEvidenceFilter requires a non-empty FASTA database.");
     }
-    const std::vector<PeptideEntry> all_target_peptides = generatePeptideEntries_(fasta_entries, false);
-    if (all_target_peptides.empty())
-    {
-      throw Exception::IllegalArgument(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION,
-                                       "No peptide precursors were generated from the FASTA database.");
-    }
-    OPENMS_LOG_INFO << "Original target space: "
-                    << all_target_peptides.size() << " peptide precursors, "
-                    << fasta_entries.size() << " proteins." << std::endl;
-
     Param stage1_params = param_.copy("Stage1:", true);
     stage1_params.remove("precursor_batch_size");
     stage1_params.setValue("enabled", "false");
     const String stage1_evidence_sources = stage1_params.getValue("evidence_sources").toString();
-
-    std::vector<PeptideEntry> stage1_candidate_peptides_storage;
-    const std::vector<PeptideEntry>* stage1_candidate_peptides = &all_target_peptides;
-    if (stage1_evidence_sources == "ms2")
-    {
-      const std::vector<MzCoverageInterval> stage1_coverage =
-        buildSwathMzCoverage_(runs, ms2_params.min_upper_edge_dist);
-      stage1_candidate_peptides_storage = filterPeptidesByMzCoverage_(all_target_peptides, stage1_coverage);
-      stage1_candidate_peptides = &stage1_candidate_peptides_storage;
-      OPENMS_LOG_INFO << "Stage 1: prefiltered " << stage1_candidate_peptides->size()
-                      << " of " << all_target_peptides.size()
-                      << " target precursors by DIA SWATH m/z coverage before batching."
-                      << std::endl;
-    }
-
-    std::unordered_map<std::string, Size> supported_run_counts;
     const Size batch_size = std::max<Size>(1, stage1_precursor_batch_size_);
-    const Size num_batches = (stage1_candidate_peptides->size() + batch_size - 1) / batch_size;
     const int thread_count = std::max(1, threads);
     const Size max_concurrent_runs = std::min<Size>(runs.size(), static_cast<Size>(thread_count));
-    const Size total_stage1_jobs = num_batches * runs.size();
-    OPENMS_LOG_INFO << "Stage 1: filtering " << num_batches << " precursor batches across "
-                    << runs.size() << " DIA runs (" << total_stage1_jobs
-                    << " TransitionListEvidenceFilter jobs, up to "
-                    << max_concurrent_runs << " concurrent runs)." << std::endl;
+    const bool stage1_apply_ms2_prefilter = stage1_evidence_sources == "ms2";
+    const std::vector<MzCoverageInterval> stage1_coverage =
+      stage1_apply_ms2_prefilter ?
+      buildSwathMzCoverage_(runs, ms2_params.min_upper_edge_dist) :
+      std::vector<MzCoverageInterval>{};
+    const bool use_search_space_sharding =
+      search_space_max_proteins_per_chunk_ > 0 &&
+      fasta_entries.size() > search_space_max_proteins_per_chunk_;
+
+    Size total_target_precursors = 0;
+    Size total_stage1_candidate_precursors = 0;
+    Size estimated_stage1_target_precursors = 0;
+    Size total_stage1_jobs = 0;
+    std::vector<PeptideEntry> selected_target_peptides;
+    std::vector<PeptideEntry> all_target_peptides;
+    std::vector<PeptideEntry> stage1_candidate_peptides_storage;
+    const std::vector<PeptideEntry>* stage1_candidate_peptides = nullptr;
+    std::shared_ptr<File::TempDir> stage1_shard_dir;
+    std::vector<String> shard_paths;
+
+    if (use_search_space_sharding)
+    {
+      OPENMS_LOG_INFO << "Stage 1: enabling sharded search-space generation with up to "
+                      << search_space_max_proteins_per_chunk_ << " proteins per chunk across "
+                      << search_space_num_shards_ << " precursor hash shards." << std::endl;
+      stage1_shard_dir = std::make_shared<File::TempDir>();
+      shard_paths.resize(search_space_num_shards_);
+      for (Size shard_idx = 0; shard_idx < search_space_num_shards_; ++shard_idx)
+      {
+        shard_paths[shard_idx] = stage1_shard_dir->getPath() + "/stage1_precursors_shard_" +
+                                 String(shard_idx) + ".tsv";
+      }
+
+      const Size num_chunks =
+        (fasta_entries.size() + search_space_max_proteins_per_chunk_ - 1) /
+        search_space_max_proteins_per_chunk_;
+      for (Size chunk_idx = 0; chunk_idx < num_chunks; ++chunk_idx)
+      {
+        const Size chunk_begin = chunk_idx * search_space_max_proteins_per_chunk_;
+        const Size chunk_end = std::min(chunk_begin + search_space_max_proteins_per_chunk_,
+                                        fasta_entries.size());
+        std::vector<FASTAFile::FASTAEntry> fasta_chunk(
+          fasta_entries.begin() + static_cast<SignedSize>(chunk_begin),
+          fasta_entries.begin() + static_cast<SignedSize>(chunk_end));
+        const auto chunk_peptides = generatePeptideEntries_(fasta_chunk, false);
+        estimated_stage1_target_precursors += chunk_peptides.size();
+
+        std::vector<std::string> shard_buffers(search_space_num_shards_);
+        for (const auto& peptide : chunk_peptides)
+        {
+          const Size shard_idx =
+            std::hash<std::string>{}(peptide.canonical_key) % search_space_num_shards_;
+          appendShardEntryBuffer_(shard_buffers[shard_idx], peptide);
+        }
+
+        for (Size shard_idx = 0; shard_idx < search_space_num_shards_; ++shard_idx)
+        {
+          if (shard_buffers[shard_idx].empty())
+          {
+            continue;
+          }
+
+          std::ofstream output(shard_paths[shard_idx].c_str(), std::ios::app);
+          output << shard_buffers[shard_idx];
+        }
+      }
+
+      total_stage1_jobs =
+        ((estimated_stage1_target_precursors + batch_size - 1) / batch_size) * runs.size();
+      OPENMS_LOG_INFO << "Stage 1: filtering sharded precursor space across "
+                      << runs.size() << " DIA runs (estimated up to " << total_stage1_jobs
+                      << " TransitionListEvidenceFilter jobs, up to "
+                      << max_concurrent_runs << " concurrent runs)." << std::endl;
+    }
+    else
+    {
+      all_target_peptides = generatePeptideEntries_(fasta_entries, false);
+      if (all_target_peptides.empty())
+      {
+        throw Exception::IllegalArgument(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION,
+                                         "No peptide precursors were generated from the FASTA database.");
+      }
+      total_target_precursors = all_target_peptides.size();
+      OPENMS_LOG_INFO << "Original target space: "
+                      << total_target_precursors << " peptide precursors, "
+                      << fasta_entries.size() << " proteins." << std::endl;
+
+      stage1_candidate_peptides = &all_target_peptides;
+      if (stage1_apply_ms2_prefilter)
+      {
+        stage1_candidate_peptides_storage = filterPeptidesByMzCoverage_(all_target_peptides, stage1_coverage);
+        stage1_candidate_peptides = &stage1_candidate_peptides_storage;
+        OPENMS_LOG_INFO << "Stage 1: prefiltered " << stage1_candidate_peptides->size()
+                        << " of " << total_target_precursors
+                        << " target precursors by DIA SWATH m/z coverage before batching."
+                        << std::endl;
+      }
+
+      total_stage1_candidate_precursors = stage1_candidate_peptides->size();
+      const Size num_batches = (stage1_candidate_peptides->size() + batch_size - 1) / batch_size;
+      total_stage1_jobs = num_batches * runs.size();
+      OPENMS_LOG_INFO << "Stage 1: filtering " << num_batches << " precursor batches across "
+                      << runs.size() << " DIA runs (" << total_stage1_jobs
+                      << " TransitionListEvidenceFilter jobs, up to "
+                      << max_concurrent_runs << " concurrent runs)." << std::endl;
+    }
+
     const auto stage1_begin = std::chrono::steady_clock::now();
     startProgress(0, static_cast<SignedSize>(std::max<Size>(1, total_stage1_jobs)),
                   "Stage 1: filtering precursor batches");
     Size processed_stage1_jobs = 0;
     bool stage1_progress_started = true;
-    try
-    {
-      for (Size batch_idx = 0; batch_idx < num_batches; ++batch_idx)
+
+    const auto run_stage1_batches =
+      [&](const std::vector<PeptideEntry>& peptide_pool,
+          const String& batch_context) -> std::unordered_map<std::string, Size>
       {
-        const Size begin_idx = batch_idx * batch_size;
-        const Size end_idx = std::min(begin_idx + batch_size, stage1_candidate_peptides->size());
-        const auto batch_begin = std::chrono::steady_clock::now();
-        const OpenSwath::LightTargetedExperiment stage1_experiment =
-          buildStage1Experiment_(*stage1_candidate_peptides, begin_idx, end_idx, thread_count);
-
-        for (Size run_offset = 0; run_offset < runs.size(); run_offset += max_concurrent_runs)
+        std::unordered_map<std::string, Size> supported_run_counts;
+        const Size num_batches = (peptide_pool.size() + batch_size - 1) / batch_size;
+        for (Size batch_idx = 0; batch_idx < num_batches; ++batch_idx)
         {
-          const Size active_runs = std::min(max_concurrent_runs, runs.size() - run_offset);
-          const int base_threads_per_run = std::max(1, thread_count / static_cast<int>(active_runs));
-          const int extra_threads = thread_count % static_cast<int>(active_runs);
-          std::vector<std::future<std::unordered_set<std::string>>> futures;
-          futures.reserve(active_runs);
+          const Size begin_idx = batch_idx * batch_size;
+          const Size end_idx = std::min(begin_idx + batch_size, peptide_pool.size());
+          const auto batch_begin = std::chrono::steady_clock::now();
+          const OpenSwath::LightTargetedExperiment stage1_experiment =
+            buildStage1Experiment_(peptide_pool, begin_idx, end_idx, thread_count);
 
-          for (Size local_run_index = 0; local_run_index < active_runs; ++local_run_index)
+          for (Size run_offset = 0; run_offset < runs.size(); run_offset += max_concurrent_runs)
           {
-            const Size run_index = run_offset + local_run_index;
-            const int run_threads = base_threads_per_run + (static_cast<int>(local_run_index) < extra_threads ? 1 : 0);
-            futures.push_back(std::async(std::launch::async,
-              [&, run_index, run_threads]()
-              {
-                TransitionListEvidenceFilter stage1_filter;
-                stage1_filter.setParameters(stage1_params);
-                stage1_filter.setLogType(ProgressLogger::NONE);
-                const auto stage1_result = stage1_filter.filter(
-                  runs[run_index].swath_maps, stage1_experiment, ms1_params, ms2_params,
-                  runs[run_index].pasef, run_threads);
+            const Size active_runs = std::min(max_concurrent_runs, runs.size() - run_offset);
+            const int base_threads_per_run = std::max(1, thread_count / static_cast<int>(active_runs));
+            const int extra_threads = thread_count % static_cast<int>(active_runs);
+            std::vector<std::future<std::unordered_set<std::string>>> futures;
+            futures.reserve(active_runs);
 
-                std::unordered_set<std::string> run_supported;
-                for (const auto& compound : stage1_result.filtered_targets.getCompounds())
-                {
-                  run_supported.insert(compound.id);
-                }
-                return run_supported;
-              }));
-          }
-
-          for (Size local_run_index = 0; local_run_index < active_runs; ++local_run_index)
-          {
-            const auto run_supported = futures[local_run_index].get();
-            for (const auto& compound_id : run_supported)
+            for (Size local_run_index = 0; local_run_index < active_runs; ++local_run_index)
             {
-              ++supported_run_counts[compound_id];
+              const Size run_index = run_offset + local_run_index;
+              const int run_threads = base_threads_per_run + (static_cast<int>(local_run_index) < extra_threads ? 1 : 0);
+              futures.push_back(std::async(std::launch::async,
+                [&, run_index, run_threads]()
+                {
+                  TransitionListEvidenceFilter stage1_filter;
+                  stage1_filter.setParameters(stage1_params);
+                  stage1_filter.setLogType(ProgressLogger::NONE);
+                  const auto stage1_result = stage1_filter.filter(
+                    runs[run_index].swath_maps, stage1_experiment, ms1_params, ms2_params,
+                    runs[run_index].pasef, run_threads);
+
+                  std::unordered_set<std::string> run_supported;
+                  for (const auto& compound : stage1_result.filtered_targets.getCompounds())
+                  {
+                    run_supported.insert(compound.id);
+                  }
+                  return run_supported;
+                }));
             }
 
-            ++processed_stage1_jobs;
-            setProgress(static_cast<SignedSize>(processed_stage1_jobs));
+            for (Size local_run_index = 0; local_run_index < active_runs; ++local_run_index)
+            {
+              const auto run_supported = futures[local_run_index].get();
+              for (const auto& compound_id : run_supported)
+              {
+                ++supported_run_counts[compound_id];
+              }
+
+              ++processed_stage1_jobs;
+              const SignedSize capped_progress = std::min<SignedSize>(
+                static_cast<SignedSize>(processed_stage1_jobs),
+                static_cast<SignedSize>(std::max<Size>(1, total_stage1_jobs)));
+              setProgress(capped_progress);
+            }
+          }
+
+          const double batch_elapsed_seconds = std::chrono::duration<double>(
+            std::chrono::steady_clock::now() - batch_begin).count();
+          const double stage1_elapsed_seconds = std::chrono::duration<double>(
+            std::chrono::steady_clock::now() - stage1_begin).count();
+          OPENMS_LOG_INFO << "Stage 1: finished precursor batch " << (batch_idx + 1)
+                          << "/" << num_batches << " (" << (end_idx - begin_idx)
+                          << " precursors)" << batch_context << " in "
+                          << batch_elapsed_seconds << " s (overall "
+                          << stage1_elapsed_seconds << " s)." << std::endl;
+        }
+        return supported_run_counts;
+      };
+    try
+    {
+      if (use_search_space_sharding)
+      {
+        for (Size shard_idx = 0; shard_idx < shard_paths.size(); ++shard_idx)
+        {
+          if (!File::exists(shard_paths[shard_idx]))
+          {
+            continue;
+          }
+
+          auto shard_peptides = loadMergedShardEntries_(shard_paths[shard_idx]);
+          if (shard_peptides.empty())
+          {
+            continue;
+          }
+          total_target_precursors += shard_peptides.size();
+
+          const std::vector<PeptideEntry>* shard_stage1_candidates = &shard_peptides;
+          std::vector<PeptideEntry> filtered_shard_peptides;
+          if (stage1_apply_ms2_prefilter)
+          {
+            filtered_shard_peptides = filterPeptidesByMzCoverage_(shard_peptides, stage1_coverage);
+            shard_stage1_candidates = &filtered_shard_peptides;
+          }
+          total_stage1_candidate_precursors += shard_stage1_candidates->size();
+          if (shard_stage1_candidates->empty())
+          {
+            continue;
+          }
+
+          const auto shard_supported_run_counts = run_stage1_batches(
+            *shard_stage1_candidates,
+            " in shard " + String(shard_idx + 1) + "/" + String(shard_paths.size()));
+          for (const auto& peptide : *shard_stage1_candidates)
+          {
+            const auto support_it = shard_supported_run_counts.find(peptide.canonical_key);
+            if (support_it == shard_supported_run_counts.end())
+            {
+              continue;
+            }
+            if ((aggregation_method_ == "any" && support_it->second > 0) ||
+                (aggregation_method_ == "all" && support_it->second == runs.size()))
+            {
+              selected_target_peptides.push_back(peptide);
+            }
+          }
+        }
+      }
+      else
+      {
+        const auto supported_run_counts = run_stage1_batches(*stage1_candidate_peptides, "");
+        std::unordered_set<std::string> selected_target_keys;
+        for (const auto& item : supported_run_counts)
+        {
+          if ((aggregation_method_ == "any" && item.second > 0) ||
+              (aggregation_method_ == "all" && item.second == runs.size()))
+          {
+            selected_target_keys.insert(item.first);
           }
         }
 
-        const double batch_elapsed_seconds = std::chrono::duration<double>(
-          std::chrono::steady_clock::now() - batch_begin).count();
-        const double stage1_elapsed_seconds = std::chrono::duration<double>(
-          std::chrono::steady_clock::now() - stage1_begin).count();
-        OPENMS_LOG_INFO << "Stage 1: finished precursor batch " << (batch_idx + 1)
-                        << "/" << num_batches << " (" << (end_idx - begin_idx)
-                        << " precursors) in " << batch_elapsed_seconds
-                        << " s (overall " << stage1_elapsed_seconds << " s)." << std::endl;
+        selected_target_peptides.reserve(selected_target_keys.size());
+        for (const auto& peptide : all_target_peptides)
+        {
+          if (selected_target_keys.find(peptide.canonical_key) != selected_target_keys.end())
+          {
+            selected_target_peptides.push_back(peptide);
+          }
+        }
+      }
+
+      if (use_search_space_sharding)
+      {
+        OPENMS_LOG_INFO << "Original target space: "
+                        << total_target_precursors << " peptide precursors, "
+                        << fasta_entries.size() << " proteins." << std::endl;
+        if (stage1_apply_ms2_prefilter)
+        {
+          OPENMS_LOG_INFO << "Stage 1: prefiltered " << total_stage1_candidate_precursors
+                          << " of " << total_target_precursors
+                          << " target precursors by DIA SWATH m/z coverage before batching."
+                          << std::endl;
+        }
+      }
+
+      if (total_stage1_jobs > 0)
+      {
+        setProgress(static_cast<SignedSize>(std::max<Size>(1, total_stage1_jobs)));
       }
       endProgress();
       stage1_progress_started = false;
@@ -2220,33 +2566,21 @@ namespace OpenMS
                     << std::chrono::duration<double>(std::chrono::steady_clock::now() - stage1_begin).count()
                     << " s." << std::endl;
 
-    std::unordered_set<std::string> selected_target_keys;
-    for (const auto& item : supported_run_counts)
-    {
-      if ((aggregation_method_ == "any" && item.second > 0) ||
-          (aggregation_method_ == "all" && item.second == runs.size()))
-      {
-        selected_target_keys.insert(item.first);
-      }
-    }
-
-    if (selected_target_keys.size() < stage1_min_supported_precursors_)
+    if (selected_target_peptides.size() < stage1_min_supported_precursors_)
     {
       throw Exception::IllegalArgument(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION,
-                                       "FastaEvidenceFilter retained only " + String(selected_target_keys.size()) +
+                                       "FastaEvidenceFilter retained only " + String(selected_target_peptides.size()) +
                                        " stage-1 precursors, fewer than Stage1:min_supported_precursors=" +
                                        String(stage1_min_supported_precursors_) + ".");
     }
 
-    std::vector<PeptideEntry> selected_target_peptides;
-    selected_target_peptides.reserve(selected_target_keys.size());
-    for (const auto& peptide : all_target_peptides)
-    {
-      if (selected_target_keys.find(peptide.canonical_key) != selected_target_keys.end())
-      {
-        selected_target_peptides.push_back(peptide);
-      }
-    }
+    std::sort(selected_target_peptides.begin(), selected_target_peptides.end(),
+              [](const PeptideEntry& lhs, const PeptideEntry& rhs)
+              {
+                if (lhs.precursor_mz != rhs.precursor_mz) return lhs.precursor_mz < rhs.precursor_mz;
+                if (lhs.precursor_charge != rhs.precursor_charge) return lhs.precursor_charge < rhs.precursor_charge;
+                return lhs.modified_peptide_sequence < rhs.modified_peptide_sequence;
+              });
 
     const std::vector<FASTAFile::FASTAEntry> reduced_target_fasta = buildReducedTargetFasta_(fasta_entries, selected_target_peptides);
     if (reduced_target_fasta.empty())
@@ -2254,7 +2588,7 @@ namespace OpenMS
       throw Exception::IllegalArgument(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION,
                                        "Stage 1 did not retain any proteins in the input FASTA order.");
     }
-    OPENMS_LOG_INFO << "Stage 1 retained " << formatRetentionRatio_(selected_target_peptides.size(), all_target_peptides.size())
+    OPENMS_LOG_INFO << "Stage 1 retained " << formatRetentionRatio_(selected_target_peptides.size(), total_target_precursors)
                     << " peptide precursors and "
                     << formatRetentionRatio_(reduced_target_fasta.size(), fasta_entries.size())
                     << " proteins." << std::endl;
@@ -2394,12 +2728,12 @@ namespace OpenMS
     result.stage2_confirmed_precursors = confirmed_target_peptides.size();
     result.retained_proteins = result.filtered_fasta.size();
     result.summary = "FastaEvidenceFilter retained " +
-                     String(formatRetentionRatio_(result.stage2_confirmed_precursors, all_target_peptides.size()).c_str()) +
+                     String(formatRetentionRatio_(result.stage2_confirmed_precursors, total_target_precursors).c_str()) +
                      " peptide precursors and " +
                      String(formatRetentionRatio_(result.retained_proteins, fasta_entries.size()).c_str()) +
                      " proteins after stage 2.";
     OPENMS_LOG_INFO << "Final retained space: "
-                    << formatRetentionRatio_(result.stage2_confirmed_precursors, all_target_peptides.size())
+                    << formatRetentionRatio_(result.stage2_confirmed_precursors, total_target_precursors)
                     << " peptide precursors, "
                     << formatRetentionRatio_(result.retained_proteins, fasta_entries.size())
                     << " proteins." << std::endl;

@@ -309,6 +309,8 @@ private:
     Int fragment_max_charge_{2};
     Size max_fragments_per_precursor_{6};
     Int fragment_min_ion_index_{2};
+    Size search_space_max_proteins_per_chunk_{1000};
+    Size search_space_num_shards_{128};
     Size stage1_precursor_batch_size_{50000};
   };
 }
