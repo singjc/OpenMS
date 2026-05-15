@@ -31,6 +31,7 @@
 #include <atomic>
 #include <bit>
 #include <chrono>
+#include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <future>
@@ -197,6 +198,31 @@ namespace OpenMS
 
     std::string serializeProteinGenePairs_(const FastaEvidenceFilter::PeptideEntry& peptide)
     {
+      const auto sanitize_metadata_token = [](const std::string& value) -> std::string
+      {
+        std::string sanitized;
+        sanitized.reserve(value.size());
+        for (const unsigned char c : value)
+        {
+          if (c == '\r' || c == '\n' || c == '\t')
+          {
+            sanitized.push_back(' ');
+          }
+          else
+          {
+            sanitized.push_back(static_cast<char>(c));
+          }
+        }
+
+        const Size begin = sanitized.find_first_not_of(' ');
+        if (begin == std::string::npos)
+        {
+          return {};
+        }
+        const Size end = sanitized.find_last_not_of(' ');
+        return sanitized.substr(begin, end - begin + 1);
+      };
+
       std::vector<std::string> pairs;
       pairs.reserve(peptide.protein_refs.size());
       for (const auto& protein_ref : peptide.protein_refs)
@@ -205,7 +231,7 @@ namespace OpenMS
         const std::string gene_name =
           gene_name_it != peptide.protein_gene_names_by_accession.end() ?
           gene_name_it->second : std::string();
-        pairs.push_back(protein_ref + "=" + gene_name);
+        pairs.push_back(protein_ref + "=" + sanitize_metadata_token(gene_name));
       }
       return ListUtils::concatenate(pairs, ";").c_str();
     }
@@ -384,11 +410,15 @@ namespace OpenMS
         }
 
         const Size gene_begin = gene_pos + 3;
-        Size gene_end = text.find(' ', gene_begin);
-        if (gene_end == String::npos)
-        {
-          gene_end = text.size();
-        }
+        const auto whitespace_it = std::find_if(text.begin() + static_cast<SignedSize>(gene_begin),
+                                                text.end(),
+                                                [](const char c)
+                                                {
+                                                  return std::isspace(static_cast<unsigned char>(c)) != 0;
+                                                });
+        const Size gene_end = whitespace_it == text.end() ?
+                              text.size() :
+                              static_cast<Size>(std::distance(text.begin(), whitespace_it));
 
         return text.substr(gene_begin, gene_end - gene_begin).c_str();
       };
