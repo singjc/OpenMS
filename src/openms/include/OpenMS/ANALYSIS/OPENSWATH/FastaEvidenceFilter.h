@@ -312,5 +312,6 @@ private:
     Size search_space_max_proteins_per_chunk_{1000};
     Size search_space_num_shards_{128};
     Size stage1_precursor_batch_size_{50000};
+    Size stage1_max_concurrent_runs_{0};
   };
 }

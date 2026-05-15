@@ -876,6 +876,9 @@ namespace OpenMS
     defaults_.setValue("Stage1:precursor_batch_size", 50000,
                        "Maximum number of precursors materialized in one stage-1 transition batch.");
     defaults_.setMinInt("Stage1:precursor_batch_size", 1);
+    defaults_.setValue("Stage1:max_concurrent_runs", 0,
+                       "Maximum number of DIA runs filtered concurrently for one stage-1 batch. 0 uses the automatic limit derived from -threads.");
+    defaults_.setMinInt("Stage1:max_concurrent_runs", 0);
 
     defaults_.setValue("Stage2:mode", "lower_order_null",
                        "How to accept stage-2 confirmed peptides.");
@@ -994,6 +997,7 @@ namespace OpenMS
 
     stage1_min_supported_precursors_ = static_cast<Size>(param_.getValue("Stage1:min_supported_precursors"));
     stage1_precursor_batch_size_ = static_cast<Size>(param_.getValue("Stage1:precursor_batch_size"));
+    stage1_max_concurrent_runs_ = static_cast<Size>(param_.getValue("Stage1:max_concurrent_runs"));
 
     stage2_mode_ = param_.getValue("Stage2:mode").toString();
     stage2_max_qvalue_ = static_cast<double>(param_.getValue("Stage2:max_qvalue"));
@@ -2272,12 +2276,21 @@ namespace OpenMS
                                        "FastaEvidenceFilter requires a non-empty FASTA database.");
     }
     Param stage1_params = param_.copy("Stage1:", true);
+    stage1_params.remove("max_concurrent_runs");
     stage1_params.remove("precursor_batch_size");
     stage1_params.setValue("enabled", "false");
     const String stage1_evidence_sources = stage1_params.getValue("evidence_sources").toString();
     const Size batch_size = std::max<Size>(1, stage1_precursor_batch_size_);
     const int thread_count = std::max(1, threads);
-    const Size max_concurrent_runs = std::min<Size>(runs.size(), static_cast<Size>(thread_count));
+    const Size requested_max_concurrent_runs =
+      stage1_max_concurrent_runs_ > 0 ?
+      stage1_max_concurrent_runs_ :
+      static_cast<Size>(thread_count);
+    const Size max_concurrent_runs = std::max<Size>(
+      1,
+      std::min<Size>(
+        runs.size(),
+        std::min<Size>(requested_max_concurrent_runs, static_cast<Size>(thread_count))));
     const bool stage1_apply_ms2_prefilter = stage1_evidence_sources == "ms2";
     const std::vector<MzCoverageInterval> stage1_coverage =
       stage1_apply_ms2_prefilter ?

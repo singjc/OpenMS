@@ -16,6 +16,7 @@
 #include <OpenMS/SYSTEM/File.h>
 
 #include <fstream>
+#include <future>
 #include <iomanip>
 #include <memory>
 #include <unordered_map>
@@ -98,6 +99,10 @@ protected:
                           "Whether to run directly on input data or cache data to disk first. If 'cache', set tempDirectory as needed.",
                           false, true);
     setValidStrings_("readOptions", {"normal", "cache"});
+    registerIntOption_("load_files_in_parallel", "<n>", 1,
+                       "Maximum number of DIA runs loaded in parallel. 1 keeps serial loading. 0 uses min(number of DIA runs, -threads).",
+                       false, true);
+    setMinInt_("load_files_in_parallel", 0);
     registerStringOption_("tempDirectory", "<tmp>", File::getTempDirectory(), "Temporary directory for cached data.", false, true);
     registerFlag_("keep_cached_files", "If set, do not remove cached files created in tempDirectory.", false);
 
@@ -196,6 +201,7 @@ protected:
 
     const bool split_file_input = getFlag_("split_file_input");
     const String readoptions = getStringOption_("readOptions");
+    const Int requested_parallel_loads = getIntOption_("load_files_in_parallel");
     const String tmp_dir = File::absolutePath(getStringOption_("tempDirectory")).ensureLastChar('/');
     const bool keep_cached_files = getFlag_("keep_cached_files");
     const bool force = getFlag_("force");
@@ -216,45 +222,99 @@ protected:
       }
     }
 
-    std::vector<FastaEvidenceFilter::RunData> runs;
-    runs.reserve(run_groups.size());
-    for (const auto& run_files : run_groups)
+    const int threads = static_cast<int>(getIntOption_("threads"));
+    const Size requested_max_parallel_loads =
+      requested_parallel_loads == 0 ?
+      static_cast<Size>(std::max(1, threads)) :
+      static_cast<Size>(requested_parallel_loads);
+    const Size max_parallel_loads = std::max<Size>(
+      1,
+      std::min<Size>(
+        run_groups.size(),
+        std::min<Size>(requested_max_parallel_loads, static_cast<Size>(std::max(1, threads)))));
+
+    struct LoadedRun
     {
-      String per_run_tmp = tmp_dir;
-      std::shared_ptr<File::TempDir> per_run_temp_dir;
-      if (readoptions == "cache")
-      {
-        per_run_temp_dir = std::make_shared<File::TempDir>(tmp_dir, keep_cached_files);
-        per_run_tmp = per_run_temp_dir->getPath();
-      }
-
-      std::shared_ptr<ExperimentalSettings> exp_meta(new ExperimentalSettings);
-      std::vector<OpenSwath::SwathMap> swath_maps;
-      std::vector<String> swath_map_sources;
-      if (!loadSwathFiles(run_files, exp_meta, swath_maps, swath_map_sources, split_file_input,
-                          per_run_tmp, readoptions, swath_windows_file,
-                          ms2_params.min_upper_edge_dist, force, sort_swath_maps, prm))
-      {
-        writeLogError_("Error: Failed to load DIA input files.");
-        return PARSE_ERROR;
-      }
-
-      bool run_pasef = getFlag_("pasef");
-      if (!run_pasef)
-      {
-        run_pasef = std::any_of(swath_maps.begin(), swath_maps.end(),
-                                [](const OpenSwath::SwathMap& map)
-                                {
-                                  return !map.ms1 && map.imLower >= 0.0 && map.imUpper >= 0.0;
-                                });
-      }
-
+      bool ok{false};
+      String error_message;
       FastaEvidenceFilter::RunData run;
-      run.swath_maps = std::move(swath_maps);
-      run.swath_map_sources = std::move(swath_map_sources);
-      run.pasef = run_pasef;
-      run.cache_dir_guard = per_run_temp_dir;
-      runs.push_back(std::move(run));
+    };
+
+    const auto load_run_group =
+      [&](const StringList& run_files) -> LoadedRun
+      {
+        LoadedRun loaded;
+        try
+        {
+          String per_run_tmp = tmp_dir;
+          std::shared_ptr<File::TempDir> per_run_temp_dir;
+          if (readoptions == "cache")
+          {
+            per_run_temp_dir = std::make_shared<File::TempDir>(tmp_dir, keep_cached_files);
+            per_run_tmp = per_run_temp_dir->getPath();
+          }
+
+          std::shared_ptr<ExperimentalSettings> exp_meta(new ExperimentalSettings);
+          std::vector<OpenSwath::SwathMap> swath_maps;
+          std::vector<String> swath_map_sources;
+          if (!loadSwathFiles(run_files, exp_meta, swath_maps, swath_map_sources, split_file_input,
+                              per_run_tmp, readoptions, swath_windows_file,
+                              ms2_params.min_upper_edge_dist, force, sort_swath_maps, prm))
+          {
+            loaded.error_message = "Error: Failed to load DIA input files.";
+            return loaded;
+          }
+
+          bool run_pasef = getFlag_("pasef");
+          if (!run_pasef)
+          {
+            run_pasef = std::any_of(swath_maps.begin(), swath_maps.end(),
+                                    [](const OpenSwath::SwathMap& map)
+                                    {
+                                      return !map.ms1 && map.imLower >= 0.0 && map.imUpper >= 0.0;
+                                    });
+          }
+
+          loaded.run.swath_maps = std::move(swath_maps);
+          loaded.run.swath_map_sources = std::move(swath_map_sources);
+          loaded.run.pasef = run_pasef;
+          loaded.run.cache_dir_guard = std::move(per_run_temp_dir);
+          loaded.ok = true;
+        }
+        catch (const std::exception& e)
+        {
+          loaded.error_message = "Error: Failed to load DIA input files: " + String(e.what());
+        }
+        return loaded;
+      };
+
+    std::vector<FastaEvidenceFilter::RunData> runs(run_groups.size());
+    for (Size run_offset = 0; run_offset < run_groups.size(); run_offset += max_parallel_loads)
+    {
+      const Size active_loads = std::min(max_parallel_loads, run_groups.size() - run_offset);
+      std::vector<std::future<LoadedRun>> futures;
+      futures.reserve(active_loads);
+      for (Size local_index = 0; local_index < active_loads; ++local_index)
+      {
+        const Size run_index = run_offset + local_index;
+        futures.push_back(std::async(std::launch::async,
+                                     [&, run_index]()
+                                     {
+                                       return load_run_group(run_groups[run_index]);
+                                     }));
+      }
+
+      for (Size local_index = 0; local_index < active_loads; ++local_index)
+      {
+        const Size run_index = run_offset + local_index;
+        LoadedRun loaded = futures[local_index].get();
+        if (!loaded.ok)
+        {
+          writeLogError_(loaded.error_message.empty() ? "Error: Failed to load DIA input files." : loaded.error_message);
+          return PARSE_ERROR;
+        }
+        runs[run_index] = std::move(loaded.run);
+      }
     }
 
     FastaEvidenceFilter algorithm;
@@ -269,7 +329,7 @@ protected:
     algorithm.setParameters(algorithm_params);
     algorithm.setLogType(log_type_);
 
-    const auto result = algorithm.filter(runs, fasta_db, ms1_params, ms2_params, static_cast<int>(getIntOption_("threads")));
+    const auto result = algorithm.filter(runs, fasta_db, ms1_params, ms2_params, threads);
     FASTAFile().store(out_fasta_file, result.filtered_fasta);
     const String modified_sequence_format = getParam_().getValue("Export:modified_sequence_format").toString();
     writePeptideTable_(out_peptides_file, result.confirmed_peptides,

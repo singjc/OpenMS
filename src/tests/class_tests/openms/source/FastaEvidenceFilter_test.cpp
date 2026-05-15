@@ -617,6 +617,60 @@ START_SECTION((filter() - stage1 multi-run aggregation preserves support with co
 }
 END_SECTION
 
+START_SECTION((filter() - stage1 multi-run aggregation preserves support with capped concurrent runs))
+{
+  FastaEvidenceFilter filter = makeFilterForSingleChargePeptides();
+  Param params = filter.getParameters();
+  params.setValue("aggregation_method", "all");
+  params.setValue("SearchSpace:min_size", 7);
+  params.setValue("SearchSpace:max_size", 7);
+  params.setValue("Stage1:evidence_sources", "ms1");
+  params.setValue("Stage1:min_supported_precursors", 1);
+  params.setValue("Stage1:max_concurrent_runs", 1);
+  params.setValue("Stage2:mode", "raw_score");
+  params.setValue("Stage2:min_matched_ions", 1);
+  filter.setParameters(params);
+
+  const vector<FASTAFile::FASTAEntry> fasta_entries{makeFastaEntry("protA", "AAAAAAK")};
+  const auto peptides = filter.generatePeptideEntries(fasta_entries);
+  TEST_EQUAL(peptides.size(), 1)
+  TEST_TRUE(!peptides[0].fragments.empty())
+
+  vector<pair<double, double>> stage2_peaks;
+  for (const auto& fragment : peptides[0].fragments)
+  {
+    stage2_peaks.emplace_back(fragment.product_mz, 1000.0);
+  }
+
+  const double precursor_mz = peptides[0].precursor_mz;
+
+  vector<OpenSwath::SwathMap> swath_maps_a;
+  swath_maps_a.push_back(makeSwathMap(true, 0.0, 0.0, {makeSpectrum(10.0, {{precursor_mz, 1000.0}})}));
+  swath_maps_a.push_back(makeSwathMap(false, precursor_mz - 10.0, precursor_mz + 10.0,
+                                      {makeSpectrum(12.0, stage2_peaks)}));
+
+  vector<OpenSwath::SwathMap> swath_maps_b;
+  swath_maps_b.push_back(makeSwathMap(true, 0.0, 0.0, {makeSpectrum(20.0, {{precursor_mz, 900.0}})}));
+  swath_maps_b.push_back(makeSwathMap(false, precursor_mz - 10.0, precursor_mz + 10.0,
+                                      {makeSpectrum(22.0, stage2_peaks)}));
+
+  FastaEvidenceFilter::RunData run_a;
+  run_a.swath_maps = std::move(swath_maps_a);
+  run_a.pasef = false;
+
+  FastaEvidenceFilter::RunData run_b;
+  run_b.swath_maps = std::move(swath_maps_b);
+  run_b.pasef = false;
+
+  const auto result = filter.filter({run_a, run_b}, fasta_entries, makeExtractParams(0.01), makeExtractParams(0.01), 4);
+  TEST_EQUAL(result.stage1_supported_precursors, 1)
+  TEST_EQUAL(result.stage2_confirmed_precursors, 1)
+  TEST_EQUAL(result.retained_proteins, 1)
+  TEST_EQUAL(result.filtered_fasta.size(), 1)
+  TEST_EQUAL(result.filtered_fasta[0].identifier, "protA")
+}
+END_SECTION
+
 START_SECTION((filter() - stage1 precursor batching preserves support across chunks))
 {
   FastaEvidenceFilter filter = makeFilterForSingleChargePeptides();
