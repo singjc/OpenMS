@@ -311,6 +311,8 @@ private:
     Int fragment_min_ion_index_{2};
     Size search_space_max_proteins_per_chunk_{1000};
     Size search_space_num_shards_{128};
+    String search_space_sharding_temp_directory_{File::getTempDirectory()};
+    bool search_space_sharding_keep_temporary_files_{false};
     Size stage1_precursor_batch_size_{50000};
     Size stage1_max_concurrent_runs_{0};
   };

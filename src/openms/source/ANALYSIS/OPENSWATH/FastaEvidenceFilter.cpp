@@ -1016,6 +1016,11 @@ namespace OpenMS
     defaults_.setValue("SearchSpace:sharding:num_shards", 128,
                        "Number of on-disk precursor shards used when sharded Stage-1 search-space generation is enabled.");
     defaults_.setMinInt("SearchSpace:sharding:num_shards", 1);
+    defaults_.setValue("SearchSpace:sharding:temp_directory", File::getTempDirectory(),
+                       "Base directory used for temporary shard files when sharded Stage-1 search-space generation is enabled.");
+    defaults_.setValue("SearchSpace:sharding:keep_temporary_files", "false",
+                       "If true, keep temporary sharded Stage-1 files instead of removing them automatically.");
+    defaults_.setValidStrings("SearchSpace:sharding:keep_temporary_files", {"true", "false"});
 
     defaultsToParam_();
     updateMembers_();
@@ -1063,6 +1068,10 @@ namespace OpenMS
     fragment_min_ion_index_ = static_cast<Int>(param_.getValue("SearchSpace:fragment:min_ion_index"));
     search_space_max_proteins_per_chunk_ = static_cast<Size>(param_.getValue("SearchSpace:sharding:max_proteins_per_chunk"));
     search_space_num_shards_ = static_cast<Size>(param_.getValue("SearchSpace:sharding:num_shards"));
+    search_space_sharding_temp_directory_ =
+      File::absolutePath(param_.getValue("SearchSpace:sharding:temp_directory").toString()).ensureLastChar('/');
+    search_space_sharding_keep_temporary_files_ =
+      param_.getValue("SearchSpace:sharding:keep_temporary_files").toString() == "true";
   }
 
   std::string FastaEvidenceFilter::makeCanonicalPeptideKey(const std::string& modified_peptide_sequence, int precursor_charge)
@@ -2346,7 +2355,8 @@ namespace OpenMS
       OPENMS_LOG_INFO << "Stage 1: enabling sharded search-space generation with up to "
                       << search_space_max_proteins_per_chunk_ << " proteins per chunk across "
                       << search_space_num_shards_ << " precursor hash shards." << std::endl;
-      stage1_shard_dir = std::make_shared<File::TempDir>();
+      stage1_shard_dir = std::make_shared<File::TempDir>(search_space_sharding_temp_directory_,
+                                                         search_space_sharding_keep_temporary_files_);
       shard_paths.resize(search_space_num_shards_);
       for (Size shard_idx = 0; shard_idx < search_space_num_shards_; ++shard_idx)
       {

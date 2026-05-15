@@ -14,6 +14,7 @@
 #include <OpenMS/KERNEL/Peak1D.h>
 
 #include <memory>
+#include <filesystem>
 #include <set>
 #include <string>
 #include <unordered_map>
@@ -821,6 +822,62 @@ START_SECTION((filter() - sharded search-space generation tolerates carriage ret
   TEST_EQUAL(result.confirmed_peptides.size(), 1)
   TEST_EQUAL(result.confirmed_peptides[0].protein_gene_names_by_accession.at("protA"), "GENEA")
   TEST_EQUAL(result.confirmed_peptides[0].protein_gene_names_by_accession.at("protB"), "GENEB")
+}
+END_SECTION
+
+START_SECTION((filter() - sharded search-space generation uses configured temp directory))
+{
+  FastaEvidenceFilter filter = makeFilterForSingleChargePeptides();
+  Param params = filter.getParameters();
+  params.setValue("SearchSpace:min_size", 7);
+  params.setValue("SearchSpace:max_size", 7);
+  params.setValue("SearchSpace:sharding:max_proteins_per_chunk", 1);
+  params.setValue("SearchSpace:sharding:num_shards", 2);
+  File::TempDir shard_root;
+  params.setValue("SearchSpace:sharding:temp_directory", shard_root.getPath());
+  params.setValue("SearchSpace:sharding:keep_temporary_files", "true");
+  params.setValue("Stage1:evidence_sources", "ms1");
+  params.setValue("Stage1:min_supported_precursors", 1);
+  params.setValue("Stage1:precursor_batch_size", 1);
+  params.setValue("Stage2:mode", "raw_score");
+  params.setValue("Stage2:min_matched_ions", 1);
+  filter.setParameters(params);
+
+  const vector<FASTAFile::FASTAEntry> fasta_entries{
+    makeFastaEntry("protA", "AAAAAAK", "Protein A OS=Homo sapiens GN=GENEA"),
+    makeFastaEntry("protB", "AAAAAAK", "Protein B OS=Homo sapiens GN=GENEB")
+  };
+  const auto peptides = filter.generatePeptideEntries(fasta_entries);
+  TEST_EQUAL(peptides.size(), 1)
+  TEST_TRUE(!peptides[0].fragments.empty())
+
+  vector<pair<double, double>> stage2_peaks;
+  for (const auto& fragment : peptides[0].fragments)
+  {
+    stage2_peaks.emplace_back(fragment.product_mz, 1000.0);
+  }
+
+  const double precursor_mz = peptides[0].precursor_mz;
+  vector<OpenSwath::SwathMap> swath_maps;
+  swath_maps.push_back(makeSwathMap(true, 0.0, 0.0, {makeSpectrum(10.0, {{precursor_mz, 1000.0}})}));
+  swath_maps.push_back(makeSwathMap(false, precursor_mz - 10.0, precursor_mz + 10.0,
+                                    {makeSpectrum(12.0, stage2_peaks)}));
+
+  FastaEvidenceFilter::RunData run;
+  run.swath_maps = std::move(swath_maps);
+  run.pasef = false;
+
+  const auto result = filter.filter({run}, fasta_entries, makeExtractParams(0.01), makeExtractParams(0.01), 1);
+  TEST_EQUAL(result.stage1_supported_precursors, 1)
+  TEST_EQUAL(result.stage2_confirmed_precursors, 1)
+
+  Size child_count = 0;
+  for (const auto& entry : std::filesystem::directory_iterator(shard_root.getPath().c_str()))
+  {
+    (void)entry;
+    ++child_count;
+  }
+  TEST_TRUE(child_count > 0)
 }
 END_SECTION
 

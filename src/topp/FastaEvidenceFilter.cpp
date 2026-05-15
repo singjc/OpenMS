@@ -324,6 +324,8 @@ protected:
     algorithm_params.update(getParam_().copy("Stage2:"));
     algorithm_params.update(getParam_().copy("Protein:"));
     algorithm_params.update(getParam_().copy("SearchSpace:"));
+    algorithm_params.setValue("SearchSpace:sharding:temp_directory", tmp_dir);
+    algorithm_params.setValue("SearchSpace:sharding:keep_temporary_files", keep_cached_files ? "true" : "false");
     algorithm_params.update(getParam_().copy("Export:"));
     algorithm_params.setValue("Export:export_stage2_scores", out_stage2_scores_file.empty() ? "false" : "true");
     algorithm.setParameters(algorithm_params);
