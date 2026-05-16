@@ -104,6 +104,8 @@ START_SECTION(FastaEvidenceFilter())
   FastaEvidenceFilter filter;
   TEST_EQUAL(filter.getParameters().getValue("aggregation_method").toString(), "any")
   TEST_EQUAL(filter.getParameters().getValue("Stage2:mode").toString(), "lower_order_null")
+  TEST_EQUAL(filter.getParameters().getValue("Stage1:checkpoint_file").toString(), "")
+  TEST_EQUAL(static_cast<Int>(filter.getParameters().getValue("Stage2:precursor_batch_size")), 100000)
   TEST_EQUAL(filter.getParameters().getValue("Export:modified_sequence_format").toString(), "unimod_accession")
   TEST_EQUAL(static_cast<Int>(filter.getParameters().getValue("Protein:min_confirmed_peptides")), 1)
 }
@@ -720,6 +722,162 @@ START_SECTION((filter() - stage1 precursor batching preserves support across chu
   TEST_EQUAL(result.stage1_supported_precursors, 2)
   TEST_EQUAL(result.stage2_confirmed_precursors, 2)
   TEST_EQUAL(result.retained_proteins, 2)
+}
+END_SECTION
+
+START_SECTION((filter() - stage1 checkpoint resumes retained precursors after a later Stage-2 rerun))
+{
+  FastaEvidenceFilter filter = makeFilterForSingleChargePeptides();
+  Param params = filter.getParameters();
+  params.setValue("SearchSpace:min_size", 7);
+  params.setValue("SearchSpace:max_size", 7);
+  File::TempDir checkpoint_dir;
+  const String checkpoint_file = checkpoint_dir.getPath() + "/stage1_checkpoint.tsv";
+  params.setValue("Stage1:checkpoint_file", checkpoint_file);
+  params.setValue("Stage1:evidence_sources", "ms1");
+  params.setValue("Stage1:min_supported_precursors", 1);
+  params.setValue("Stage2:mode", "raw_score");
+  params.setValue("Stage2:min_matched_ions", 1);
+  filter.setParameters(params);
+
+  const vector<FASTAFile::FASTAEntry> fasta_entries{makeFastaEntry("protA", "AAAAAAK")};
+  const auto peptides = filter.generatePeptideEntries(fasta_entries);
+  TEST_EQUAL(peptides.size(), 1)
+  TEST_TRUE(!peptides[0].fragments.empty())
+
+  vector<pair<double, double>> stage2_peaks;
+  for (const auto& fragment : peptides[0].fragments)
+  {
+    stage2_peaks.emplace_back(fragment.product_mz, 1000.0);
+  }
+
+  const double precursor_mz = peptides[0].precursor_mz;
+
+  vector<OpenSwath::SwathMap> swath_maps_initial;
+  swath_maps_initial.push_back(makeSwathMap(true, 0.0, 0.0, {makeSpectrum(10.0, {{precursor_mz, 1000.0}})}));
+  swath_maps_initial.push_back(makeSwathMap(false, precursor_mz - 10.0, precursor_mz + 10.0,
+                                            {makeSpectrum(12.0, stage2_peaks)}));
+
+  FastaEvidenceFilter::RunData initial_run;
+  initial_run.swath_maps = std::move(swath_maps_initial);
+  initial_run.pasef = false;
+
+  const auto initial_result = filter.filter({initial_run}, fasta_entries, makeExtractParams(0.01), makeExtractParams(0.01), 1);
+  TEST_EQUAL(initial_result.stage1_supported_precursors, 1)
+  TEST_EQUAL(initial_result.stage2_confirmed_precursors, 1)
+  TEST_TRUE(File::exists(checkpoint_file))
+
+  vector<OpenSwath::SwathMap> swath_maps_resume;
+  swath_maps_resume.push_back(makeSwathMap(true, 0.0, 0.0, {makeSpectrum(10.0, {{50.0, 1000.0}})}));
+  swath_maps_resume.push_back(makeSwathMap(false, precursor_mz - 10.0, precursor_mz + 10.0,
+                                           {makeSpectrum(12.0, stage2_peaks)}));
+
+  FastaEvidenceFilter::RunData resumed_run;
+  resumed_run.swath_maps = std::move(swath_maps_resume);
+  resumed_run.pasef = false;
+
+  const auto resumed_result = filter.filter({resumed_run}, fasta_entries, makeExtractParams(0.01), makeExtractParams(0.01), 1);
+  TEST_EQUAL(resumed_result.stage1_supported_precursors, 1)
+  TEST_EQUAL(resumed_result.stage2_confirmed_precursors, 1)
+  TEST_EQUAL(resumed_result.retained_proteins, 1)
+  TEST_EQUAL(resumed_result.filtered_fasta.size(), 1)
+  TEST_EQUAL(resumed_result.filtered_fasta[0].identifier, "protA")
+}
+END_SECTION
+
+START_SECTION((filter() - lower_order_null Stage-2 precursor batching preserves spectrum ranks across batches))
+{
+  auto make_filter = []()
+  {
+    FastaEvidenceFilter inner_filter = makeFilterForSingleChargePeptides();
+    Param inner_params = inner_filter.getParameters();
+    inner_params.setValue("SearchSpace:min_size", 7);
+    inner_params.setValue("SearchSpace:max_size", 7);
+    inner_params.setValue("Stage1:evidence_sources", "ms1");
+    inner_params.setValue("Stage1:min_supported_precursors", 1);
+    inner_params.setValue("Stage2:mode", "lower_order_null");
+    inner_params.setValue("Stage2:min_matched_ions", 1);
+    inner_params.setValue("Stage2:max_qvalue", 1.0);
+    inner_params.setValue("Stage2:lower_order_min_rank", 2);
+    inner_params.setValue("Stage2:lower_order_max_rank", 2);
+    inner_params.setValue("Stage2:lower_order_scored_ranks", 1);
+    inner_params.setValue("Stage2:lower_order_min_null_scores", 1);
+    inner_params.setValue("Export:export_stage2_scores", "true");
+    inner_filter.setParameters(inner_params);
+    return inner_filter;
+  };
+
+  const vector<FASTAFile::FASTAEntry> fasta_entries{
+    makeFastaEntry("protA", "AAAAAAK"),
+    makeFastaEntry("protB", "CCCCCCK")
+  };
+
+  FastaEvidenceFilter peptide_filter = make_filter();
+  const auto peptides = peptide_filter.generatePeptideEntries(fasta_entries);
+  TEST_EQUAL(peptides.size(), 2)
+
+  vector<pair<double, double>> ms1_peaks;
+  vector<pair<double, double>> stage2_peaks;
+  double min_precursor_mz = numeric_limits<double>::max();
+  double max_precursor_mz = numeric_limits<double>::lowest();
+  for (const auto& peptide : peptides)
+  {
+    ms1_peaks.emplace_back(peptide.precursor_mz, 1000.0);
+    min_precursor_mz = min(min_precursor_mz, peptide.precursor_mz);
+    max_precursor_mz = max(max_precursor_mz, peptide.precursor_mz);
+    const double fragment_intensity = peptide.protein_refs[0] == "protA" ? 1000.0 : 100.0;
+    for (const auto& fragment : peptide.fragments)
+    {
+      stage2_peaks.emplace_back(fragment.product_mz, fragment_intensity);
+    }
+  }
+
+  vector<OpenSwath::SwathMap> swath_maps;
+  swath_maps.push_back(makeSwathMap(true, 0.0, 0.0, {makeSpectrum(10.0, ms1_peaks)}));
+  swath_maps.push_back(makeSwathMap(false, min_precursor_mz - 10.0, max_precursor_mz + 10.0,
+                                    {makeSpectrum(12.0, stage2_peaks)}));
+
+  FastaEvidenceFilter::RunData run;
+  run.swath_maps = std::move(swath_maps);
+  run.pasef = false;
+
+  FastaEvidenceFilter large_batch_filter = make_filter();
+  Param large_batch_params = large_batch_filter.getParameters();
+  large_batch_params.setValue("Stage2:precursor_batch_size", 16);
+  large_batch_filter.setParameters(large_batch_params);
+
+  FastaEvidenceFilter batched_filter = make_filter();
+  Param batched_params = batched_filter.getParameters();
+  batched_params.setValue("Stage2:precursor_batch_size", 1);
+  batched_filter.setParameters(batched_params);
+
+  const auto large_batch_result = large_batch_filter.filter({run}, fasta_entries, makeExtractParams(0.01), makeExtractParams(0.01), 1);
+  const auto batched_result = batched_filter.filter({run}, fasta_entries, makeExtractParams(0.01), makeExtractParams(0.01), 1);
+
+  TEST_EQUAL(large_batch_result.stage1_supported_precursors, batched_result.stage1_supported_precursors)
+  TEST_EQUAL(large_batch_result.stage2_confirmed_precursors, batched_result.stage2_confirmed_precursors)
+  TEST_EQUAL(large_batch_result.stage2_candidate_scores.size(), batched_result.stage2_candidate_scores.size())
+
+  vector<string> large_batch_observations;
+  vector<string> batched_observations;
+  for (const auto& score_row : large_batch_result.stage2_candidate_scores)
+  {
+    large_batch_observations.push_back(
+      score_row.peptide_key + "|" + to_string(score_row.spectrum_rank) + "|" +
+      to_string(static_cast<int>(score_row.used_for_scoring)) + "|" +
+      to_string(static_cast<int>(score_row.used_for_null)));
+  }
+  for (const auto& score_row : batched_result.stage2_candidate_scores)
+  {
+    batched_observations.push_back(
+      score_row.peptide_key + "|" + to_string(score_row.spectrum_rank) + "|" +
+      to_string(static_cast<int>(score_row.used_for_scoring)) + "|" +
+      to_string(static_cast<int>(score_row.used_for_null)));
+  }
+  sort(large_batch_observations.begin(), large_batch_observations.end());
+  sort(batched_observations.begin(), batched_observations.end());
+  TEST_EQUAL(large_batch_observations.size(), batched_observations.size())
+  TEST_TRUE(large_batch_observations == batched_observations)
 }
 END_SECTION
 

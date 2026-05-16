@@ -1068,7 +1068,10 @@ namespace OpenMS
 
       const bool has_modifications = !(modifications_fixed_.empty() && modifications_variable_.empty());
 
-      OPENMS_LOG_INFO << "Generating fragments..." << std::endl;
+      if (report_build_progress_)
+      {
+        OPENMS_LOG_INFO << "Generating fragments..." << std::endl;
+      }
 
       // Per-thread fragment vectors to avoid omp critical serialization
 #ifdef _OPENMP
@@ -1238,7 +1241,10 @@ namespace OpenMS
         vector<Fragment>().swap(thread_fragments[t]);
       }
 
-      OPENMS_LOG_INFO << "Sorting fragments..." << std::endl;
+      if (report_build_progress_)
+      {
+        OPENMS_LOG_INFO << "Sorting fragments..." << std::endl;
+      }
 
       /// 1.) First all Fragments are sorted by their own mass (parallel via Boost.Sort)
       boost::sort::block_indirect_sort(fi_fragments_.begin(), fi_fragments_.end(), [](const Fragment& a, const Fragment& b)
@@ -1253,7 +1259,10 @@ namespace OpenMS
       if (fi_fragments_.empty())
       {
         bucketsize_ = 1; // keep non-zero to preserve bucket-walking loop invariants
-        OPENMS_LOG_INFO << "[FragmentIndex] No fragments generated — index is empty." << std::endl;
+        if (report_build_progress_)
+        {
+          OPENMS_LOG_INFO << "[FragmentIndex] No fragments generated — index is empty." << std::endl;
+        }
         is_build_ = true;
         return;
       }
@@ -1263,7 +1272,10 @@ namespace OpenMS
       /// ~4-8k fragments per 0.02 Da window, so a bucket covers roughly one query tolerance
       /// window instead of the much wider sqrt(N) span.
       bucketsize_ = 4096;
-      OPENMS_LOG_INFO << "Creating DB with bucket_size " << bucketsize_ << endl;
+      if (report_build_progress_)
+      {
+        OPENMS_LOG_INFO << "Creating DB with bucket_size " << bucketsize_ << endl;
+      }
 
       /// 2.) next sort after precursor mass and save the min_mz of each bucket
       #pragma omp parallel for
@@ -1281,11 +1293,17 @@ namespace OpenMS
           return a.peptide_idx_ < b.peptide_idx_; // we don´t need a tie, because the idx are unique
         });
       }
-      OPENMS_LOG_INFO << "Sorting by bucket min m/z:" << bucketsize_ << endl;
+      if (report_build_progress_)
+      {
+        OPENMS_LOG_INFO << "Sorting by bucket min m/z:" << bucketsize_ << endl;
+      }
       //Resort in case the parallelization block above messed something up TODO: check if this can happen
       std::sort( bucket_min_mz_.begin(), bucket_min_mz_.end());
       is_build_ = true;
-      OPENMS_LOG_INFO << "Fragment index built!" << endl;
+      if (report_build_progress_)
+      {
+        OPENMS_LOG_INFO << "Fragment index built!" << endl;
+      }
   }
 
   void FragmentIndex::buildFromPeptideSequences(const std::vector<ExplicitPeptide>& peptides)
@@ -1327,7 +1345,10 @@ namespace OpenMS
         fi_peptides_.emplace_back(entry.source_index, 0u, std::make_pair(uint16_t(0), uint16_t(0)), entry.precursor_mass);
       }
 
-      OPENMS_LOG_INFO << "Generating fragments..." << std::endl;
+      if (report_build_progress_)
+      {
+        OPENMS_LOG_INFO << "Generating fragments..." << std::endl;
+      }
 
 #ifdef _OPENMP
       const int num_threads = omp_get_max_threads();
@@ -1409,7 +1430,10 @@ namespace OpenMS
         vector<Fragment>().swap(thread_fragments[t]);
       }
 
-      OPENMS_LOG_INFO << "Sorting fragments..." << std::endl;
+      if (report_build_progress_)
+      {
+        OPENMS_LOG_INFO << "Sorting fragments..." << std::endl;
+      }
 
       boost::sort::block_indirect_sort(fi_fragments_.begin(), fi_fragments_.end(), [](const Fragment& a, const Fragment& b)
       {
@@ -1419,13 +1443,19 @@ namespace OpenMS
       if (fi_fragments_.empty())
       {
         bucketsize_ = 1;
-        OPENMS_LOG_INFO << "[FragmentIndex] No fragments generated — index is empty." << std::endl;
+        if (report_build_progress_)
+        {
+          OPENMS_LOG_INFO << "[FragmentIndex] No fragments generated — index is empty." << std::endl;
+        }
         is_build_ = true;
         return;
       }
 
       bucketsize_ = 4096;
-      OPENMS_LOG_INFO << "Creating DB with bucket_size " << bucketsize_ << endl;
+      if (report_build_progress_)
+      {
+        OPENMS_LOG_INFO << "Creating DB with bucket_size " << bucketsize_ << endl;
+      }
 
       #pragma omp parallel for
       for (SignedSize i = 0; i < (SignedSize)fi_fragments_.size(); i += bucketsize_)
@@ -1440,10 +1470,16 @@ namespace OpenMS
           return a.peptide_idx_ < b.peptide_idx_;
         });
       }
-      OPENMS_LOG_INFO << "Sorting by bucket min m/z:" << bucketsize_ << endl;
+      if (report_build_progress_)
+      {
+        OPENMS_LOG_INFO << "Sorting by bucket min m/z:" << bucketsize_ << endl;
+      }
       std::sort(bucket_min_mz_.begin(), bucket_min_mz_.end());
       is_build_ = true;
-      OPENMS_LOG_INFO << "Fragment index built!" << endl;
+      if (report_build_progress_)
+      {
+        OPENMS_LOG_INFO << "Fragment index built!" << endl;
+      }
   }
 
   void FragmentIndex::buildPeptidesOnly(const std::vector<FASTAFile::FASTAEntry>& fasta_entries)
@@ -2478,6 +2514,9 @@ init_hits.hits_.erase(it_zero, init_hits.hits_.end());
                                 Constants::UserParam::MATCHED_SUFFIX_IONS_FRACTION}
     );
     defaults_.setValue("report:top_hits", 1, "Maximum number of top scoring hits per spectrum that are reported.");
+    defaults_.setValue("report:build_progress", "true",
+                       "If true, report fragment-index build progress messages.");
+    defaults_.setValidStrings("report:build_progress", {"true", "false"});
     defaults_.setSectionDescription("report", "Reporting Options");
     defaults_.setValue("peptide:motif", "", "If set, only peptides that contain this motif (provided as RegEx) will be considered.");
     defaults_.setSectionDescription("peptide", "Peptide Options");
@@ -2539,6 +2578,7 @@ init_hits.hits_.erase(it_zero, init_hits.hits_.end());
     max_precursor_charge_ = param_.getValue("precursor:max_charge");
     max_fragment_charge_ = param_.getValue("fragment:max_charge");
     max_processed_hits_ = param_.getValue("scoring:max_candidates_per_spectrum");
+    report_build_progress_ = param_.getValue("report:build_progress").toString() == "true";
 
     // Derive SNES mode: snes_enabled switch AND enzyme_specificity == SPEC_NONE.
     // snes_enabled is a no-op for specific/semi-specific searches — its only purpose

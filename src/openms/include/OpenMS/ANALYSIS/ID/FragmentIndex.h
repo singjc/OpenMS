@@ -699,6 +699,7 @@ protected:
     bool precursor_mass_tolerance_unit_ppm_{true};
     float fragment_mz_tolerance_;
     bool fragment_mz_tolerance_unit_ppm_{true};    
+    bool report_build_progress_{true};
 private:
 
 
