@@ -1684,6 +1684,30 @@ namespace OpenMS
       SignedSize total_query_units{0};
     };
 
+    struct Stage2BatchPlan
+    {
+      Size candidate_begin{0};
+      Size candidate_end{0};
+      Size query_count{0};
+    };
+
+    struct Stage2JobGroup
+    {
+      Size candidate_begin{0};
+      Size candidate_end{0};
+      Size query_units_per_spectrum{0};
+      std::vector<Stage2BatchPlan> batches;
+      std::vector<Stage2MapJob> jobs;
+    };
+
+    struct Stage2PreparedJob
+    {
+      const Stage2MapJob* job{nullptr};
+      std::vector<Stage2SpectrumContext> spectrum_contexts;
+      std::vector<std::vector<Stage2ScoredSpectrumCandidate>> lower_order_top_candidates_by_spectrum;
+      std::unordered_map<Size, Stage2RunStreakState> run_streak_states;
+    };
+
     struct Stage2CandidateRef
     {
       const PeptideEntry* candidate{nullptr};
@@ -1733,9 +1757,12 @@ namespace OpenMS
         return std::max<Size>(1, charges.size());
       };
 
-    std::vector<Stage2MapJob> jobs;
+    std::vector<Stage2JobGroup> job_groups;
+    std::map<std::pair<Size, Size>, Size> group_index_by_candidate_range;
     Size total_spectra = 0;
+    Size total_stage2_jobs = 0;
     Size total_stage2_batches = 0;
+    Size total_stage2_index_builds = 0;
     SignedSize total_query_units = 0;
     for (Size run_index = 0; run_index < runs.size(); ++run_index)
     {
@@ -1771,6 +1798,36 @@ namespace OpenMS
           continue;
         }
 
+        const std::pair<Size, Size> group_key{
+          static_cast<Size>(std::distance(sorted_candidates.begin(), lower_it)),
+          static_cast<Size>(std::distance(sorted_candidates.begin(), upper_it))
+        };
+        Size group_index = 0;
+        auto group_it = group_index_by_candidate_range.find(group_key);
+        if (group_it == group_index_by_candidate_range.end())
+        {
+          Stage2JobGroup group;
+          group.candidate_begin = group_key.first;
+          group.candidate_end = group_key.second;
+          for (Size batch_begin = group.candidate_begin; batch_begin < group.candidate_end; batch_begin += stage2_batch_size)
+          {
+            const Size batch_end = std::min(batch_begin + stage2_batch_size, group.candidate_end);
+            const Size query_count = count_charge_queries_for_slice(batch_begin, batch_end);
+            group.query_units_per_spectrum += query_count;
+            group.batches.push_back({batch_begin, batch_end, query_count});
+          }
+
+          group_index = job_groups.size();
+          total_stage2_index_builds += group.batches.size();
+          group_index_by_candidate_range.emplace(group_key, group_index);
+          job_groups.push_back(std::move(group));
+        }
+        else
+        {
+          group_index = group_it->second;
+        }
+
+        auto& group = job_groups[group_index];
         Stage2MapJob job;
         job.run = &run;
         job.swath_map = &swath_map;
@@ -1779,25 +1836,22 @@ namespace OpenMS
         {
           job.source_file = run.swath_map_sources[swath_map_index].c_str();
         }
-        job.candidate_begin = static_cast<Size>(std::distance(sorted_candidates.begin(), lower_it));
-        job.candidate_end = static_cast<Size>(std::distance(sorted_candidates.begin(), upper_it));
+        job.candidate_begin = group.candidate_begin;
+        job.candidate_end = group.candidate_end;
         job.spectrum_count = n_spectra;
         job.candidate_count = job.candidate_end - job.candidate_begin;
-        for (Size batch_begin = job.candidate_begin; batch_begin < job.candidate_end; batch_begin += stage2_batch_size)
-        {
-          const Size batch_end = std::min(batch_begin + stage2_batch_size, job.candidate_end);
-          job.total_query_units += static_cast<SignedSize>(
-            job.spectrum_count * count_charge_queries_for_slice(batch_begin, batch_end));
-          ++job.batch_count;
-        }
+        job.batch_count = group.batches.size();
+        job.total_query_units = static_cast<SignedSize>(
+          job.spectrum_count * group.query_units_per_spectrum);
         total_spectra += n_spectra;
         total_stage2_batches += job.batch_count;
         total_query_units += job.total_query_units;
-        jobs.push_back(std::move(job));
+        ++total_stage2_jobs;
+        group.jobs.push_back(std::move(job));
       }
     }
 
-    if (jobs.empty())
+    if (job_groups.empty())
     {
       return bundle;
     }
@@ -1814,9 +1868,10 @@ namespace OpenMS
         ((total_spectra / static_cast<Size>(thread_count)) + 1) * lower_order_scored_ranks),
       static_cast<Size>(262144));
 
-    OPENMS_LOG_INFO << "Stage 2: scoring " << jobs.size() << " SWATH maps across "
+    OPENMS_LOG_INFO << "Stage 2: scoring " << total_stage2_jobs << " SWATH maps across "
                     << total_spectra << " spectra, " << total_stage2_batches
-                    << " precursor batches, and " << total_progress
+                    << " precursor batches sharing " << total_stage2_index_builds
+                    << " fragment-index builds, and " << total_progress
                     << " precursor-range queries with up to " << thread_count
                     << " threads." << std::endl;
     startProgress(0, total_progress, "Stage 2: scoring fragment-index candidates");
@@ -1844,7 +1899,7 @@ namespace OpenMS
 #ifdef _OPENMP
     #pragma omp parallel for schedule(dynamic, 1) num_threads(thread_count)
 #endif
-    for (SignedSize job_index = 0; job_index < static_cast<SignedSize>(jobs.size()); ++job_index)
+    for (SignedSize group_index = 0; group_index < static_cast<SignedSize>(job_groups.size()); ++group_index)
     {
 #ifdef _OPENMP
       const int thread_id = omp_get_thread_num();
@@ -1854,92 +1909,96 @@ namespace OpenMS
       auto& local_scores = local_candidate_stats[static_cast<Size>(thread_id)];
       auto& local_null_scores_by_charge = local_lower_order_null_scores_by_charge[static_cast<Size>(thread_id)];
       auto& local_observations = local_lower_order_observations[static_cast<Size>(thread_id)];
-      std::unordered_map<Size, Stage2RunStreakState> run_streak_states;
-      const auto& job = jobs[static_cast<Size>(job_index)];
-      if (export_stage2_scores_)
+      const auto& group = job_groups[static_cast<Size>(group_index)];
+      std::vector<Stage2PreparedJob> prepared_jobs;
+      prepared_jobs.reserve(group.jobs.size());
+      for (const auto& job : group.jobs)
       {
-        run_streak_states.reserve(std::min(job.candidate_count, per_thread_reserve));
-      }
-
-      std::vector<Stage2SpectrumContext> spectrum_contexts(job.spectrum_count);
-      for (Size spectrum_index = 0; spectrum_index < job.spectrum_count; ++spectrum_index)
-      {
-        OpenSwath::SpectrumPtr spectrum_ptr;
-        if (job.run->pasef && job.swath_map->imLower >= 0.0 && job.swath_map->imUpper >= 0.0)
-        {
-          spectrum_ptr = job.swath_map->sptr->getSpectrumById(
-            static_cast<int>(spectrum_index), job.swath_map->imLower, job.swath_map->imUpper);
-        }
-        else
-        {
-          spectrum_ptr = job.swath_map->sptr->getSpectrumById(static_cast<int>(spectrum_index));
-        }
-
-        if (!spectrum_ptr)
-        {
-          continue;
-        }
-
-        Stage2SpectrumContext context;
+        Stage2PreparedJob prepared_job;
+        prepared_job.job = &job;
         if (export_stage2_scores_)
         {
-          context.native_spectrum_id = job.swath_map->sptr->getSpectrumMetaById(
-            static_cast<int>(spectrum_index)).id;
+          prepared_job.run_streak_states.reserve(std::min(job.candidate_count, per_thread_reserve));
         }
-
-        OpenSwathDataAccessHelper::convertToOpenMSSpectrum(spectrum_ptr, context.spectrum);
-        context.spectrum.setMSLevel(2);
-        context.spectrum.sortByPosition();
-        if (context.spectrum.empty())
+        prepared_job.spectrum_contexts.resize(job.spectrum_count);
+        for (Size spectrum_index = 0; spectrum_index < job.spectrum_count; ++spectrum_index)
         {
-          continue;
-        }
-
-        if (context.native_spectrum_id.empty())
-        {
-          context.native_spectrum_id = context.spectrum.getNativeID().c_str();
-        }
-        context.total_spectrum_intensity = std::accumulate(
-          context.spectrum.begin(), context.spectrum.end(), 0.0,
-          [](double sum, const Peak1D& peak)
+          OpenSwath::SpectrumPtr spectrum_ptr;
+          if (job.run->pasef && job.swath_map->imLower >= 0.0 && job.swath_map->imUpper >= 0.0)
           {
-            return sum + peak.getIntensity();
-          });
-        context.spectrum_mz_span =
-          context.spectrum.size() > 1 ?
-          std::max(1e-6, context.spectrum.back().getMZ() - context.spectrum.front().getMZ()) :
-          1.0;
-        const double fragment_tolerance_reference_mz =
-          context.spectrum.size() > 1 ?
-          0.5 * (context.spectrum.front().getMZ() + context.spectrum.back().getMZ()) :
-          context.spectrum.front().getMZ();
-        context.fragment_tolerance_da =
-          ms2_params.ppm ?
-          Math::ppmToMass<double>(
-            halfTolerance_(ms2_params.mz_extraction_window, true, 10.0),
-            fragment_tolerance_reference_mz) :
-          halfTolerance_(ms2_params.mz_extraction_window, false, 0.05);
-        context.valid = true;
-        spectrum_contexts[spectrum_index] = std::move(context);
-      }
+            spectrum_ptr = job.swath_map->sptr->getSpectrumById(
+              static_cast<int>(spectrum_index), job.swath_map->imLower, job.swath_map->imUpper);
+          }
+          else
+          {
+            spectrum_ptr = job.swath_map->sptr->getSpectrumById(static_cast<int>(spectrum_index));
+          }
 
-      std::vector<std::vector<Stage2ScoredSpectrumCandidate>> lower_order_top_candidates_by_spectrum;
-      if (use_lower_order_null)
-      {
-        lower_order_top_candidates_by_spectrum.resize(job.spectrum_count);
-        for (auto& ranked_candidates : lower_order_top_candidates_by_spectrum)
-        {
-          ranked_candidates.reserve(lower_order_keep_ranks);
+          if (!spectrum_ptr)
+          {
+            continue;
+          }
+
+          Stage2SpectrumContext context;
+          if (export_stage2_scores_)
+          {
+            context.native_spectrum_id = job.swath_map->sptr->getSpectrumMetaById(
+              static_cast<int>(spectrum_index)).id;
+          }
+
+          OpenSwathDataAccessHelper::convertToOpenMSSpectrum(spectrum_ptr, context.spectrum);
+          context.spectrum.setMSLevel(2);
+          context.spectrum.sortByPosition();
+          if (context.spectrum.empty())
+          {
+            continue;
+          }
+
+          if (context.native_spectrum_id.empty())
+          {
+            context.native_spectrum_id = context.spectrum.getNativeID().c_str();
+          }
+          context.total_spectrum_intensity = std::accumulate(
+            context.spectrum.begin(), context.spectrum.end(), 0.0,
+            [](double sum, const Peak1D& peak)
+            {
+              return sum + peak.getIntensity();
+            });
+          context.spectrum_mz_span =
+            context.spectrum.size() > 1 ?
+            std::max(1e-6, context.spectrum.back().getMZ() - context.spectrum.front().getMZ()) :
+            1.0;
+          const double fragment_tolerance_reference_mz =
+            context.spectrum.size() > 1 ?
+            0.5 * (context.spectrum.front().getMZ() + context.spectrum.back().getMZ()) :
+            context.spectrum.front().getMZ();
+          context.fragment_tolerance_da =
+            ms2_params.ppm ?
+            Math::ppmToMass<double>(
+              halfTolerance_(ms2_params.mz_extraction_window, true, 10.0),
+              fragment_tolerance_reference_mz) :
+            halfTolerance_(ms2_params.mz_extraction_window, false, 0.05);
+          context.valid = true;
+          prepared_job.spectrum_contexts[spectrum_index] = std::move(context);
         }
+
+        if (use_lower_order_null)
+        {
+          prepared_job.lower_order_top_candidates_by_spectrum.resize(job.spectrum_count);
+          for (auto& ranked_candidates : prepared_job.lower_order_top_candidates_by_spectrum)
+          {
+            ranked_candidates.reserve(lower_order_keep_ranks);
+          }
+        }
+        prepared_jobs.push_back(std::move(prepared_job));
       }
 
-      for (Size batch_begin = job.candidate_begin; batch_begin < job.candidate_end; batch_begin += stage2_batch_size)
+      for (const auto& batch : group.batches)
       {
-        const Size batch_end = std::min(batch_begin + stage2_batch_size, job.candidate_end);
         std::vector<FragmentIndex::ExplicitPeptide> explicit_candidates;
-        explicit_candidates.reserve(batch_end - batch_begin);
+        explicit_candidates.reserve(batch.candidate_end - batch.candidate_begin);
         std::map<std::uint16_t, std::pair<float, float>> precursor_mass_bounds_by_charge;
-        for (Size candidate_pos = batch_begin; candidate_pos < batch_end; ++candidate_pos)
+        for (Size candidate_pos = batch.candidate_begin; candidate_pos < batch.candidate_end; ++candidate_pos)
         {
           const auto& candidate_ref = sorted_candidates[candidate_pos];
           const auto& candidate = *candidate_ref.candidate;
@@ -1987,236 +2046,251 @@ namespace OpenMS
         const auto& index_peptides = fragment_index.getPeptides();
         FragmentIndex::SpectrumMatchesTopN matches;
 
-        for (Size spectrum_index = 0; spectrum_index < job.spectrum_count; ++spectrum_index)
+        for (auto& prepared_job : prepared_jobs)
         {
-          const auto& spectrum_context = spectrum_contexts[spectrum_index];
-          if (!spectrum_context.valid)
+          const auto& job = *prepared_job.job;
+          for (Size spectrum_index = 0; spectrum_index < job.spectrum_count; ++spectrum_index)
           {
-            continue;
-          }
-
-          matches.clear();
-          fragment_index.querySpectrum(spectrum_context.spectrum, precursor_queries, matches, false);
-          std::unordered_map<Size, FragmentIndex::SpectrumMatch> spectrum_best_matches;
-          spectrum_best_matches.reserve(matches.hits_.size());
-          for (const auto& match : matches.hits_)
-          {
-            if (match.peptide_idx_ >= index_peptides.size())
+            const auto& spectrum_context = prepared_job.spectrum_contexts[spectrum_index];
+            if (!spectrum_context.valid)
             {
               continue;
             }
 
-            const Size candidate_id = index_peptides[match.peptide_idx_].protein_idx;
-            if (candidate_id >= candidates.size())
+            matches.clear();
+            fragment_index.querySpectrum(spectrum_context.spectrum, precursor_queries, matches, false);
+            std::unordered_map<Size, FragmentIndex::SpectrumMatch> spectrum_best_matches;
+            spectrum_best_matches.reserve(matches.hits_.size());
+            for (const auto& match : matches.hits_)
             {
-              continue;
+              if (match.peptide_idx_ >= index_peptides.size())
+              {
+                continue;
+              }
+
+              const Size candidate_id = index_peptides[match.peptide_idx_].protein_idx;
+              if (candidate_id >= candidates.size())
+              {
+                continue;
+              }
+
+              const auto& candidate = candidates[candidate_id];
+              if (static_cast<std::uint16_t>(candidate.precursor_charge) != match.precursor_charge_)
+              {
+                continue;
+              }
+
+              auto best_match_it = spectrum_best_matches.find(candidate_id);
+              if (best_match_it == spectrum_best_matches.end() ||
+                  betterStage2SpectrumMatch_(match, best_match_it->second))
+              {
+                spectrum_best_matches[candidate_id] = match;
+              }
             }
 
-            const auto& candidate = candidates[candidate_id];
-            if (static_cast<std::uint16_t>(candidate.precursor_charge) != match.precursor_charge_)
+            std::vector<Stage2ScoredSpectrumCandidate> ranked_candidates;
+            ranked_candidates.reserve(spectrum_best_matches.size());
+            for (const auto& spectrum_match_item : spectrum_best_matches)
             {
-              continue;
+              const auto& match = spectrum_match_item.second;
+              const double matched_intensity_fraction =
+                spectrum_context.total_spectrum_intensity > 0.0 ?
+                static_cast<double>(match.matched_intensity_sum_) /
+                  spectrum_context.total_spectrum_intensity :
+                0.0;
+              ranked_candidates.push_back({
+                spectrum_match_item.first,
+                match,
+                matched_intensity_fraction,
+                computeStage2SpectrumScore_(match, matched_intensity_fraction)
+              });
             }
 
-            auto best_match_it = spectrum_best_matches.find(candidate_id);
-            if (best_match_it == spectrum_best_matches.end() ||
-                betterStage2SpectrumMatch_(match, best_match_it->second))
+            std::sort(ranked_candidates.begin(), ranked_candidates.end(),
+                      [](const Stage2ScoredSpectrumCandidate& lhs,
+                         const Stage2ScoredSpectrumCandidate& rhs)
+                      {
+                        return betterStage2ScoredSpectrumCandidate_(lhs, rhs);
+                      });
+
+            for (const auto& scored_candidate : ranked_candidates)
             {
-              spectrum_best_matches[candidate_id] = match;
-            }
-          }
-
-          std::vector<Stage2ScoredSpectrumCandidate> ranked_candidates;
-          ranked_candidates.reserve(spectrum_best_matches.size());
-          for (const auto& spectrum_match_item : spectrum_best_matches)
-          {
-            const auto& match = spectrum_match_item.second;
-            const double matched_intensity_fraction =
-              spectrum_context.total_spectrum_intensity > 0.0 ?
-              static_cast<double>(match.matched_intensity_sum_) /
-                spectrum_context.total_spectrum_intensity :
-              0.0;
-            ranked_candidates.push_back({
-              spectrum_match_item.first,
-              match,
-              matched_intensity_fraction,
-              computeStage2SpectrumScore_(match, matched_intensity_fraction)
-            });
-          }
-
-          std::sort(ranked_candidates.begin(), ranked_candidates.end(),
-                    [](const Stage2ScoredSpectrumCandidate& lhs,
-                       const Stage2ScoredSpectrumCandidate& rhs)
-                    {
-                      return betterStage2ScoredSpectrumCandidate_(lhs, rhs);
-                    });
-
-          for (const auto& scored_candidate : ranked_candidates)
-          {
-            const Size candidate_id = scored_candidate.candidate_id;
-            const auto& match = scored_candidate.match;
-            auto& stats = local_scores[candidate_id];
-            stats.best_matched_ions = std::max(stats.best_matched_ions,
-                                               static_cast<Size>(match.num_matched_));
-            ++stats.supporting_spectra;
-            if (job.run_index < 64)
-            {
-              stats.supporting_run_mask |= (std::uint64_t{1} << job.run_index);
-            }
-
-            const double matched_intensity_fraction = scored_candidate.matched_intensity_fraction;
-            const double spectrum_score = scored_candidate.spectrum_score;
-            const bool strong_support =
-              static_cast<Int>(match.num_matched_) >= stage2_strong_min_matched_ions_ &&
-              matched_intensity_fraction >= stage2_strong_min_intensity_fraction_;
-            if (strong_support)
-            {
-              ++stats.strong_supporting_spectra;
+              const Size candidate_id = scored_candidate.candidate_id;
+              const auto& match = scored_candidate.match;
+              auto& stats = local_scores[candidate_id];
+              stats.best_matched_ions = std::max(stats.best_matched_ions,
+                                                 static_cast<Size>(match.num_matched_));
+              ++stats.supporting_spectra;
               if (job.run_index < 64)
               {
-                stats.strong_supporting_run_mask |= (std::uint64_t{1} << job.run_index);
+                stats.supporting_run_mask |= (std::uint64_t{1} << job.run_index);
               }
-            }
-            upsertStage2RunSummary_(stats, job.run_index, spectrum_score, 1);
-            if (export_stage2_scores_)
-            {
-              updateStage2RunStreak_(run_streak_states[candidate_id], spectrum_index, spectrum_score);
-            }
-            if (spectrum_score > stats.best_spectrum_score)
-            {
-              stats.best_spectrum_score = spectrum_score;
-              stats.best_spectrum_matched_intensity_fraction = matched_intensity_fraction;
+
+              const double matched_intensity_fraction = scored_candidate.matched_intensity_fraction;
+              const double spectrum_score = scored_candidate.spectrum_score;
+              const bool strong_support =
+                static_cast<Int>(match.num_matched_) >= stage2_strong_min_matched_ions_ &&
+                matched_intensity_fraction >= stage2_strong_min_intensity_fraction_;
+              if (strong_support)
+              {
+                ++stats.strong_supporting_spectra;
+                if (job.run_index < 64)
+                {
+                  stats.strong_supporting_run_mask |= (std::uint64_t{1} << job.run_index);
+                }
+              }
+              upsertStage2RunSummary_(stats, job.run_index, spectrum_score, 1);
               if (export_stage2_scores_)
               {
-                double poisson_proxy = 0.0;
-                double longest_y_pct = 0.0;
-                Size matched_b_ions = 0;
-                Size matched_y_ions = 0;
-                Size longest_b_run = 0;
-                Size longest_y_run = 0;
-                computeStage2SpectrumDiagnostics_(
-                  match,
-                  theoretical_b_ions_by_candidate[candidate_id],
-                  theoretical_y_ions_by_candidate[candidate_id],
-                  spectrum_context.spectrum.size(),
-                  spectrum_context.spectrum_mz_span,
-                  spectrum_context.fragment_tolerance_da,
-                  poisson_proxy,
-                  longest_y_pct,
-                  matched_b_ions,
-                  matched_y_ions,
-                  longest_b_run,
-                  longest_y_run);
-                stats.best_spectrum_matched_b_ions = matched_b_ions;
-                stats.best_spectrum_matched_y_ions = matched_y_ions;
-                stats.best_spectrum_longest_b_run = longest_b_run;
-                stats.best_spectrum_longest_y_run = longest_y_run;
-                stats.best_spectrum_longest_y_pct = longest_y_pct;
-                stats.best_spectrum_poisson_proxy = poisson_proxy;
-                stats.best_source_file = job.source_file;
-                stats.best_native_spectrum_id = spectrum_context.native_spectrum_id;
+                updateStage2RunStreak_(prepared_job.run_streak_states[candidate_id], spectrum_index, spectrum_score);
               }
+              if (spectrum_score > stats.best_spectrum_score)
+              {
+                stats.best_spectrum_score = spectrum_score;
+                stats.best_spectrum_matched_intensity_fraction = matched_intensity_fraction;
+                if (export_stage2_scores_)
+                {
+                  double poisson_proxy = 0.0;
+                  double longest_y_pct = 0.0;
+                  Size matched_b_ions = 0;
+                  Size matched_y_ions = 0;
+                  Size longest_b_run = 0;
+                  Size longest_y_run = 0;
+                  computeStage2SpectrumDiagnostics_(
+                    match,
+                    theoretical_b_ions_by_candidate[candidate_id],
+                    theoretical_y_ions_by_candidate[candidate_id],
+                    spectrum_context.spectrum.size(),
+                    spectrum_context.spectrum_mz_span,
+                    spectrum_context.fragment_tolerance_da,
+                    poisson_proxy,
+                    longest_y_pct,
+                    matched_b_ions,
+                    matched_y_ions,
+                    longest_b_run,
+                    longest_y_run);
+                  stats.best_spectrum_matched_b_ions = matched_b_ions;
+                  stats.best_spectrum_matched_y_ions = matched_y_ions;
+                  stats.best_spectrum_longest_b_run = longest_b_run;
+                  stats.best_spectrum_longest_y_run = longest_y_run;
+                  stats.best_spectrum_longest_y_pct = longest_y_pct;
+                  stats.best_spectrum_poisson_proxy = poisson_proxy;
+                  stats.best_source_file = job.source_file;
+                  stats.best_native_spectrum_id = spectrum_context.native_spectrum_id;
+                }
+              }
+            }
+
+            if (use_lower_order_null && !ranked_candidates.empty())
+            {
+              mergeStage2TopSpectrumCandidates_(
+                prepared_job.lower_order_top_candidates_by_spectrum[spectrum_index],
+                ranked_candidates,
+                lower_order_keep_ranks);
             }
           }
 
-          if (use_lower_order_null && !ranked_candidates.empty())
+          const SignedSize batch_query_units = static_cast<SignedSize>(
+            batch.query_count * job.spectrum_count);
+          const SignedSize done = processed_queries.fetch_add(batch_query_units) + batch_query_units;
+          SignedSize next_update = next_progress_update.load(std::memory_order_relaxed);
+          while (done >= next_update && next_update <= total_progress)
           {
-            mergeStage2TopSpectrumCandidates_(
-              lower_order_top_candidates_by_spectrum[spectrum_index],
-              ranked_candidates,
-              lower_order_keep_ranks);
-          }
-        }
-
-        const SignedSize batch_query_units = static_cast<SignedSize>(
-          precursor_queries.size() * job.spectrum_count);
-        const SignedSize done = processed_queries.fetch_add(batch_query_units) + batch_query_units;
-        SignedSize next_update = next_progress_update.load(std::memory_order_relaxed);
-        while (done >= next_update && next_update <= total_progress)
-        {
-          const SignedSize following_update =
-            next_update == total_progress ? total_progress + 1 :
-            std::min(total_progress, next_update + progress_step);
-          if (next_progress_update.compare_exchange_weak(next_update, following_update))
-          {
-            std::lock_guard<std::mutex> lock(progress_mutex);
-            setProgress(std::min(done, total_progress));
-            break;
+            const SignedSize following_update =
+              next_update == total_progress ? total_progress + 1 :
+              std::min(total_progress, next_update + progress_step);
+            if (next_progress_update.compare_exchange_weak(next_update, following_update))
+            {
+              std::lock_guard<std::mutex> lock(progress_mutex);
+              setProgress(std::min(done, total_progress));
+              break;
+            }
           }
         }
       }
 
       if (use_lower_order_null)
       {
-        for (Size spectrum_index = 0; spectrum_index < lower_order_top_candidates_by_spectrum.size(); ++spectrum_index)
+        for (const auto& prepared_job : prepared_jobs)
         {
-          const auto& ranked_candidates = lower_order_top_candidates_by_spectrum[spectrum_index];
-          const auto& spectrum_context = spectrum_contexts[spectrum_index];
-          for (Size rank_idx = 0; rank_idx < ranked_candidates.size(); ++rank_idx)
+          const auto& job = *prepared_job.job;
+          for (Size spectrum_index = 0; spectrum_index < prepared_job.lower_order_top_candidates_by_spectrum.size(); ++spectrum_index)
           {
-            const auto& scored_candidate = ranked_candidates[rank_idx];
-            const auto& candidate = candidates[scored_candidate.candidate_id];
-            const Size rank = rank_idx + 1;
-            const bool used_for_null =
-              rank >= lower_order_min_rank && rank <= lower_order_max_rank;
-            const bool used_for_scoring = rank <= lower_order_scored_ranks;
+            const auto& ranked_candidates = prepared_job.lower_order_top_candidates_by_spectrum[spectrum_index];
+            const auto& spectrum_context = prepared_job.spectrum_contexts[spectrum_index];
+            for (Size rank_idx = 0; rank_idx < ranked_candidates.size(); ++rank_idx)
+            {
+              const auto& scored_candidate = ranked_candidates[rank_idx];
+              const auto& candidate = candidates[scored_candidate.candidate_id];
+              const Size rank = rank_idx + 1;
+              const bool used_for_null =
+                rank >= lower_order_min_rank && rank <= lower_order_max_rank;
+              const bool used_for_scoring = rank <= lower_order_scored_ranks;
 
-            if (used_for_null)
-            {
-              local_null_scores_by_charge[candidate.precursor_charge].push_back(
-                scored_candidate.spectrum_score);
-            }
-            if (used_for_scoring || (export_stage2_scores_ && used_for_null))
-            {
-              local_observations.push_back({
-                scored_candidate.candidate_id,
-                job.run_index,
-                static_cast<std::uint16_t>(candidate.precursor_charge),
-                rank,
-                static_cast<Size>(scored_candidate.match.num_matched_),
-                scored_candidate.matched_intensity_fraction,
-                scored_candidate.spectrum_score,
-                job.source_file,
-                spectrum_context.native_spectrum_id,
-                used_for_scoring,
-                used_for_null
-              });
+              if (used_for_null)
+              {
+                local_null_scores_by_charge[candidate.precursor_charge].push_back(
+                  scored_candidate.spectrum_score);
+              }
+              if (used_for_scoring || (export_stage2_scores_ && used_for_null))
+              {
+                local_observations.push_back({
+                  scored_candidate.candidate_id,
+                  job.run_index,
+                  static_cast<std::uint16_t>(candidate.precursor_charge),
+                  rank,
+                  static_cast<Size>(scored_candidate.match.num_matched_),
+                  scored_candidate.matched_intensity_fraction,
+                  scored_candidate.spectrum_score,
+                  job.source_file,
+                  spectrum_context.native_spectrum_id,
+                  used_for_scoring,
+                  used_for_null
+                });
+              }
             }
           }
         }
       }
 
-      for (const auto& streak_item : run_streak_states)
+      if (export_stage2_scores_)
       {
-        auto& stats = local_scores[streak_item.first];
-        if (streak_item.second.best_streak_score > stats.best_run_streak_score ||
-            (streak_item.second.best_streak_score == stats.best_run_streak_score &&
-             streak_item.second.best_streak_length > stats.best_run_streak_length))
+        for (const auto& prepared_job : prepared_jobs)
         {
-          stats.best_run_streak_score = streak_item.second.best_streak_score;
-          stats.best_run_streak_length = streak_item.second.best_streak_length;
-        }
+          const auto& job = *prepared_job.job;
+          for (const auto& streak_item : prepared_job.run_streak_states)
+          {
+            auto& stats = local_scores[streak_item.first];
+            if (streak_item.second.best_streak_score > stats.best_run_streak_score ||
+                (streak_item.second.best_streak_score == stats.best_run_streak_score &&
+                 streak_item.second.best_streak_length > stats.best_run_streak_length))
+            {
+              stats.best_run_streak_score = streak_item.second.best_streak_score;
+              stats.best_run_streak_length = streak_item.second.best_streak_length;
+            }
 
-        if (job.run_index < 64)
-        {
-          if (streak_item.second.best_streak_length >= 2)
-          {
-            stats.streak_ge_2_run_mask |= (std::uint64_t{1} << job.run_index);
-          }
-          if (streak_item.second.best_streak_length >= 3)
-          {
-            stats.streak_ge_3_run_mask |= (std::uint64_t{1} << job.run_index);
-          }
-        }
+            if (job.run_index < 64)
+            {
+              if (streak_item.second.best_streak_length >= 2)
+              {
+                stats.streak_ge_2_run_mask |= (std::uint64_t{1} << job.run_index);
+              }
+              if (streak_item.second.best_streak_length >= 3)
+              {
+                stats.streak_ge_3_run_mask |= (std::uint64_t{1} << job.run_index);
+              }
+            }
 
-        for (Size run_slot = 0; run_slot < stats.top_run_ids.size(); ++run_slot)
-        {
-          if (stats.top_run_ids[run_slot] == job.run_index)
-          {
-            stats.top_run_streak_lengths[run_slot] = std::max(
-              stats.top_run_streak_lengths[run_slot],
-              streak_item.second.best_streak_length);
-            break;
+            for (Size run_slot = 0; run_slot < stats.top_run_ids.size(); ++run_slot)
+            {
+              if (stats.top_run_ids[run_slot] == job.run_index)
+              {
+                stats.top_run_streak_lengths[run_slot] = std::max(
+                  stats.top_run_streak_lengths[run_slot],
+                  streak_item.second.best_streak_length);
+                break;
+              }
+            }
           }
         }
       }
