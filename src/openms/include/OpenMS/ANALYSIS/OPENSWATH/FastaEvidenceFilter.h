@@ -266,7 +266,8 @@ private:
                                    const std::vector<PeptideEntry>& candidates,
                                    const ChromExtractParams& ms1_params,
                                    const ChromExtractParams& ms2_params,
-                                   int threads) const;
+                                   int threads,
+                                   const String& checkpoint_directory) const;
 
     Param buildFragmentIndexParams_(const ChromExtractParams& ms1_params,
                                     const ChromExtractParams& ms2_params) const;
@@ -280,12 +281,14 @@ private:
     String aggregation_method_{"any"};
     Size stage1_min_supported_precursors_{1};
     String stage1_checkpoint_file_;
+    String stage2_checkpoint_directory_;
     String stage2_mode_{"lower_order_null"};
     double stage2_max_qvalue_{0.01};
     Int stage2_min_matched_ions_{5};
     Int stage2_strong_min_matched_ions_{6};
     double stage2_strong_min_intensity_fraction_{0.05};
     Size stage2_precursor_batch_size_{100000};
+    Size stage2_auto_checkpoint_min_precursors_{10000000};
     Int stage2_lower_order_min_rank_{5};
     Int stage2_lower_order_max_rank_{10};
     Int stage2_lower_order_scored_ranks_{3};

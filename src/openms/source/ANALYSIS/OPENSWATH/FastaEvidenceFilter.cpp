@@ -36,6 +36,7 @@
 #include <cstdint>
 #include <future>
 #include <fstream>
+#include <filesystem>
 #include <limits>
 #include <map>
 #include <iomanip>
@@ -494,6 +495,180 @@ namespace OpenMS
       return checkpoint;
     }
 
+    String stage2CheckpointMetaPath_(const String& checkpoint_directory)
+    {
+      return checkpoint_directory + "/meta.tsv";
+    }
+
+    String stage2CheckpointGroupsDirectory_(const String& checkpoint_directory)
+    {
+      return checkpoint_directory + "/groups";
+    }
+
+    String stage2CheckpointGroupCandidateStatsPath_(const String& checkpoint_directory, Size group_index)
+    {
+      return stage2CheckpointGroupsDirectory_(checkpoint_directory) + "/" + String(group_index) + ".candidate_stats.tsv";
+    }
+
+    String stage2CheckpointGroupNullScoresPath_(const String& checkpoint_directory, Size group_index)
+    {
+      return stage2CheckpointGroupsDirectory_(checkpoint_directory) + "/" + String(group_index) + ".null_scores.tsv";
+    }
+
+    String stage2CheckpointGroupBestObservationsPath_(const String& checkpoint_directory, Size group_index)
+    {
+      return stage2CheckpointGroupsDirectory_(checkpoint_directory) + "/" + String(group_index) + ".best_observations.tsv";
+    }
+
+    String stage2CheckpointGroupExportObservationsPath_(const String& checkpoint_directory, Size group_index)
+    {
+      return stage2CheckpointGroupsDirectory_(checkpoint_directory) + "/" + String(group_index) + ".export_observations.tsv";
+    }
+
+    String defaultStage2CheckpointDirectory_(const String& explicit_stage1_checkpoint_file,
+                                            const String& sharding_temp_directory,
+                                            const String& stage2_mode,
+                                            Size candidate_count,
+                                            Size run_count)
+    {
+      if (!explicit_stage1_checkpoint_file.empty())
+      {
+        return explicit_stage1_checkpoint_file + ".stage2";
+      }
+
+      String checkpoint_directory = File::absolutePath(sharding_temp_directory).ensureLastChar('/');
+      checkpoint_directory += "fasta_evidence_filter_stage2_checkpoint_" +
+                              String(candidate_count) + "_runs_" + String(run_count) +
+                              "_" + stage2_mode;
+      return checkpoint_directory;
+    }
+
+    void ensureStage2CheckpointDirectory_(const String& checkpoint_directory)
+    {
+      std::error_code ec;
+      std::filesystem::create_directories(
+        std::filesystem::path(std::string(stage2CheckpointGroupsDirectory_(checkpoint_directory).c_str())),
+        ec);
+      if (ec)
+      {
+        throw Exception::FileNotWritable(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION, checkpoint_directory);
+      }
+    }
+
+    struct Stage2CheckpointMeta
+    {
+      Size candidate_count{0};
+      Size total_groups{0};
+      bool lower_order_null{false};
+      bool export_stage2_scores{false};
+      std::vector<Size> completed_groups;
+    };
+
+    void writeStage2CheckpointMeta_(const String& checkpoint_directory,
+                                    const Stage2CheckpointMeta& checkpoint_meta)
+    {
+      ensureStage2CheckpointDirectory_(checkpoint_directory);
+      const String meta_path = stage2CheckpointMetaPath_(checkpoint_directory);
+      const String tmp_path = meta_path + ".tmp";
+      std::ofstream output(tmp_path.c_str());
+      if (!output)
+      {
+        throw Exception::FileNotWritable(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION, tmp_path);
+      }
+
+      output << "#fasta_evidence_filter_stage2_checkpoint_v1\n";
+      output << "#candidate_count " << checkpoint_meta.candidate_count << '\n';
+      output << "#total_groups " << checkpoint_meta.total_groups << '\n';
+      output << "#lower_order_null " << (checkpoint_meta.lower_order_null ? 1 : 0) << '\n';
+      output << "#export_stage2_scores " << (checkpoint_meta.export_stage2_scores ? 1 : 0) << '\n';
+      for (const Size completed_group : checkpoint_meta.completed_groups)
+      {
+        output << completed_group << '\n';
+      }
+      output.close();
+
+      if (!output)
+      {
+        throw Exception::FileNotWritable(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION, meta_path);
+      }
+      if (!File::rename(tmp_path, meta_path, true))
+      {
+        throw Exception::FileNotWritable(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION, meta_path);
+      }
+    }
+
+    Stage2CheckpointMeta loadStage2CheckpointMeta_(const String& checkpoint_directory)
+    {
+      const String meta_path = stage2CheckpointMetaPath_(checkpoint_directory);
+      std::ifstream input(meta_path.c_str());
+      if (!input.good())
+      {
+        throw Exception::FileNotFound(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION, meta_path);
+      }
+
+      Stage2CheckpointMeta checkpoint_meta;
+      std::string line;
+      Size line_number = 0;
+      while (std::getline(input, line))
+      {
+        ++line_number;
+        if (line.empty())
+        {
+          continue;
+        }
+        if (line[0] == '#')
+        {
+          if (line == "#fasta_evidence_filter_stage2_checkpoint_v1")
+          {
+            continue;
+          }
+          std::istringstream line_stream(line.substr(1));
+          std::string key;
+          Size size_value = 0;
+          int bool_value = 0;
+          line_stream >> key;
+          if (key == "candidate_count")
+          {
+            line_stream >> size_value;
+            checkpoint_meta.candidate_count = size_value;
+          }
+          else if (key == "total_groups")
+          {
+            line_stream >> size_value;
+            checkpoint_meta.total_groups = size_value;
+          }
+          else if (key == "lower_order_null")
+          {
+            line_stream >> bool_value;
+            checkpoint_meta.lower_order_null = bool_value != 0;
+          }
+          else if (key == "export_stage2_scores")
+          {
+            line_stream >> bool_value;
+            checkpoint_meta.export_stage2_scores = bool_value != 0;
+          }
+          continue;
+        }
+
+        std::istringstream line_stream(line);
+        Size completed_group = 0;
+        if (!(line_stream >> completed_group))
+        {
+          throw Exception::ParseError(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION,
+                                      line.c_str(),
+                                      "Invalid Stage-2 checkpoint metadata entry at line " +
+                                      String(line_number) + " in '" + meta_path + "'.");
+        }
+        checkpoint_meta.completed_groups.push_back(completed_group);
+      }
+
+      std::sort(checkpoint_meta.completed_groups.begin(), checkpoint_meta.completed_groups.end());
+      checkpoint_meta.completed_groups.erase(
+        std::unique(checkpoint_meta.completed_groups.begin(), checkpoint_meta.completed_groups.end()),
+        checkpoint_meta.completed_groups.end());
+      return checkpoint_meta;
+    }
+
     std::string formatRetentionRatio_(Size retained, Size total)
     {
       std::ostringstream os;
@@ -603,6 +778,38 @@ namespace OpenMS
       bool used_for_scoring{false};
       bool used_for_null{false};
       double local_pvalue{-1.0};
+    };
+
+    struct Stage2BestScoringObservation
+    {
+      Size candidate_id{0};
+      Size run_index{0};
+      std::uint16_t precursor_charge{0};
+      Size rank{0};
+      double spectrum_score{0.0};
+      double local_pvalue{-1.0};
+    };
+
+    struct Stage2CandidateRunKey
+    {
+      Size candidate_id{0};
+      Size run_index{0};
+
+      bool operator==(const Stage2CandidateRunKey& other) const
+      {
+        return candidate_id == other.candidate_id &&
+               run_index == other.run_index;
+      }
+    };
+
+    struct Stage2CandidateRunKeyHash
+    {
+      Size operator()(const Stage2CandidateRunKey& key) const
+      {
+        const Size seed_a = std::hash<Size>{}(key.candidate_id);
+        const Size seed_b = std::hash<Size>{}(key.run_index);
+        return seed_a ^ (seed_b + 0x9e3779b97f4a7c15ULL + (seed_a << 6) + (seed_a >> 2));
+      }
     };
 
     struct Stage2SpectrumContext
@@ -1060,6 +1267,349 @@ namespace OpenMS
           source.top_run_streak_lengths[run_slot]);
       }
     }
+
+    bool betterStage2BestScoringObservation_(const Stage2BestScoringObservation& lhs,
+                                             const Stage2BestScoringObservation& rhs)
+    {
+      if (lhs.spectrum_score != rhs.spectrum_score)
+      {
+        return lhs.spectrum_score > rhs.spectrum_score;
+      }
+      return lhs.rank < rhs.rank;
+    }
+
+    void upsertStage2BestScoringObservation_(
+      std::unordered_map<Stage2CandidateRunKey, Stage2BestScoringObservation, Stage2CandidateRunKeyHash>& observations,
+      const Stage2BestScoringObservation& candidate_observation)
+    {
+      const Stage2CandidateRunKey key{candidate_observation.candidate_id, candidate_observation.run_index};
+      auto it = observations.find(key);
+      if (it == observations.end() ||
+          betterStage2BestScoringObservation_(candidate_observation, it->second))
+      {
+        observations[key] = candidate_observation;
+      }
+    }
+
+    void writeStage2CheckpointGroupCandidateStats_(
+      const String& checkpoint_directory,
+      Size group_index,
+      const std::unordered_map<Size, Stage2CandidateStats>& candidate_stats)
+    {
+      if (candidate_stats.empty())
+      {
+        return;
+      }
+
+      const String output_path = stage2CheckpointGroupCandidateStatsPath_(checkpoint_directory, group_index);
+      std::ofstream output(output_path.c_str(), std::ios::trunc);
+      if (!output)
+      {
+        throw Exception::FileNotWritable(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION, output_path);
+      }
+
+      for (const auto& item : candidate_stats)
+      {
+        const auto& stats = item.second;
+        output << item.first << '\t'
+               << stats.best_matched_ions << '\t'
+               << stats.supporting_spectra << '\t'
+               << stats.supporting_run_mask << '\t'
+               << stats.strong_supporting_spectra << '\t'
+               << stats.strong_supporting_run_mask << '\t'
+               << stats.streak_ge_2_run_mask << '\t'
+               << stats.streak_ge_3_run_mask << '\t'
+               << std::setprecision(std::numeric_limits<double>::max_digits10)
+               << stats.best_spectrum_matched_intensity_fraction << '\t'
+               << stats.best_spectrum_matched_b_ions << '\t'
+               << stats.best_spectrum_matched_y_ions << '\t'
+               << stats.best_spectrum_longest_b_run << '\t'
+               << stats.best_spectrum_longest_y_run << '\t'
+               << stats.best_spectrum_longest_y_pct << '\t'
+               << stats.best_spectrum_poisson_proxy << '\t'
+               << stats.best_spectrum_score << '\t'
+               << stats.best_run_streak_length << '\t'
+               << stats.best_run_streak_score << '\t'
+               << stats.top_run_scores[0] << '\t'
+               << stats.top_run_scores[1] << '\t'
+               << stats.top_run_scores[2] << '\t'
+               << stats.top_run_streak_lengths[0] << '\t'
+               << stats.top_run_streak_lengths[1] << '\t'
+               << stats.top_run_streak_lengths[2] << '\t'
+               << stats.top_run_ids[0] << '\t'
+               << stats.top_run_ids[1] << '\t'
+               << stats.top_run_ids[2] << '\t'
+               << std::quoted(stats.best_source_file) << '\t'
+               << std::quoted(stats.best_native_spectrum_id) << '\n';
+      }
+    }
+
+    void loadStage2CheckpointGroupCandidateStats_(
+      const String& checkpoint_directory,
+      Size group_index,
+      std::unordered_map<Size, Stage2CandidateStats>& merged_candidate_stats)
+    {
+      const String input_path = stage2CheckpointGroupCandidateStatsPath_(checkpoint_directory, group_index);
+      if (!File::exists(input_path))
+      {
+        return;
+      }
+
+      std::ifstream input(input_path.c_str());
+      if (!input.good())
+      {
+        throw Exception::FileNotFound(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION, input_path);
+      }
+
+      std::string line;
+      Size line_number = 0;
+      while (std::getline(input, line))
+      {
+        ++line_number;
+        if (line.empty())
+        {
+          continue;
+        }
+
+        Stage2CandidateStats stats;
+        Size candidate_id = 0;
+        std::istringstream line_stream(line);
+        if (!(line_stream >> candidate_id
+              >> stats.best_matched_ions
+              >> stats.supporting_spectra
+              >> stats.supporting_run_mask
+              >> stats.strong_supporting_spectra
+              >> stats.strong_supporting_run_mask
+              >> stats.streak_ge_2_run_mask
+              >> stats.streak_ge_3_run_mask
+              >> stats.best_spectrum_matched_intensity_fraction
+              >> stats.best_spectrum_matched_b_ions
+              >> stats.best_spectrum_matched_y_ions
+              >> stats.best_spectrum_longest_b_run
+              >> stats.best_spectrum_longest_y_run
+              >> stats.best_spectrum_longest_y_pct
+              >> stats.best_spectrum_poisson_proxy
+              >> stats.best_spectrum_score
+              >> stats.best_run_streak_length
+              >> stats.best_run_streak_score
+              >> stats.top_run_scores[0]
+              >> stats.top_run_scores[1]
+              >> stats.top_run_scores[2]
+              >> stats.top_run_streak_lengths[0]
+              >> stats.top_run_streak_lengths[1]
+              >> stats.top_run_streak_lengths[2]
+              >> stats.top_run_ids[0]
+              >> stats.top_run_ids[1]
+              >> stats.top_run_ids[2]
+              >> std::quoted(stats.best_source_file)
+              >> std::quoted(stats.best_native_spectrum_id)))
+        {
+          throw Exception::ParseError(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION,
+                                      line.c_str(),
+                                      "Invalid Stage-2 candidate-stats checkpoint entry at line " +
+                                      String(line_number) + " in '" + input_path + "'.");
+        }
+        mergeStage2CandidateStats_(merged_candidate_stats[candidate_id], stats);
+      }
+    }
+
+    void writeStage2CheckpointGroupNullScores_(
+      const String& checkpoint_directory,
+      Size group_index,
+      const std::unordered_map<int, std::vector<double>>& null_scores_by_charge)
+    {
+      if (null_scores_by_charge.empty())
+      {
+        return;
+      }
+
+      const String output_path = stage2CheckpointGroupNullScoresPath_(checkpoint_directory, group_index);
+      std::ofstream output(output_path.c_str(), std::ios::trunc);
+      if (!output)
+      {
+        throw Exception::FileNotWritable(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION, output_path);
+      }
+
+      for (const auto& item : null_scores_by_charge)
+      {
+        for (const double null_score : item.second)
+        {
+          output << item.first << '\t'
+                 << std::setprecision(std::numeric_limits<double>::max_digits10)
+                 << null_score << '\n';
+        }
+      }
+    }
+
+    void loadStage2CheckpointGroupNullScores_(
+      const String& checkpoint_directory,
+      Size group_index,
+      std::unordered_map<int, std::vector<double>>& null_scores_by_charge)
+    {
+      const String input_path = stage2CheckpointGroupNullScoresPath_(checkpoint_directory, group_index);
+      if (!File::exists(input_path))
+      {
+        return;
+      }
+
+      std::ifstream input(input_path.c_str());
+      if (!input.good())
+      {
+        throw Exception::FileNotFound(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION, input_path);
+      }
+
+      int precursor_charge = 0;
+      double null_score = 0.0;
+      while (input >> precursor_charge >> null_score)
+      {
+        null_scores_by_charge[precursor_charge].push_back(null_score);
+      }
+    }
+
+    void writeStage2CheckpointGroupBestObservations_(
+      const String& checkpoint_directory,
+      Size group_index,
+      const std::unordered_map<Stage2CandidateRunKey, Stage2BestScoringObservation, Stage2CandidateRunKeyHash>& best_scoring_observations)
+    {
+      if (best_scoring_observations.empty())
+      {
+        return;
+      }
+
+      const String output_path = stage2CheckpointGroupBestObservationsPath_(checkpoint_directory, group_index);
+      std::ofstream output(output_path.c_str(), std::ios::trunc);
+      if (!output)
+      {
+        throw Exception::FileNotWritable(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION, output_path);
+      }
+
+      for (const auto& item : best_scoring_observations)
+      {
+        const auto& observation = item.second;
+        output << observation.candidate_id << '\t'
+               << observation.run_index << '\t'
+               << observation.precursor_charge << '\t'
+               << observation.rank << '\t'
+               << std::setprecision(std::numeric_limits<double>::max_digits10)
+               << observation.spectrum_score << '\n';
+      }
+    }
+
+    void loadStage2CheckpointGroupBestObservations_(
+      const String& checkpoint_directory,
+      Size group_index,
+      std::unordered_map<Stage2CandidateRunKey, Stage2BestScoringObservation, Stage2CandidateRunKeyHash>& best_scoring_observations)
+    {
+      const String input_path = stage2CheckpointGroupBestObservationsPath_(checkpoint_directory, group_index);
+      if (!File::exists(input_path))
+      {
+        return;
+      }
+
+      std::ifstream input(input_path.c_str());
+      if (!input.good())
+      {
+        throw Exception::FileNotFound(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION, input_path);
+      }
+
+      Stage2BestScoringObservation observation;
+      while (input >> observation.candidate_id
+                   >> observation.run_index
+                   >> observation.precursor_charge
+                   >> observation.rank
+                   >> observation.spectrum_score)
+      {
+        upsertStage2BestScoringObservation_(best_scoring_observations, observation);
+      }
+    }
+
+    void writeStage2CheckpointGroupExportObservations_(
+      const String& checkpoint_directory,
+      Size group_index,
+      const std::vector<Stage2LowerOrderObservation>& export_observations)
+    {
+      if (export_observations.empty())
+      {
+        return;
+      }
+
+      const String output_path = stage2CheckpointGroupExportObservationsPath_(checkpoint_directory, group_index);
+      std::ofstream output(output_path.c_str(), std::ios::trunc);
+      if (!output)
+      {
+        throw Exception::FileNotWritable(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION, output_path);
+      }
+
+      for (const auto& observation : export_observations)
+      {
+        output << observation.candidate_id << '\t'
+               << observation.run_index << '\t'
+               << observation.precursor_charge << '\t'
+               << observation.rank << '\t'
+               << observation.matched_ions << '\t'
+               << std::setprecision(std::numeric_limits<double>::max_digits10)
+               << observation.matched_intensity_fraction << '\t'
+               << observation.spectrum_score << '\t'
+               << std::quoted(observation.source_file) << '\t'
+               << std::quoted(observation.native_spectrum_id) << '\t'
+               << (observation.used_for_scoring ? 1 : 0) << '\t'
+               << (observation.used_for_null ? 1 : 0) << '\n';
+      }
+    }
+
+    void loadStage2CheckpointGroupExportObservations_(
+      const String& checkpoint_directory,
+      Size group_index,
+      std::vector<Stage2LowerOrderObservation>& export_observations)
+    {
+      const String input_path = stage2CheckpointGroupExportObservationsPath_(checkpoint_directory, group_index);
+      if (!File::exists(input_path))
+      {
+        return;
+      }
+
+      std::ifstream input(input_path.c_str());
+      if (!input.good())
+      {
+        throw Exception::FileNotFound(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION, input_path);
+      }
+
+      std::string line;
+      Size line_number = 0;
+      while (std::getline(input, line))
+      {
+        ++line_number;
+        if (line.empty())
+        {
+          continue;
+        }
+
+        Stage2LowerOrderObservation observation;
+        int used_for_scoring = 0;
+        int used_for_null = 0;
+        std::istringstream line_stream(line);
+        if (!(line_stream >> observation.candidate_id
+                          >> observation.run_index
+                          >> observation.precursor_charge
+                          >> observation.rank
+                          >> observation.matched_ions
+                          >> observation.matched_intensity_fraction
+                          >> observation.spectrum_score
+                          >> std::quoted(observation.source_file)
+                          >> std::quoted(observation.native_spectrum_id)
+                          >> used_for_scoring
+                          >> used_for_null))
+        {
+          throw Exception::ParseError(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION,
+                                      line.c_str(),
+                                      "Invalid Stage-2 export-observation checkpoint entry at line " +
+                                      String(line_number) + " in '" + input_path + "'.");
+        }
+        observation.used_for_scoring = used_for_scoring != 0;
+        observation.used_for_null = used_for_null != 0;
+        export_observations.push_back(std::move(observation));
+      }
+    }
   }
 
   FastaEvidenceFilter::FastaEvidenceFilter() :
@@ -1103,6 +1653,11 @@ namespace OpenMS
     defaults_.setValue("Stage2:precursor_batch_size", 100000,
                        "Maximum number of precursors materialized in one Stage-2 FragmentIndex build batch.");
     defaults_.setMinInt("Stage2:precursor_batch_size", 1);
+    defaults_.setValue("Stage2:checkpoint_directory", "",
+                       "Optional directory used to checkpoint completed Stage-2 scoring groups. If it already contains a compatible checkpoint, Stage 2 resumes from it.");
+    defaults_.setValue("Stage2:auto_checkpoint_min_precursors", 10000000,
+                       "Automatically enable Stage-2 checkpointing once at least this many Stage-1 survivors remain and no explicit Stage-2 checkpoint directory was configured.");
+    defaults_.setMinInt("Stage2:auto_checkpoint_min_precursors", 1);
     defaults_.setValue("Stage2:lower_order_min_rank", 5,
                        "Lowest spectrum-rank position contributing to the decoy-free lower-order null model.");
     defaults_.setMinInt("Stage2:lower_order_min_rank", 2);
@@ -1221,6 +1776,12 @@ namespace OpenMS
     stage2_strong_min_matched_ions_ = static_cast<Int>(param_.getValue("Stage2:strong_min_matched_ions"));
     stage2_strong_min_intensity_fraction_ = static_cast<double>(param_.getValue("Stage2:strong_min_intensity_fraction"));
     stage2_precursor_batch_size_ = static_cast<Size>(param_.getValue("Stage2:precursor_batch_size"));
+    stage2_checkpoint_directory_ = param_.getValue("Stage2:checkpoint_directory").toString();
+    if (!stage2_checkpoint_directory_.empty())
+    {
+      stage2_checkpoint_directory_ = File::absolutePath(stage2_checkpoint_directory_);
+    }
+    stage2_auto_checkpoint_min_precursors_ = static_cast<Size>(param_.getValue("Stage2:auto_checkpoint_min_precursors"));
     stage2_lower_order_min_rank_ = static_cast<Int>(param_.getValue("Stage2:lower_order_min_rank"));
     stage2_lower_order_max_rank_ = static_cast<Int>(param_.getValue("Stage2:lower_order_max_rank"));
     stage2_lower_order_scored_ranks_ = static_cast<Int>(param_.getValue("Stage2:lower_order_scored_ranks"));
@@ -1660,7 +2221,8 @@ namespace OpenMS
                                                                            const std::vector<PeptideEntry>& candidates,
                                                                            const ChromExtractParams& ms1_params,
                                                                            const ChromExtractParams& ms2_params,
-                                                                           int threads) const
+                                                                           int threads,
+                                                                           const String& checkpoint_directory) const
   {
     Stage2ScoreBundle bundle;
     if (candidates.empty())
@@ -1856,17 +2418,115 @@ namespace OpenMS
       return bundle;
     }
 
+    const auto computeGroupQueryUnits =
+      [](const Stage2JobGroup& group) -> SignedSize
+      {
+        SignedSize group_query_units = 0;
+        for (const auto& job : group.jobs)
+        {
+          group_query_units += job.total_query_units;
+        }
+        return group_query_units;
+      };
+
     const int thread_count = std::max(1, threads);
     const SignedSize total_progress = std::max<SignedSize>(1, total_query_units);
     const SignedSize progress_step = std::max<SignedSize>(1, total_progress / 100);
-    const Size per_thread_reserve = std::min<Size>(
+    const Size group_candidate_reserve = std::min<Size>(
       std::max<Size>(4096, candidates.size() / (static_cast<Size>(thread_count) * 16) + 1),
       static_cast<Size>(65536));
-    const Size per_thread_observation_reserve = std::min<Size>(
+    const Size group_observation_reserve = std::min<Size>(
       std::max<Size>(
         1024,
         ((total_spectra / static_cast<Size>(thread_count)) + 1) * lower_order_scored_ranks),
       static_cast<Size>(262144));
+
+    std::unordered_map<Size, Stage2CandidateStats> merged_candidate_stats;
+    merged_candidate_stats.reserve(std::min<Size>(
+      candidates.size(), std::max<Size>(4096, candidates.size() / 32 + 1)));
+    std::unordered_map<int, std::vector<double>> merged_lower_order_null_scores_by_charge;
+    std::unordered_map<Stage2CandidateRunKey, Stage2BestScoringObservation, Stage2CandidateRunKeyHash>
+      merged_best_scoring_observations;
+    std::vector<Stage2LowerOrderObservation> merged_export_observations;
+    std::vector<bool> completed_group_flags(job_groups.size(), false);
+    std::mutex merge_mutex;
+    Stage2CheckpointMeta checkpoint_meta;
+    checkpoint_meta.candidate_count = candidates.size();
+    checkpoint_meta.total_groups = job_groups.size();
+    checkpoint_meta.lower_order_null = use_lower_order_null;
+    checkpoint_meta.export_stage2_scores = export_stage2_scores_;
+
+    SignedSize resumed_progress = 0;
+    const String checkpoint_meta_path =
+      checkpoint_directory.empty() ? String() : stage2CheckpointMetaPath_(checkpoint_directory);
+    if (!checkpoint_directory.empty() && File::exists(checkpoint_meta_path))
+    {
+      checkpoint_meta = loadStage2CheckpointMeta_(checkpoint_directory);
+      if (checkpoint_meta.candidate_count != candidates.size())
+      {
+        throw Exception::IllegalArgument(
+          __FILE__, __LINE__, OPENMS_PRETTY_FUNCTION,
+          "Stage-2 checkpoint candidate count mismatch for '" + checkpoint_directory +
+          "'. Expected " + String(candidates.size()) + ", found " +
+          String(checkpoint_meta.candidate_count) + ".");
+      }
+      if (checkpoint_meta.total_groups != job_groups.size())
+      {
+        throw Exception::IllegalArgument(
+          __FILE__, __LINE__, OPENMS_PRETTY_FUNCTION,
+          "Stage-2 checkpoint group count mismatch for '" + checkpoint_directory +
+          "'. Expected " + String(job_groups.size()) + ", found " +
+          String(checkpoint_meta.total_groups) + ".");
+      }
+      if (checkpoint_meta.lower_order_null != use_lower_order_null)
+      {
+        throw Exception::IllegalArgument(
+          __FILE__, __LINE__, OPENMS_PRETTY_FUNCTION,
+          "Stage-2 checkpoint mode mismatch for '" + checkpoint_directory + "'.");
+      }
+      if (checkpoint_meta.export_stage2_scores != export_stage2_scores_)
+      {
+        throw Exception::IllegalArgument(
+          __FILE__, __LINE__, OPENMS_PRETTY_FUNCTION,
+          "Stage-2 checkpoint export setting mismatch for '" + checkpoint_directory + "'.");
+      }
+
+      for (const Size completed_group : checkpoint_meta.completed_groups)
+      {
+        if (completed_group >= job_groups.size())
+        {
+          throw Exception::IllegalArgument(
+            __FILE__, __LINE__, OPENMS_PRETTY_FUNCTION,
+            "Stage-2 checkpoint '" + checkpoint_directory +
+            "' references out-of-range completed group index " + String(completed_group) + ".");
+        }
+        completed_group_flags[completed_group] = true;
+        resumed_progress += computeGroupQueryUnits(job_groups[completed_group]);
+        loadStage2CheckpointGroupCandidateStats_(
+          checkpoint_directory, completed_group, merged_candidate_stats);
+        if (use_lower_order_null)
+        {
+          loadStage2CheckpointGroupNullScores_(
+            checkpoint_directory, completed_group, merged_lower_order_null_scores_by_charge);
+          if (export_stage2_scores_)
+          {
+            loadStage2CheckpointGroupExportObservations_(
+              checkpoint_directory, completed_group, merged_export_observations);
+          }
+          else
+          {
+            loadStage2CheckpointGroupBestObservations_(
+              checkpoint_directory, completed_group, merged_best_scoring_observations);
+          }
+        }
+      }
+
+      OPENMS_LOG_INFO << "Stage 2: resuming from checkpoint directory '"
+                      << checkpoint_directory << "' with "
+                      << checkpoint_meta.completed_groups.size() << "/"
+                      << job_groups.size() << " completed shared candidate groups."
+                      << std::endl;
+    }
 
     OPENMS_LOG_INFO << "Stage 2: scoring " << total_stage2_jobs << " SWATH maps across "
                     << total_spectra << " spectra, " << total_stage2_batches
@@ -1875,41 +2535,45 @@ namespace OpenMS
                     << " precursor-range queries with up to " << thread_count
                     << " threads." << std::endl;
     startProgress(0, total_progress, "Stage 2: scoring fragment-index candidates");
+    if (resumed_progress > 0)
+    {
+      setProgress(std::min(resumed_progress, total_progress));
+    }
 
-    std::atomic<SignedSize> processed_queries{0};
-    std::atomic<SignedSize> next_progress_update{progress_step};
+    const SignedSize initial_next_progress =
+      resumed_progress >= total_progress ?
+      total_progress + 1 :
+      std::min(
+        total_progress,
+        ((resumed_progress / progress_step) + 1) * progress_step);
+    std::atomic<SignedSize> processed_queries{resumed_progress};
+    std::atomic<SignedSize> next_progress_update{
+      resumed_progress >= total_progress ? total_progress + 1 : initial_next_progress};
     std::mutex progress_mutex;
-    std::vector<std::unordered_map<Size, Stage2CandidateStats>> local_candidate_stats(static_cast<Size>(thread_count));
-    std::vector<std::unordered_map<int, std::vector<double>>> local_lower_order_null_scores_by_charge(
-      static_cast<Size>(thread_count));
-    std::vector<std::vector<Stage2LowerOrderObservation>> local_lower_order_observations(
-      static_cast<Size>(thread_count));
-    for (auto& local_scores : local_candidate_stats)
-    {
-      local_scores.reserve(per_thread_reserve);
-    }
-    if (use_lower_order_null)
-    {
-      for (auto& observations : local_lower_order_observations)
-      {
-        observations.reserve(per_thread_observation_reserve);
-      }
-    }
 
 #ifdef _OPENMP
     #pragma omp parallel for schedule(dynamic, 1) num_threads(thread_count)
 #endif
     for (SignedSize group_index = 0; group_index < static_cast<SignedSize>(job_groups.size()); ++group_index)
     {
-#ifdef _OPENMP
-      const int thread_id = omp_get_thread_num();
-#else
-      const int thread_id = 0;
-#endif
-      auto& local_scores = local_candidate_stats[static_cast<Size>(thread_id)];
-      auto& local_null_scores_by_charge = local_lower_order_null_scores_by_charge[static_cast<Size>(thread_id)];
-      auto& local_observations = local_lower_order_observations[static_cast<Size>(thread_id)];
-      const auto& group = job_groups[static_cast<Size>(group_index)];
+      const Size group_slot = static_cast<Size>(group_index);
+      if (completed_group_flags[group_slot])
+      {
+        continue;
+      }
+
+      const auto& group = job_groups[group_slot];
+      std::unordered_map<Size, Stage2CandidateStats> group_candidate_stats;
+      group_candidate_stats.reserve(std::min(group_candidate_reserve, group.candidate_end - group.candidate_begin));
+      std::unordered_map<int, std::vector<double>> group_null_scores_by_charge;
+      std::unordered_map<Stage2CandidateRunKey, Stage2BestScoringObservation, Stage2CandidateRunKeyHash>
+        group_best_scoring_observations;
+      std::vector<Stage2LowerOrderObservation> group_export_observations;
+      if (use_lower_order_null && export_stage2_scores_)
+      {
+        group_export_observations.reserve(group_observation_reserve);
+      }
+
       std::vector<Stage2PreparedJob> prepared_jobs;
       prepared_jobs.reserve(group.jobs.size());
       for (const auto& job : group.jobs)
@@ -1918,7 +2582,7 @@ namespace OpenMS
         prepared_job.job = &job;
         if (export_stage2_scores_)
         {
-          prepared_job.run_streak_states.reserve(std::min(job.candidate_count, per_thread_reserve));
+          prepared_job.run_streak_states.reserve(std::min(job.candidate_count, group_candidate_reserve));
         }
         prepared_job.spectrum_contexts.resize(job.spectrum_count);
         for (Size spectrum_index = 0; spectrum_index < job.spectrum_count; ++spectrum_index)
@@ -2117,7 +2781,7 @@ namespace OpenMS
             {
               const Size candidate_id = scored_candidate.candidate_id;
               const auto& match = scored_candidate.match;
-              auto& stats = local_scores[candidate_id];
+              auto& stats = group_candidate_stats[candidate_id];
               stats.best_matched_ions = std::max(stats.best_matched_ions,
                                                  static_cast<Size>(match.num_matched_));
               ++stats.supporting_spectra;
@@ -2229,24 +2893,40 @@ namespace OpenMS
 
               if (used_for_null)
               {
-                local_null_scores_by_charge[candidate.precursor_charge].push_back(
+                group_null_scores_by_charge[candidate.precursor_charge].push_back(
                   scored_candidate.spectrum_score);
               }
-              if (used_for_scoring || (export_stage2_scores_ && used_for_null))
+              if (export_stage2_scores_)
               {
-                local_observations.push_back({
-                  scored_candidate.candidate_id,
-                  job.run_index,
-                  static_cast<std::uint16_t>(candidate.precursor_charge),
-                  rank,
-                  static_cast<Size>(scored_candidate.match.num_matched_),
-                  scored_candidate.matched_intensity_fraction,
-                  scored_candidate.spectrum_score,
-                  job.source_file,
-                  spectrum_context.native_spectrum_id,
-                  used_for_scoring,
-                  used_for_null
-                });
+                if (used_for_scoring || used_for_null)
+                {
+                  group_export_observations.push_back({
+                    scored_candidate.candidate_id,
+                    job.run_index,
+                    static_cast<std::uint16_t>(candidate.precursor_charge),
+                    rank,
+                    static_cast<Size>(scored_candidate.match.num_matched_),
+                    scored_candidate.matched_intensity_fraction,
+                    scored_candidate.spectrum_score,
+                    job.source_file,
+                    spectrum_context.native_spectrum_id,
+                    used_for_scoring,
+                    used_for_null
+                  });
+                }
+              }
+              else if (used_for_scoring)
+              {
+                upsertStage2BestScoringObservation_(
+                  group_best_scoring_observations,
+                  {
+                    scored_candidate.candidate_id,
+                    job.run_index,
+                    static_cast<std::uint16_t>(candidate.precursor_charge),
+                    rank,
+                    scored_candidate.spectrum_score,
+                    -1.0
+                  });
               }
             }
           }
@@ -2260,7 +2940,7 @@ namespace OpenMS
           const auto& job = *prepared_job.job;
           for (const auto& streak_item : prepared_job.run_streak_states)
           {
-            auto& stats = local_scores[streak_item.first];
+            auto& stats = group_candidate_stats[streak_item.first];
             if (streak_item.second.best_streak_score > stats.best_run_streak_score ||
                 (streak_item.second.best_streak_score == stats.best_run_streak_score &&
                  streak_item.second.best_streak_length > stats.best_run_streak_length))
@@ -2294,136 +2974,181 @@ namespace OpenMS
           }
         }
       }
+
+      if (!checkpoint_directory.empty())
+      {
+        ensureStage2CheckpointDirectory_(checkpoint_directory);
+        writeStage2CheckpointGroupCandidateStats_(
+          checkpoint_directory, group_slot, group_candidate_stats);
+        if (use_lower_order_null)
+        {
+          writeStage2CheckpointGroupNullScores_(
+            checkpoint_directory, group_slot, group_null_scores_by_charge);
+          if (export_stage2_scores_)
+          {
+            writeStage2CheckpointGroupExportObservations_(
+              checkpoint_directory, group_slot, group_export_observations);
+          }
+          else
+          {
+            writeStage2CheckpointGroupBestObservations_(
+              checkpoint_directory, group_slot, group_best_scoring_observations);
+          }
+        }
+      }
+
+      {
+        std::lock_guard<std::mutex> lock(merge_mutex);
+        for (const auto& item : group_candidate_stats)
+        {
+          mergeStage2CandidateStats_(merged_candidate_stats[item.first], item.second);
+        }
+        if (use_lower_order_null)
+        {
+          for (auto& item : group_null_scores_by_charge)
+          {
+            auto& destination = merged_lower_order_null_scores_by_charge[item.first];
+            destination.insert(destination.end(), item.second.begin(), item.second.end());
+          }
+          if (export_stage2_scores_)
+          {
+            merged_export_observations.insert(
+              merged_export_observations.end(),
+              group_export_observations.begin(),
+              group_export_observations.end());
+          }
+          else
+          {
+            for (const auto& item : group_best_scoring_observations)
+            {
+              upsertStage2BestScoringObservation_(
+                merged_best_scoring_observations, item.second);
+            }
+          }
+        }
+
+        if (!checkpoint_directory.empty())
+        {
+          checkpoint_meta.completed_groups.push_back(group_slot);
+          writeStage2CheckpointMeta_(checkpoint_directory, checkpoint_meta);
+        }
+      }
     }
 
     endProgress();
-
-    std::unordered_map<Size, Stage2CandidateStats> merged_candidate_stats;
-    merged_candidate_stats.reserve(candidates.size());
-    for (const auto& local_scores : local_candidate_stats)
-    {
-      for (const auto& item : local_scores)
-      {
-        mergeStage2CandidateStats_(merged_candidate_stats[item.first], item.second);
-      }
-    }
 
     std::unordered_map<Size, double> lower_order_combined_pvalues_by_candidate;
     std::unordered_map<Size, double> lower_order_best_local_pvalues_by_candidate;
     std::unordered_map<Size, Size> lower_order_best_local_ranks_by_candidate;
     if (use_lower_order_null)
     {
-      std::unordered_map<int, std::vector<double>> null_scores_by_charge;
       std::vector<double> pooled_null_scores;
-      std::vector<Stage2LowerOrderObservation> observations;
-
-      for (Size thread_slot = 0; thread_slot < static_cast<Size>(thread_count); ++thread_slot)
+      for (auto& item : merged_lower_order_null_scores_by_charge)
       {
-        for (auto& item : local_lower_order_null_scores_by_charge[thread_slot])
-        {
-          pooled_null_scores.insert(
-            pooled_null_scores.end(), item.second.begin(), item.second.end());
-          auto& destination = null_scores_by_charge[item.first];
-          destination.insert(destination.end(), item.second.begin(), item.second.end());
-        }
-        auto& thread_observations = local_lower_order_observations[thread_slot];
-        observations.insert(
-          observations.end(), thread_observations.begin(), thread_observations.end());
+        pooled_null_scores.insert(
+          pooled_null_scores.end(), item.second.begin(), item.second.end());
       }
 
       std::sort(pooled_null_scores.begin(), pooled_null_scores.end());
-      for (auto& item : null_scores_by_charge)
+      for (auto& item : merged_lower_order_null_scores_by_charge)
       {
         std::sort(item.second.begin(), item.second.end());
       }
 
-      for (auto& observation : observations)
-      {
-        const auto charge_null_it = null_scores_by_charge.find(static_cast<int>(observation.precursor_charge));
-        const std::vector<double>* active_null = &pooled_null_scores;
-        if (charge_null_it != null_scores_by_charge.end() &&
-            charge_null_it->second.size() >= lower_order_min_null_scores)
-        {
-          active_null = &charge_null_it->second;
-        }
-
-        observation.local_pvalue = empiricalStage2TailPValue_(*active_null, observation.spectrum_score);
-      }
-
-      std::vector<Size> scored_observation_indices;
-      scored_observation_indices.reserve(observations.size());
-      for (Size observation_idx = 0; observation_idx < observations.size(); ++observation_idx)
-      {
-        if (observations[observation_idx].used_for_scoring)
-        {
-          scored_observation_indices.push_back(observation_idx);
-        }
-      }
-
-      std::sort(scored_observation_indices.begin(), scored_observation_indices.end(),
-                [&observations](Size lhs_idx, Size rhs_idx)
-                {
-                  const auto& lhs = observations[lhs_idx];
-                  const auto& rhs = observations[rhs_idx];
-                  if (lhs.candidate_id != rhs.candidate_id) return lhs.candidate_id < rhs.candidate_id;
-                  if (lhs.run_index != rhs.run_index) return lhs.run_index < rhs.run_index;
-                  if (lhs.local_pvalue != rhs.local_pvalue) return lhs.local_pvalue < rhs.local_pvalue;
-                  return lhs.rank < rhs.rank;
-                });
-
-      for (Size scored_idx = 0; scored_idx < scored_observation_indices.size();)
-      {
-        const Size candidate_id = observations[scored_observation_indices[scored_idx]].candidate_id;
-        std::vector<double> run_pvalues;
-        double best_local_pvalue = 1.0;
-        Size best_local_rank = 0;
-
-        while (scored_idx < scored_observation_indices.size() &&
-               observations[scored_observation_indices[scored_idx]].candidate_id == candidate_id)
-        {
-          const auto& first_observation = observations[scored_observation_indices[scored_idx]];
-          const Size run_index = first_observation.run_index;
-          double min_run_pvalue = first_observation.local_pvalue;
-          Size min_run_rank = first_observation.rank;
-          ++scored_idx;
-          while (scored_idx < scored_observation_indices.size())
-          {
-            const auto& current_observation = observations[scored_observation_indices[scored_idx]];
-            if (current_observation.candidate_id != candidate_id ||
-                current_observation.run_index != run_index)
-            {
-              break;
-            }
-
-            if (current_observation.local_pvalue < min_run_pvalue ||
-                (current_observation.local_pvalue == min_run_pvalue &&
-                 current_observation.rank < min_run_rank))
-            {
-              min_run_pvalue = current_observation.local_pvalue;
-              min_run_rank = current_observation.rank;
-            }
-            ++scored_idx;
-          }
-
-          run_pvalues.push_back(min_run_pvalue);
-          if (min_run_pvalue < best_local_pvalue ||
-              (min_run_pvalue == best_local_pvalue &&
-               (best_local_rank == 0 || min_run_rank < best_local_rank)))
-          {
-            best_local_pvalue = min_run_pvalue;
-            best_local_rank = min_run_rank;
-          }
-        }
-
-        lower_order_combined_pvalues_by_candidate[candidate_id] = combineStage2RunPValues_(run_pvalues);
-        lower_order_best_local_pvalues_by_candidate[candidate_id] = best_local_pvalue;
-        lower_order_best_local_ranks_by_candidate[candidate_id] = best_local_rank;
-      }
-
       if (export_stage2_scores_)
       {
-        bundle.observation_scores.reserve(observations.size());
-        for (const auto& observation : observations)
+        for (auto& observation : merged_export_observations)
+        {
+          const auto charge_null_it = merged_lower_order_null_scores_by_charge.find(
+            static_cast<int>(observation.precursor_charge));
+          const std::vector<double>* active_null = &pooled_null_scores;
+          if (charge_null_it != merged_lower_order_null_scores_by_charge.end() &&
+              charge_null_it->second.size() >= lower_order_min_null_scores)
+          {
+            active_null = &charge_null_it->second;
+          }
+
+          observation.local_pvalue = empiricalStage2TailPValue_(
+            *active_null, observation.spectrum_score);
+        }
+
+        std::vector<Size> scored_observation_indices;
+        scored_observation_indices.reserve(merged_export_observations.size());
+        for (Size observation_idx = 0; observation_idx < merged_export_observations.size(); ++observation_idx)
+        {
+          if (merged_export_observations[observation_idx].used_for_scoring)
+          {
+            scored_observation_indices.push_back(observation_idx);
+          }
+        }
+
+        std::sort(scored_observation_indices.begin(), scored_observation_indices.end(),
+                  [&merged_export_observations](Size lhs_idx, Size rhs_idx)
+                  {
+                    const auto& lhs = merged_export_observations[lhs_idx];
+                    const auto& rhs = merged_export_observations[rhs_idx];
+                    if (lhs.candidate_id != rhs.candidate_id) return lhs.candidate_id < rhs.candidate_id;
+                    if (lhs.run_index != rhs.run_index) return lhs.run_index < rhs.run_index;
+                    if (lhs.local_pvalue != rhs.local_pvalue) return lhs.local_pvalue < rhs.local_pvalue;
+                    return lhs.rank < rhs.rank;
+                  });
+
+        for (Size scored_idx = 0; scored_idx < scored_observation_indices.size();)
+        {
+          const Size candidate_id =
+            merged_export_observations[scored_observation_indices[scored_idx]].candidate_id;
+          std::vector<double> run_pvalues;
+          double best_local_pvalue = 1.0;
+          Size best_local_rank = 0;
+
+          while (scored_idx < scored_observation_indices.size() &&
+                 merged_export_observations[scored_observation_indices[scored_idx]].candidate_id ==
+                   candidate_id)
+          {
+            const auto& first_observation =
+              merged_export_observations[scored_observation_indices[scored_idx]];
+            const Size run_index = first_observation.run_index;
+            double min_run_pvalue = first_observation.local_pvalue;
+            Size min_run_rank = first_observation.rank;
+            ++scored_idx;
+            while (scored_idx < scored_observation_indices.size())
+            {
+              const auto& current_observation =
+                merged_export_observations[scored_observation_indices[scored_idx]];
+              if (current_observation.candidate_id != candidate_id ||
+                  current_observation.run_index != run_index)
+              {
+                break;
+              }
+
+              if (current_observation.local_pvalue < min_run_pvalue ||
+                  (current_observation.local_pvalue == min_run_pvalue &&
+                   current_observation.rank < min_run_rank))
+              {
+                min_run_pvalue = current_observation.local_pvalue;
+                min_run_rank = current_observation.rank;
+              }
+              ++scored_idx;
+            }
+
+            run_pvalues.push_back(min_run_pvalue);
+            if (min_run_pvalue < best_local_pvalue ||
+                (min_run_pvalue == best_local_pvalue &&
+                 (best_local_rank == 0 || min_run_rank < best_local_rank)))
+            {
+              best_local_pvalue = min_run_pvalue;
+              best_local_rank = min_run_rank;
+            }
+          }
+
+          lower_order_combined_pvalues_by_candidate[candidate_id] =
+            combineStage2RunPValues_(run_pvalues);
+          lower_order_best_local_pvalues_by_candidate[candidate_id] = best_local_pvalue;
+          lower_order_best_local_ranks_by_candidate[candidate_id] = best_local_rank;
+        }
+
+        bundle.observation_scores.reserve(merged_export_observations.size());
+        for (const auto& observation : merged_export_observations)
         {
           bundle.observation_scores.push_back({
             candidates[observation.candidate_id].internal_key,
@@ -2438,6 +3163,47 @@ namespace OpenMS
             observation.spectrum_score,
             observation.local_pvalue
           });
+        }
+      }
+      else
+      {
+        std::unordered_map<Size, std::vector<double>> run_pvalues_by_candidate;
+        run_pvalues_by_candidate.reserve(merged_best_scoring_observations.size());
+        for (auto& item : merged_best_scoring_observations)
+        {
+          auto& observation = item.second;
+          const auto charge_null_it = merged_lower_order_null_scores_by_charge.find(
+            static_cast<int>(observation.precursor_charge));
+          const std::vector<double>* active_null = &pooled_null_scores;
+          if (charge_null_it != merged_lower_order_null_scores_by_charge.end() &&
+              charge_null_it->second.size() >= lower_order_min_null_scores)
+          {
+            active_null = &charge_null_it->second;
+          }
+
+          observation.local_pvalue = empiricalStage2TailPValue_(
+            *active_null, observation.spectrum_score);
+          run_pvalues_by_candidate[observation.candidate_id].push_back(
+            observation.local_pvalue);
+
+          auto best_local_it =
+            lower_order_best_local_pvalues_by_candidate.find(observation.candidate_id);
+          if (best_local_it == lower_order_best_local_pvalues_by_candidate.end() ||
+              observation.local_pvalue < best_local_it->second ||
+              (observation.local_pvalue == best_local_it->second &&
+               observation.rank < lower_order_best_local_ranks_by_candidate[observation.candidate_id]))
+          {
+            lower_order_best_local_pvalues_by_candidate[observation.candidate_id] =
+              observation.local_pvalue;
+            lower_order_best_local_ranks_by_candidate[observation.candidate_id] =
+              observation.rank;
+          }
+        }
+
+        for (const auto& item : run_pvalues_by_candidate)
+        {
+          lower_order_combined_pvalues_by_candidate[item.first] =
+            combineStage2RunPValues_(item.second);
         }
       }
     }
@@ -3031,7 +3797,28 @@ namespace OpenMS
     stage2_space_message << ".";
     OPENMS_LOG_INFO << stage2_space_message.str() << std::endl;
 
-    const Stage2ScoreBundle stage2_scores = scoreStage2_(runs, selected_target_peptides, ms1_params, ms2_params, threads);
+    String stage2_checkpoint_directory = stage2_checkpoint_directory_;
+    if (stage2_checkpoint_directory.empty() &&
+        selected_target_peptides.size() >= stage2_auto_checkpoint_min_precursors_)
+    {
+      stage2_checkpoint_directory = defaultStage2CheckpointDirectory_(
+        stage1_checkpoint_file_,
+        search_space_sharding_temp_directory_,
+        stage2_mode_,
+        selected_target_peptides.size(),
+        runs.size());
+      OPENMS_LOG_INFO << "Stage 2: auto-enabling checkpoint directory '"
+                      << stage2_checkpoint_directory
+                      << "' for large retained search spaces." << std::endl;
+    }
+    else if (!stage2_checkpoint_directory.empty())
+    {
+      OPENMS_LOG_INFO << "Stage 2: using checkpoint directory '"
+                      << stage2_checkpoint_directory << "'." << std::endl;
+    }
+
+    const Stage2ScoreBundle stage2_scores = scoreStage2_(
+      runs, selected_target_peptides, ms1_params, ms2_params, threads, stage2_checkpoint_directory);
     std::unordered_map<std::string, double> stage2_qvalues;
     if (stage2_mode_ == "lower_order_null")
     {
