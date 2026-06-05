@@ -10,8 +10,10 @@ set(sources_list
   DIAHelper.cpp
   DIAPrescoring.cpp
   DIAScoring.cpp
+  OpenSwathGeneInference.cpp
   FastaEvidenceFilter.cpp
   IonMobilityScoring.cpp
+  LevelContextInference.cpp
   MasstraceCorrelator.cpp
   MRMAssay.cpp
   MRMDecoy.cpp
@@ -26,17 +28,23 @@ set(sources_list
   MRMScoring.cpp
   MRMTransitionGroupPicker.cpp
   OpenSwathHelper.cpp
+  OpenSwathMatrixExporter.cpp
+  OpenSwathParquetExporter.cpp
   OpenSwathScores.cpp
   OpenSwathScoring.cpp
   OpenSwathOSWParquetReader.cpp
   OpenSwathOSWParquetWriter.cpp
   OpenSwathOSWWriter.cpp
+  OpenSwathResultsExporter.cpp
   TransitionListEvidenceFilter.cpp
   OpenSwathWorkflow.cpp
   OpenSwathWorkflowScheduler.cpp
   PeakIntegrator.cpp
   PeakPickerChromatogram.cpp
   PeakPickerMobilogram.cpp
+  OpenSwathPeptideInference.cpp
+  OpenSwathPeptidoformInference.cpp
+  OpenSwathProteinInference.cpp
   SwathMapMassCorrection.cpp
   SwathWindowLoader.cpp
   SwathQC.cpp
