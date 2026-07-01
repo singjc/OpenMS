@@ -283,6 +283,7 @@ private:
     std::string stage1_checkpoint_file_;
     std::string stage2_checkpoint_directory_;
     std::string stage2_mode_{"lower_order_null"};
+    std::string stage2_spectrum_score_type_{"legacy"};
     double stage2_max_qvalue_{0.01};
     Int stage2_min_matched_ions_{5};
     Int stage2_strong_min_matched_ions_{6};

@@ -9,6 +9,7 @@
 #include <OpenMS/ANALYSIS/OPENSWATH/FastaEvidenceFilter.h>
 
 #include <OpenMS/ANALYSIS/ID/FragmentIndex.h>
+#include <OpenMS/ANALYSIS/ID/TagLikeFragmentPatternScorer.h>
 #include <OpenMS/ANALYSIS/OPENSWATH/DATAACCESS/DataAccessHelper.h>
 #include <OpenMS/ANALYSIS/OPENSWATH/TransitionListEvidenceFilter.h>
 #include <OpenMS/CHEMISTRY/AASequence.h>
@@ -1637,6 +1638,9 @@ namespace OpenMS
     defaults_.setValue("Stage2:mode", "lower_order_null",
                        "How to accept stage-2 confirmed peptides.");
     defaults_.setValidStrings("Stage2:mode", {"raw_score", "lower_order_null"});
+    defaults_.setValue("Stage2:spectrum_score_type", "legacy",
+                       "How to score Stage-2 spectrum matches before run-level aggregation and optional lower-order null modeling.");
+    defaults_.setValidStrings("Stage2:spectrum_score_type", {"legacy", "tag_like"});
     defaults_.setValue("Stage2:max_qvalue", 0.01,
                        "Maximum peptide-level q-value in Stage2:mode=lower_order_null.");
     defaults_.setMinFloat("Stage2:max_qvalue", 0.0);
@@ -1674,6 +1678,7 @@ namespace OpenMS
     defaults_.setValue("Stage2:lower_order_min_null_scores", 256,
                        "Minimum number of lower-order null scores needed before a charge-specific null model is used.");
     defaults_.setMinInt("Stage2:lower_order_min_null_scores", 1);
+    defaults_.insert("Stage2:tag_like:", TagLikeFragmentPatternScorer().getParameters());
     defaults_.setValue("Protein:min_confirmed_peptides", 1,
                        "Minimum number of confirmed peptides needed to keep a protein.");
     defaults_.setMinInt("Protein:min_confirmed_peptides", 1);
@@ -1775,6 +1780,7 @@ namespace OpenMS
     }
 
     stage2_mode_ = param_.getValue("Stage2:mode").toString();
+    stage2_spectrum_score_type_ = param_.getValue("Stage2:spectrum_score_type").toString();
     stage2_max_qvalue_ = static_cast<double>(param_.getValue("Stage2:max_qvalue"));
     stage2_min_matched_ions_ = static_cast<Int>(param_.getValue("Stage2:min_matched_ions"));
     stage2_strong_min_matched_ions_ = static_cast<Int>(param_.getValue("Stage2:strong_min_matched_ions"));
@@ -2312,6 +2318,12 @@ namespace OpenMS
     const Size lower_order_min_null_scores = static_cast<Size>(std::max<Int>(1, stage2_lower_order_min_null_scores_));
     const Size lower_order_keep_ranks =
       use_lower_order_null ? std::max(lower_order_max_rank, lower_order_scored_ranks) : 0;
+    const bool use_tag_like_scoring = stage2_spectrum_score_type_ == "tag_like";
+    TagLikeFragmentPatternScorer tag_like_scorer;
+    if (use_tag_like_scoring)
+    {
+      tag_like_scorer.setParameters(param_.copy("Stage2:tag_like:", true));
+    }
     const auto count_charge_queries_for_slice =
       [&](Size candidate_begin, Size candidate_end) -> Size
       {
@@ -2762,16 +2774,35 @@ namespace OpenMS
             for (const auto& spectrum_match_item : spectrum_best_matches)
             {
               const auto& match = spectrum_match_item.second;
-              const double matched_intensity_fraction =
-                spectrum_context.total_spectrum_intensity > 0.0 ?
-                static_cast<double>(match.matched_intensity_sum_) /
-                  spectrum_context.total_spectrum_intensity :
-                0.0;
+              double matched_intensity_fraction = 0.0;
+              double spectrum_score = 0.0;
+              if (use_tag_like_scoring)
+              {
+                const auto score = tag_like_scorer.score(
+                  match,
+                  {spectrum_context.spectrum.size(),
+                   spectrum_context.total_spectrum_intensity,
+                   spectrum_context.spectrum_mz_span,
+                   spectrum_context.fragment_tolerance_da},
+                  {theoretical_b_ions_by_candidate[spectrum_match_item.first],
+                   theoretical_y_ions_by_candidate[spectrum_match_item.first]});
+                matched_intensity_fraction = score.matched_intensity_fraction;
+                spectrum_score = score.total_score;
+              }
+              else
+              {
+                matched_intensity_fraction =
+                  spectrum_context.total_spectrum_intensity > 0.0 ?
+                  static_cast<double>(match.matched_intensity_sum_) /
+                    spectrum_context.total_spectrum_intensity :
+                  0.0;
+                spectrum_score = computeStage2SpectrumScore_(match, matched_intensity_fraction);
+              }
               ranked_candidates.push_back({
                 spectrum_match_item.first,
                 match,
                 matched_intensity_fraction,
-                computeStage2SpectrumScore_(match, matched_intensity_fraction)
+                spectrum_score
               });
             }
 
@@ -2819,31 +2850,51 @@ namespace OpenMS
                 stats.best_spectrum_matched_intensity_fraction = matched_intensity_fraction;
                 if (export_stage2_scores_)
                 {
-                  double poisson_proxy = 0.0;
-                  double longest_y_pct = 0.0;
-                  Size matched_b_ions = 0;
-                  Size matched_y_ions = 0;
-                  Size longest_b_run = 0;
-                  Size longest_y_run = 0;
-                  computeStage2SpectrumDiagnostics_(
-                    match,
-                    theoretical_b_ions_by_candidate[candidate_id],
-                    theoretical_y_ions_by_candidate[candidate_id],
-                    spectrum_context.spectrum.size(),
-                    spectrum_context.spectrum_mz_span,
-                    spectrum_context.fragment_tolerance_da,
-                    poisson_proxy,
-                    longest_y_pct,
-                    matched_b_ions,
-                    matched_y_ions,
-                    longest_b_run,
-                    longest_y_run);
-                  stats.best_spectrum_matched_b_ions = matched_b_ions;
-                  stats.best_spectrum_matched_y_ions = matched_y_ions;
-                  stats.best_spectrum_longest_b_run = longest_b_run;
-                  stats.best_spectrum_longest_y_run = longest_y_run;
-                  stats.best_spectrum_longest_y_pct = longest_y_pct;
-                  stats.best_spectrum_poisson_proxy = poisson_proxy;
+                  if (use_tag_like_scoring)
+                  {
+                    const auto score = tag_like_scorer.score(
+                      match,
+                      {spectrum_context.spectrum.size(),
+                       spectrum_context.total_spectrum_intensity,
+                       spectrum_context.spectrum_mz_span,
+                       spectrum_context.fragment_tolerance_da},
+                      {theoretical_b_ions_by_candidate[candidate_id],
+                       theoretical_y_ions_by_candidate[candidate_id]});
+                    stats.best_spectrum_matched_b_ions = score.matched_b_ions;
+                    stats.best_spectrum_matched_y_ions = score.matched_y_ions;
+                    stats.best_spectrum_longest_b_run = score.longest_b_run;
+                    stats.best_spectrum_longest_y_run = score.longest_y_run;
+                    stats.best_spectrum_longest_y_pct = score.longest_y_pct;
+                    stats.best_spectrum_poisson_proxy = score.poisson_proxy;
+                  }
+                  else
+                  {
+                    double poisson_proxy = 0.0;
+                    double longest_y_pct = 0.0;
+                    Size matched_b_ions = 0;
+                    Size matched_y_ions = 0;
+                    Size longest_b_run = 0;
+                    Size longest_y_run = 0;
+                    computeStage2SpectrumDiagnostics_(
+                      match,
+                      theoretical_b_ions_by_candidate[candidate_id],
+                      theoretical_y_ions_by_candidate[candidate_id],
+                      spectrum_context.spectrum.size(),
+                      spectrum_context.spectrum_mz_span,
+                      spectrum_context.fragment_tolerance_da,
+                      poisson_proxy,
+                      longest_y_pct,
+                      matched_b_ions,
+                      matched_y_ions,
+                      longest_b_run,
+                      longest_y_run);
+                    stats.best_spectrum_matched_b_ions = matched_b_ions;
+                    stats.best_spectrum_matched_y_ions = matched_y_ions;
+                    stats.best_spectrum_longest_b_run = longest_b_run;
+                    stats.best_spectrum_longest_y_run = longest_y_run;
+                    stats.best_spectrum_longest_y_pct = longest_y_pct;
+                    stats.best_spectrum_poisson_proxy = poisson_proxy;
+                  }
                   stats.best_source_file = job.source_file;
                   stats.best_native_spectrum_id = spectrum_context.native_spectrum_id;
                 }
@@ -3826,6 +3877,7 @@ namespace OpenMS
                            << " with top " << stage2_lower_order_scored_ranks_
                            << " scored ranks per spectrum";
     }
+    stage2_space_message << "; spectrum scoring model " << stage2_spectrum_score_type_;
     stage2_space_message << "; precursor batch size " << stage2_precursor_batch_size_;
     stage2_space_message << ".";
     OPENMS_LOG_INFO << stage2_space_message.str() << std::endl;
