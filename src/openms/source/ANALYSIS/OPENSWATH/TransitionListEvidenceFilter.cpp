@@ -1054,7 +1054,7 @@ namespace OpenMS
     DefaultParamHandler("TransitionListEvidenceFilter"),
     ProgressLogger()
   {
-    defaults_.setValue("enabled", "true", "Enable raw-data evidence prefiltering.");
+    defaults_.setValue("enabled", "false", "Enable raw-data evidence prefiltering.");
     defaults_.setValidStrings("enabled", {"true", "false"});
 
     defaults_.setValue("evidence_sources", "hybrid", "Evidence source used to keep precursor candidates: 'ms1', 'ms2', or 'hybrid' (MS1 OR MS2).");
@@ -1272,8 +1272,8 @@ namespace OpenMS
       if (enabled_ && result.supported_precursors < min_supported_precursors_)
       {
         throw Exception::IllegalArgument(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION,
-                                         "TransitionListEvidenceFilter retained only " + String(result.supported_precursors) +
-                                         " supported target precursors, fewer than min_supported_precursors=" + String(min_supported_precursors_) +
+                                         "TransitionListEvidenceFilter retained only " + std::to_string(result.supported_precursors) +
+                                         " supported target precursors, fewer than min_supported_precursors=" + std::to_string(min_supported_precursors_) +
                                          ". Disable Calibration:auto_irt:prefilter or loosen its parameters.");
       }
 

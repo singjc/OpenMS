@@ -155,7 +155,7 @@ namespace
     return exp;
   }
 
-  TransitionListEvidenceFilter makeFilter(const String& evidence_sources, Size min_supported = 1)
+  TransitionListEvidenceFilter makeFilter(const std::string& evidence_sources, Size min_supported = 1)
   {
     TransitionListEvidenceFilter filter;
     Param params = filter.getParameters();
@@ -263,6 +263,7 @@ START_SECTION((filter() - peak picking path))
   Param params = filter.getParameters();
   params.setValue("enabled", "false");
   params.setValue("peak_picking:enabled", "true");
+  params.setValue("peak_picking:use_gauss", "false");
   params.setValue("peak_picking:PeakPickerHiRes:signal_to_noise", 0.0);
   filter.setParameters(params);
 
