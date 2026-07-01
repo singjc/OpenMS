@@ -122,7 +122,7 @@ public:
     struct RunData
     {
       std::vector<OpenSwath::SwathMap> swath_maps;
-      std::vector<String> swath_map_sources;
+      std::vector<std::string> swath_map_sources;
       bool pasef{false};
       /// Keeps per-run cached mzML temp files alive for lightClone()-based readers.
       std::shared_ptr<File::TempDir> cache_dir_guard;
@@ -137,7 +137,7 @@ public:
       Size stage1_supported_precursors{0};
       Size stage2_confirmed_precursors{0};
       Size retained_proteins{0};
-      String summary;
+      std::string summary;
     };
 
     /** @name Constructors and Destructors
@@ -267,7 +267,7 @@ private:
                                    const ChromExtractParams& ms1_params,
                                    const ChromExtractParams& ms2_params,
                                    int threads,
-                                   const String& checkpoint_directory) const;
+                                   const std::string& checkpoint_directory) const;
 
     Param buildFragmentIndexParams_(const ChromExtractParams& ms1_params,
                                     const ChromExtractParams& ms2_params) const;
@@ -278,28 +278,29 @@ private:
 
     static bool hasDecoyPrefix_(const std::string& value, const std::string& decoy_prefix);
 
-    String aggregation_method_{"any"};
+    std::string aggregation_method_{"any"};
     Size stage1_min_supported_precursors_{1};
-    String stage1_checkpoint_file_;
-    String stage2_checkpoint_directory_;
-    String stage2_mode_{"lower_order_null"};
+    std::string stage1_checkpoint_file_;
+    std::string stage2_checkpoint_directory_;
+    std::string stage2_mode_{"lower_order_null"};
     double stage2_max_qvalue_{0.01};
     Int stage2_min_matched_ions_{5};
     Int stage2_strong_min_matched_ions_{6};
     double stage2_strong_min_intensity_fraction_{0.05};
     Size stage2_precursor_batch_size_{100000};
     Size stage2_auto_checkpoint_min_precursors_{10000000};
+    bool stage2_decoys_{false};
     Int stage2_lower_order_min_rank_{5};
     Int stage2_lower_order_max_rank_{10};
     Int stage2_lower_order_scored_ranks_{3};
     Int stage2_lower_order_min_null_scores_{256};
-    String stage2_decoy_prefix_{"DECOY_"};
+    std::string stage2_decoy_prefix_{"DECOY_"};
     Size protein_min_confirmed_peptides_{1};
     bool protein_unique_peptides_only_{false};
     bool export_fragments_{false};
     bool export_stage2_scores_{false};
-    String enzyme_{"Trypsin"};
-    String enzyme_specificity_{"full"};
+    std::string enzyme_{"Trypsin"};
+    std::string enzyme_specificity_{"full"};
     Int peptide_missed_cleavages_{1};
     Int peptide_min_size_{7};
     Int peptide_max_size_{40};
@@ -316,7 +317,7 @@ private:
     Int fragment_min_ion_index_{2};
     Size search_space_max_proteins_per_chunk_{1000};
     Size search_space_num_shards_{128};
-    String search_space_sharding_temp_directory_{File::getTempDirectory()};
+    std::string search_space_sharding_temp_directory_{File::getTempDirectory()};
     bool search_space_sharding_keep_temporary_files_{false};
     Size stage1_precursor_batch_size_{50000};
     Size stage1_max_concurrent_runs_{0};

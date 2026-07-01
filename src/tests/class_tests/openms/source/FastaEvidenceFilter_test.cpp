@@ -73,7 +73,7 @@ namespace
     return map;
   }
 
-  FASTAFile::FASTAEntry makeFastaEntry(const String& identifier, const String& sequence, const String& description = "")
+  FASTAFile::FASTAEntry makeFastaEntry(const std::string& identifier, const std::string& sequence, const std::string& description = "")
   {
     FASTAFile::FASTAEntry entry;
     entry.identifier = identifier;
@@ -285,7 +285,7 @@ START_SECTION((filter() - stage1 support can be removed by stage2))
   TEST_EQUAL(result.retained_proteins, 0)
   TEST_EQUAL(result.confirmed_peptides.size(), 0)
   TEST_EQUAL(result.filtered_fasta.size(), 0)
-  TEST_EQUAL(result.summary.hasSubstring("0 of 1"), true)
+  TEST_EQUAL(result.summary.find("0 of 1") != std::string::npos, true)
 }
 END_SECTION
 
@@ -329,7 +329,40 @@ START_SECTION((filter() - stage2 can confirm a supported precursor))
   TEST_EQUAL(result.confirmed_peptides.size(), 1)
   TEST_EQUAL(result.filtered_fasta.size(), 1)
   TEST_EQUAL(result.filtered_fasta[0].identifier, "protA")
-  TEST_EQUAL(result.summary.hasSubstring("1 of 1"), true)
+  TEST_EQUAL(result.summary.find("1 of 1") != std::string::npos, true)
+}
+END_SECTION
+
+START_SECTION((filter() - empty theoretical search space returns an empty result))
+{
+  FastaEvidenceFilter filter = makeFilterForSingleChargePeptides();
+  Param params = filter.getParameters();
+  params.setValue("SearchSpace:missed_cleavages", 0);
+  params.setValue("SearchSpace:min_size", 7);
+  params.setValue("SearchSpace:max_size", 7);
+  params.setValue("Stage1:evidence_sources", "hybrid");
+  params.setValue("Stage1:min_supported_precursors", 1);
+  params.setValue("Stage2:mode", "raw_score");
+  params.setValue("Stage2:min_matched_ions", 100);
+  filter.setParameters(params);
+
+  const vector<FASTAFile::FASTAEntry> fasta_entries{makeFastaEntry("protA", "AAAAAAAAAAK")};
+  TEST_EQUAL(filter.generatePeptideEntries(fasta_entries).size(), 0)
+
+  vector<OpenSwath::SwathMap> swath_maps;
+  swath_maps.push_back(makeSwathMap(true, 0.0, 0.0, {makeSpectrum(10.0, {{500.0, 1000.0}})}));
+
+  FastaEvidenceFilter::RunData run;
+  run.swath_maps = std::move(swath_maps);
+  run.pasef = false;
+
+  const auto result = filter.filter({run}, fasta_entries, makeExtractParams(0.01), makeExtractParams(0.01), 1);
+  TEST_EQUAL(result.stage1_supported_precursors, 0)
+  TEST_EQUAL(result.stage2_confirmed_precursors, 0)
+  TEST_EQUAL(result.retained_proteins, 0)
+  TEST_EQUAL(result.confirmed_peptides.size(), 0)
+  TEST_EQUAL(result.filtered_fasta.size(), 0)
+  TEST_EQUAL(result.summary.find("0 of 0") != std::string::npos, true)
 }
 END_SECTION
 
@@ -374,7 +407,7 @@ START_SECTION((filter() - lower_order_null stage2 score export captures observat
 
   FastaEvidenceFilter::RunData run;
   run.swath_maps = std::move(swath_maps);
-  run.swath_map_sources = {String("run.mzML"), String("run.mzML")};
+  run.swath_map_sources = {"run.mzML", "run.mzML"};
   run.pasef = false;
 
   const auto result = filter.filter({run}, fasta_entries, makeExtractParams(0.01), makeExtractParams(0.01), 1);
@@ -451,7 +484,7 @@ START_SECTION((filter() - stage2 score export captures chromatographic streak su
 
   FastaEvidenceFilter::RunData run;
   run.swath_maps = std::move(swath_maps);
-  run.swath_map_sources = {String("run.mzML"), String("run.mzML")};
+  run.swath_map_sources = {"run.mzML", "run.mzML"};
   run.pasef = false;
 
   const auto result = filter.filter({run}, fasta_entries, makeExtractParams(0.01), makeExtractParams(0.01), 1);
@@ -734,7 +767,7 @@ START_SECTION((filter() - stage1 checkpoint resumes retained precursors after a 
   params.setValue("SearchSpace:min_size", 7);
   params.setValue("SearchSpace:max_size", 7);
   File::TempDir checkpoint_dir;
-  const String checkpoint_file = checkpoint_dir.getPath() + "/stage1_checkpoint.tsv";
+  const std::string checkpoint_file = checkpoint_dir.getPath() + "/stage1_checkpoint.tsv";
   params.setValue("Stage1:checkpoint_file", checkpoint_file);
   params.setValue("Stage1:evidence_sources", "ms1");
   params.setValue("Stage1:min_supported_precursors", 1);
@@ -809,7 +842,7 @@ START_SECTION((filter() - stage2 checkpoint resumes lower_order_null scoring wit
   };
 
   File::TempDir checkpoint_dir;
-  const String stage2_checkpoint_directory = checkpoint_dir.getPath() + "/stage2_checkpoint";
+  const std::string stage2_checkpoint_directory = checkpoint_dir.getPath() + "/stage2_checkpoint";
 
   FastaEvidenceFilter initial_filter = make_filter();
   Param initial_params = initial_filter.getParameters();
@@ -889,7 +922,7 @@ START_SECTION((filter() - stage2 auto checkpointing uses the stage1 checkpoint p
   params.setValue("Stage2:min_matched_ions", 1);
   params.setValue("Stage2:auto_checkpoint_min_precursors", 1);
   File::TempDir checkpoint_dir;
-  const String checkpoint_file = checkpoint_dir.getPath() + "/stage1_checkpoint.tsv";
+  const std::string checkpoint_file = checkpoint_dir.getPath() + "/stage1_checkpoint.tsv";
   params.setValue("Stage1:checkpoint_file", checkpoint_file);
   filter.setParameters(params);
 

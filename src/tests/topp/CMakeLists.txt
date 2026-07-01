@@ -1708,7 +1708,6 @@ ${TOPP_BIN_PATH}/OpenSwathDecoyGenerator -test -in ${DATA_DIR_TOPP}/OpenSwathDec
     -Stage1:ms2_min_fragment_hits 1
     -Stage1:min_supported_precursors 1
     -Stage2:mode raw_score
-    -Stage2:decoys false
     -Stage2:min_matched_ions 100
     -SearchSpace:missed_cleavages 0
     -SearchSpace:min_size 7
@@ -1727,7 +1726,7 @@ ${TOPP_BIN_PATH}/OpenSwathDecoyGenerator -test -in ${DATA_DIR_TOPP}/OpenSwathDec
     ${FASTA_EVIDENCE_FILTER_COMMON})
   add_test("TOPP_FastaEvidenceFilter_test_1_out1" ${DIFF}
     -in1 ${TESTS_TEMP_DIR}/FastaEvidenceFilter_test_1.tmp.fasta
-    -in2 ${DATA_DIR_TOPP}/degenerate_cases/empty.fasta)
+    -in2 ${DATA_DIR_TOPP}/FastaEvidenceFilter_empty.fasta)
   add_test("TOPP_FastaEvidenceFilter_test_1_out2" ${DIFF}
     -in1 ${TESTS_TEMP_DIR}/FastaEvidenceFilter_test_1.tmp.tsv
     -in2 ${DATA_DIR_TOPP}/FastaEvidenceFilter_empty.tsv)
@@ -1742,7 +1741,7 @@ ${TOPP_BIN_PATH}/OpenSwathDecoyGenerator -test -in ${DATA_DIR_TOPP}/OpenSwathDec
     ${FASTA_EVIDENCE_FILTER_COMMON})
   add_test("TOPP_FastaEvidenceFilter_test_2_out1" ${DIFF}
     -in1 ${TESTS_TEMP_DIR}/FastaEvidenceFilter_test_2.tmp.fasta
-    -in2 ${DATA_DIR_TOPP}/degenerate_cases/empty.fasta)
+    -in2 ${DATA_DIR_TOPP}/FastaEvidenceFilter_empty.fasta)
   add_test("TOPP_FastaEvidenceFilter_test_2_out2" ${DIFF}
     -in1 ${TESTS_TEMP_DIR}/FastaEvidenceFilter_test_2.tmp.tsv
     -in2 ${DATA_DIR_TOPP}/FastaEvidenceFilter_empty.tsv)
@@ -1757,7 +1756,7 @@ ${TOPP_BIN_PATH}/OpenSwathDecoyGenerator -test -in ${DATA_DIR_TOPP}/OpenSwathDec
     ${FASTA_EVIDENCE_FILTER_COMMON})
   add_test("TOPP_FastaEvidenceFilter_test_3_out1" ${DIFF}
     -in1 ${TESTS_TEMP_DIR}/FastaEvidenceFilter_test_3.tmp.fasta
-    -in2 ${DATA_DIR_TOPP}/degenerate_cases/empty.fasta)
+    -in2 ${DATA_DIR_TOPP}/FastaEvidenceFilter_empty.fasta)
   add_test("TOPP_FastaEvidenceFilter_test_3_out2" ${DIFF}
     -in1 ${TESTS_TEMP_DIR}/FastaEvidenceFilter_test_3.tmp.tsv
     -in2 ${DATA_DIR_TOPP}/FastaEvidenceFilter_empty.tsv)
@@ -1772,7 +1771,7 @@ ${TOPP_BIN_PATH}/OpenSwathDecoyGenerator -test -in ${DATA_DIR_TOPP}/OpenSwathDec
     ${FASTA_EVIDENCE_FILTER_COMMON})
   add_test("TOPP_FastaEvidenceFilter_test_4_out1" ${DIFF}
     -in1 ${TESTS_TEMP_DIR}/FastaEvidenceFilter_test_4.tmp.fasta
-    -in2 ${DATA_DIR_TOPP}/degenerate_cases/empty.fasta)
+    -in2 ${DATA_DIR_TOPP}/FastaEvidenceFilter_empty.fasta)
   add_test("TOPP_FastaEvidenceFilter_test_4_out2" ${DIFF}
     -in1 ${TESTS_TEMP_DIR}/FastaEvidenceFilter_test_4.tmp.tsv
     -in2 ${DATA_DIR_TOPP}/FastaEvidenceFilter_empty.tsv)
@@ -1788,7 +1787,7 @@ ${TOPP_BIN_PATH}/OpenSwathDecoyGenerator -test -in ${DATA_DIR_TOPP}/OpenSwathDec
     ${FASTA_EVIDENCE_FILTER_COMMON})
   add_test("TOPP_FastaEvidenceFilter_test_5_out1" ${DIFF}
     -in1 ${TESTS_TEMP_DIR}/FastaEvidenceFilter_test_5.tmp.fasta
-    -in2 ${DATA_DIR_TOPP}/degenerate_cases/empty.fasta)
+    -in2 ${DATA_DIR_TOPP}/FastaEvidenceFilter_empty.fasta)
   add_test("TOPP_FastaEvidenceFilter_test_5_out2" ${DIFF}
     -in1 ${TESTS_TEMP_DIR}/FastaEvidenceFilter_test_5.tmp.tsv
     -in2 ${DATA_DIR_TOPP}/FastaEvidenceFilter_empty.tsv)
@@ -1797,13 +1796,13 @@ ${TOPP_BIN_PATH}/OpenSwathDecoyGenerator -test -in ${DATA_DIR_TOPP}/OpenSwathDec
 
   add_test("TOPP_FastaEvidenceFilter_test_6_export_fragments" ${TOPP_BIN_PATH}/FastaEvidenceFilter
     -in ${DATA_DIR_TOPP}/OpenSwathWorkflow_1_input.mzML
-    -Export:export_fragments true
+    -Export:export_fragments
     -out_fasta ${TESTS_TEMP_DIR}/FastaEvidenceFilter_test_6.tmp.fasta
     -out_peptides ${TESTS_TEMP_DIR}/FastaEvidenceFilter_test_6.tmp.tsv
     ${FASTA_EVIDENCE_FILTER_COMMON})
   add_test("TOPP_FastaEvidenceFilter_test_6_out1" ${DIFF}
     -in1 ${TESTS_TEMP_DIR}/FastaEvidenceFilter_test_6.tmp.fasta
-    -in2 ${DATA_DIR_TOPP}/degenerate_cases/empty.fasta)
+    -in2 ${DATA_DIR_TOPP}/FastaEvidenceFilter_empty.fasta)
   add_test("TOPP_FastaEvidenceFilter_test_6_out2" ${DIFF}
     -in1 ${TESTS_TEMP_DIR}/FastaEvidenceFilter_test_6.tmp.tsv
     -in2 ${DATA_DIR_TOPP}/FastaEvidenceFilter_empty.tsv)
@@ -1819,7 +1818,7 @@ ${TOPP_BIN_PATH}/OpenSwathDecoyGenerator -test -in ${DATA_DIR_TOPP}/OpenSwathDec
     ${FASTA_EVIDENCE_FILTER_COMMON})
   add_test("TOPP_FastaEvidenceFilter_test_7_out1" ${DIFF}
     -in1 ${TESTS_TEMP_DIR}/FastaEvidenceFilter_test_7.tmp.fasta
-    -in2 ${DATA_DIR_TOPP}/degenerate_cases/empty.fasta)
+    -in2 ${DATA_DIR_TOPP}/FastaEvidenceFilter_empty.fasta)
   add_test("TOPP_FastaEvidenceFilter_test_7_out2" ${DIFF}
     -in1 ${TESTS_TEMP_DIR}/FastaEvidenceFilter_test_7.tmp.tsv
     -in2 ${DATA_DIR_TOPP}/FastaEvidenceFilter_empty.tsv)

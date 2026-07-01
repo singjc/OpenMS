@@ -20,6 +20,7 @@
 #include <OpenMS/CONCEPT/Exception.h>
 #include <OpenMS/CONCEPT/LogStream.h>
 #include <OpenMS/DATASTRUCTURES/ListUtils.h>
+#include <OpenMS/DATASTRUCTURES/StringUtils.h>
 #include <OpenMS/FORMAT/FASTAFile.h>
 #include <OpenMS/KERNEL/MSSpectrum.h>
 #include <OpenMS/MATH/MathFunctions.h>
@@ -61,12 +62,11 @@ namespace OpenMS
       return precursor_mz >= map.lower && precursor_mz <= map.upper;
     }
 
-    bool parseIonAnnotation_(const String& annotation, std::string& product_type, int& ordinal)
+    bool parseIonAnnotation_(const std::string& annotation, std::string& product_type, int& ordinal)
     {
       static const std::regex ion_pattern("^([A-Za-z\\.']+)([0-9]+)");
       std::smatch match;
-      const std::string annotation_std = annotation.c_str();
-      if (!std::regex_search(annotation_std, match, ion_pattern))
+      if (!std::regex_search(annotation, match, ion_pattern))
       {
         return false;
       }
@@ -292,7 +292,7 @@ namespace OpenMS
 
     void mergeShardEntryLine_(std::map<std::string, FastaEvidenceFilter::PeptideEntry>& peptide_map,
                               const std::string& line,
-                              const String& shard_path,
+                              const std::string& shard_path,
                               Size line_number)
     {
       if (line.empty())
@@ -319,7 +319,7 @@ namespace OpenMS
         throw Exception::ParseError(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION,
                                     line.c_str(),
                                     "Invalid sharded peptide entry at line " +
-                                    String(line_number) + " in '" + shard_path + "'.");
+                                    std::to_string(line_number) + " in '" + shard_path + "'.");
       }
 
       auto [it, inserted] = peptide_map.emplace(internal_key, FastaEvidenceFilter::PeptideEntry{});
@@ -348,7 +348,7 @@ namespace OpenMS
       }
     }
 
-    std::vector<FastaEvidenceFilter::PeptideEntry> loadMergedShardEntries_(const String& shard_path)
+    std::vector<FastaEvidenceFilter::PeptideEntry> loadMergedShardEntries_(const std::string& shard_path)
     {
       std::ifstream input(shard_path.c_str());
       if (!input.good())
@@ -393,7 +393,7 @@ namespace OpenMS
       std::vector<FastaEvidenceFilter::PeptideEntry> selected_target_peptides;
     };
 
-    void writeStage1Checkpoint_(const String& checkpoint_path,
+    void writeStage1Checkpoint_(const std::string& checkpoint_path,
                                 Size total_target_precursors,
                                 Size total_stage1_candidate_precursors,
                                 const std::vector<FastaEvidenceFilter::PeptideEntry>& peptides)
@@ -415,7 +415,7 @@ namespace OpenMS
       }
     }
 
-    Stage1CheckpointData loadStage1Checkpoint_(const String& checkpoint_path)
+    Stage1CheckpointData loadStage1Checkpoint_(const std::string& checkpoint_path)
     {
       std::ifstream input(checkpoint_path.c_str());
       if (!input.good())
@@ -449,7 +449,7 @@ namespace OpenMS
             throw Exception::ParseError(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION,
                                         line.c_str(),
                                         "Invalid Stage-1 checkpoint header at line " +
-                                        String(line_number) + " in '" + checkpoint_path + "'.");
+                                        std::to_string(line_number) + " in '" + checkpoint_path + "'.");
           }
 
           if (key == "total_target_precursors")
@@ -495,55 +495,56 @@ namespace OpenMS
       return checkpoint;
     }
 
-    String stage2CheckpointMetaPath_(const String& checkpoint_directory)
+    std::string stage2CheckpointMetaPath_(const std::string& checkpoint_directory)
     {
       return checkpoint_directory + "/meta.tsv";
     }
 
-    String stage2CheckpointGroupsDirectory_(const String& checkpoint_directory)
+    std::string stage2CheckpointGroupsDirectory_(const std::string& checkpoint_directory)
     {
       return checkpoint_directory + "/groups";
     }
 
-    String stage2CheckpointGroupCandidateStatsPath_(const String& checkpoint_directory, Size group_index)
+    std::string stage2CheckpointGroupCandidateStatsPath_(const std::string& checkpoint_directory, Size group_index)
     {
-      return stage2CheckpointGroupsDirectory_(checkpoint_directory) + "/" + String(group_index) + ".candidate_stats.tsv";
+      return stage2CheckpointGroupsDirectory_(checkpoint_directory) + "/" + std::to_string(group_index) + ".candidate_stats.tsv";
     }
 
-    String stage2CheckpointGroupNullScoresPath_(const String& checkpoint_directory, Size group_index)
+    std::string stage2CheckpointGroupNullScoresPath_(const std::string& checkpoint_directory, Size group_index)
     {
-      return stage2CheckpointGroupsDirectory_(checkpoint_directory) + "/" + String(group_index) + ".null_scores.tsv";
+      return stage2CheckpointGroupsDirectory_(checkpoint_directory) + "/" + std::to_string(group_index) + ".null_scores.tsv";
     }
 
-    String stage2CheckpointGroupBestObservationsPath_(const String& checkpoint_directory, Size group_index)
+    std::string stage2CheckpointGroupBestObservationsPath_(const std::string& checkpoint_directory, Size group_index)
     {
-      return stage2CheckpointGroupsDirectory_(checkpoint_directory) + "/" + String(group_index) + ".best_observations.tsv";
+      return stage2CheckpointGroupsDirectory_(checkpoint_directory) + "/" + std::to_string(group_index) + ".best_observations.tsv";
     }
 
-    String stage2CheckpointGroupExportObservationsPath_(const String& checkpoint_directory, Size group_index)
+    std::string stage2CheckpointGroupExportObservationsPath_(const std::string& checkpoint_directory, Size group_index)
     {
-      return stage2CheckpointGroupsDirectory_(checkpoint_directory) + "/" + String(group_index) + ".export_observations.tsv";
+      return stage2CheckpointGroupsDirectory_(checkpoint_directory) + "/" + std::to_string(group_index) + ".export_observations.tsv";
     }
 
-    String defaultStage2CheckpointDirectory_(const String& explicit_stage1_checkpoint_file,
-                                            const String& sharding_temp_directory,
-                                            const String& stage2_mode,
-                                            Size candidate_count,
-                                            Size run_count)
+    std::string defaultStage2CheckpointDirectory_(const std::string& explicit_stage1_checkpoint_file,
+                                                  const std::string& sharding_temp_directory,
+                                                  const std::string& stage2_mode,
+                                                  Size candidate_count,
+                                                  Size run_count)
     {
       if (!explicit_stage1_checkpoint_file.empty())
       {
         return explicit_stage1_checkpoint_file + ".stage2";
       }
 
-      String checkpoint_directory = File::absolutePath(sharding_temp_directory).ensureLastChar('/');
+      std::string checkpoint_directory = File::absolutePath(sharding_temp_directory);
+      StringUtils::ensureLastChar(checkpoint_directory, '/');
       checkpoint_directory += "fasta_evidence_filter_stage2_checkpoint_" +
-                              String(candidate_count) + "_runs_" + String(run_count) +
+                              std::to_string(candidate_count) + "_runs_" + std::to_string(run_count) +
                               "_" + stage2_mode;
       return checkpoint_directory;
     }
 
-    void ensureStage2CheckpointDirectory_(const String& checkpoint_directory)
+    void ensureStage2CheckpointDirectory_(const std::string& checkpoint_directory)
     {
       std::error_code ec;
       std::filesystem::create_directories(
@@ -564,12 +565,12 @@ namespace OpenMS
       std::vector<Size> completed_groups;
     };
 
-    void writeStage2CheckpointMeta_(const String& checkpoint_directory,
+    void writeStage2CheckpointMeta_(const std::string& checkpoint_directory,
                                     const Stage2CheckpointMeta& checkpoint_meta)
     {
       ensureStage2CheckpointDirectory_(checkpoint_directory);
-      const String meta_path = stage2CheckpointMetaPath_(checkpoint_directory);
-      const String tmp_path = meta_path + ".tmp";
+      const std::string meta_path = stage2CheckpointMetaPath_(checkpoint_directory);
+      const std::string tmp_path = meta_path + ".tmp";
       std::ofstream output(tmp_path.c_str());
       if (!output)
       {
@@ -597,9 +598,9 @@ namespace OpenMS
       }
     }
 
-    Stage2CheckpointMeta loadStage2CheckpointMeta_(const String& checkpoint_directory)
+    Stage2CheckpointMeta loadStage2CheckpointMeta_(const std::string& checkpoint_directory)
     {
-      const String meta_path = stage2CheckpointMetaPath_(checkpoint_directory);
+      const std::string meta_path = stage2CheckpointMetaPath_(checkpoint_directory);
       std::ifstream input(meta_path.c_str());
       if (!input.good())
       {
@@ -657,7 +658,7 @@ namespace OpenMS
           throw Exception::ParseError(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION,
                                       line.c_str(),
                                       "Invalid Stage-2 checkpoint metadata entry at line " +
-                                      String(line_number) + " in '" + meta_path + "'.");
+                                      std::to_string(line_number) + " in '" + meta_path + "'.");
         }
         checkpoint_meta.completed_groups.push_back(completed_group);
       }
@@ -685,10 +686,10 @@ namespace OpenMS
 
     std::string extractGeneName_(const FASTAFile::FASTAEntry& entry)
     {
-      const auto extract_from_text = [](const String& text) -> std::string
+      const auto extract_from_text = [](const std::string& text) -> std::string
       {
         const Size gene_pos = text.find("GN=");
-        if (gene_pos == String::npos)
+        if (gene_pos == std::string::npos)
         {
           return {};
         }
@@ -704,7 +705,7 @@ namespace OpenMS
                               text.size() :
                               static_cast<Size>(std::distance(text.begin(), whitespace_it));
 
-        return text.substr(gene_begin, gene_end - gene_begin).c_str();
+        return text.substr(gene_begin, gene_end - gene_begin);
       };
 
       std::string gene_name = extract_from_text(entry.description);
@@ -1292,7 +1293,7 @@ namespace OpenMS
     }
 
     void writeStage2CheckpointGroupCandidateStats_(
-      const String& checkpoint_directory,
+      const std::string& checkpoint_directory,
       Size group_index,
       const std::unordered_map<Size, Stage2CandidateStats>& candidate_stats)
     {
@@ -1301,7 +1302,7 @@ namespace OpenMS
         return;
       }
 
-      const String output_path = stage2CheckpointGroupCandidateStatsPath_(checkpoint_directory, group_index);
+      const std::string output_path = stage2CheckpointGroupCandidateStatsPath_(checkpoint_directory, group_index);
       std::ofstream output(output_path.c_str(), std::ios::trunc);
       if (!output)
       {
@@ -1345,11 +1346,11 @@ namespace OpenMS
     }
 
     void loadStage2CheckpointGroupCandidateStats_(
-      const String& checkpoint_directory,
+      const std::string& checkpoint_directory,
       Size group_index,
       std::unordered_map<Size, Stage2CandidateStats>& merged_candidate_stats)
     {
-      const String input_path = stage2CheckpointGroupCandidateStatsPath_(checkpoint_directory, group_index);
+      const std::string input_path = stage2CheckpointGroupCandidateStatsPath_(checkpoint_directory, group_index);
       if (!File::exists(input_path))
       {
         return;
@@ -1407,14 +1408,14 @@ namespace OpenMS
           throw Exception::ParseError(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION,
                                       line.c_str(),
                                       "Invalid Stage-2 candidate-stats checkpoint entry at line " +
-                                      String(line_number) + " in '" + input_path + "'.");
+                                      std::to_string(line_number) + " in '" + input_path + "'.");
         }
         mergeStage2CandidateStats_(merged_candidate_stats[candidate_id], stats);
       }
     }
 
     void writeStage2CheckpointGroupNullScores_(
-      const String& checkpoint_directory,
+      const std::string& checkpoint_directory,
       Size group_index,
       const std::unordered_map<int, std::vector<double>>& null_scores_by_charge)
     {
@@ -1423,7 +1424,7 @@ namespace OpenMS
         return;
       }
 
-      const String output_path = stage2CheckpointGroupNullScoresPath_(checkpoint_directory, group_index);
+      const std::string output_path = stage2CheckpointGroupNullScoresPath_(checkpoint_directory, group_index);
       std::ofstream output(output_path.c_str(), std::ios::trunc);
       if (!output)
       {
@@ -1442,11 +1443,11 @@ namespace OpenMS
     }
 
     void loadStage2CheckpointGroupNullScores_(
-      const String& checkpoint_directory,
+      const std::string& checkpoint_directory,
       Size group_index,
       std::unordered_map<int, std::vector<double>>& null_scores_by_charge)
     {
-      const String input_path = stage2CheckpointGroupNullScoresPath_(checkpoint_directory, group_index);
+      const std::string input_path = stage2CheckpointGroupNullScoresPath_(checkpoint_directory, group_index);
       if (!File::exists(input_path))
       {
         return;
@@ -1467,7 +1468,7 @@ namespace OpenMS
     }
 
     void writeStage2CheckpointGroupBestObservations_(
-      const String& checkpoint_directory,
+      const std::string& checkpoint_directory,
       Size group_index,
       const std::unordered_map<Stage2CandidateRunKey, Stage2BestScoringObservation, Stage2CandidateRunKeyHash>& best_scoring_observations)
     {
@@ -1476,7 +1477,7 @@ namespace OpenMS
         return;
       }
 
-      const String output_path = stage2CheckpointGroupBestObservationsPath_(checkpoint_directory, group_index);
+      const std::string output_path = stage2CheckpointGroupBestObservationsPath_(checkpoint_directory, group_index);
       std::ofstream output(output_path.c_str(), std::ios::trunc);
       if (!output)
       {
@@ -1496,11 +1497,11 @@ namespace OpenMS
     }
 
     void loadStage2CheckpointGroupBestObservations_(
-      const String& checkpoint_directory,
+      const std::string& checkpoint_directory,
       Size group_index,
       std::unordered_map<Stage2CandidateRunKey, Stage2BestScoringObservation, Stage2CandidateRunKeyHash>& best_scoring_observations)
     {
-      const String input_path = stage2CheckpointGroupBestObservationsPath_(checkpoint_directory, group_index);
+      const std::string input_path = stage2CheckpointGroupBestObservationsPath_(checkpoint_directory, group_index);
       if (!File::exists(input_path))
       {
         return;
@@ -1524,7 +1525,7 @@ namespace OpenMS
     }
 
     void writeStage2CheckpointGroupExportObservations_(
-      const String& checkpoint_directory,
+      const std::string& checkpoint_directory,
       Size group_index,
       const std::vector<Stage2LowerOrderObservation>& export_observations)
     {
@@ -1533,7 +1534,7 @@ namespace OpenMS
         return;
       }
 
-      const String output_path = stage2CheckpointGroupExportObservationsPath_(checkpoint_directory, group_index);
+      const std::string output_path = stage2CheckpointGroupExportObservationsPath_(checkpoint_directory, group_index);
       std::ofstream output(output_path.c_str(), std::ios::trunc);
       if (!output)
       {
@@ -1558,11 +1559,11 @@ namespace OpenMS
     }
 
     void loadStage2CheckpointGroupExportObservations_(
-      const String& checkpoint_directory,
+      const std::string& checkpoint_directory,
       Size group_index,
       std::vector<Stage2LowerOrderObservation>& export_observations)
     {
-      const String input_path = stage2CheckpointGroupExportObservationsPath_(checkpoint_directory, group_index);
+      const std::string input_path = stage2CheckpointGroupExportObservationsPath_(checkpoint_directory, group_index);
       if (!File::exists(input_path))
       {
         return;
@@ -1603,7 +1604,7 @@ namespace OpenMS
           throw Exception::ParseError(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION,
                                       line.c_str(),
                                       "Invalid Stage-2 export-observation checkpoint entry at line " +
-                                      String(line_number) + " in '" + input_path + "'.");
+                                      std::to_string(line_number) + " in '" + input_path + "'.");
         }
         observation.used_for_scoring = used_for_scoring != 0;
         observation.used_for_null = used_for_null != 0;
@@ -1650,6 +1651,9 @@ namespace OpenMS
                        "Minimum matched-intensity fraction needed for a spectrum to count as strong stage-2 support.");
     defaults_.setMinFloat("Stage2:strong_min_intensity_fraction", 0.0);
     defaults_.setMaxFloat("Stage2:strong_min_intensity_fraction", 1.0);
+    defaults_.setValue("Stage2:decoys", std::string("false"),
+                       "Whether to enable FragmentIndex decoy handling during Stage-2 scoring.");
+    defaults_.setValidStrings("Stage2:decoys", {"true", "false"});
     defaults_.setValue("Stage2:precursor_batch_size", 100000,
                        "Maximum number of precursors materialized in one Stage-2 FragmentIndex build batch.");
     defaults_.setMinInt("Stage2:precursor_batch_size", 1);
@@ -1687,9 +1691,9 @@ namespace OpenMS
                        "Format used when exporting modified peptide sequences to TSV outputs.");
     defaults_.setValidStrings("Export:modified_sequence_format", {"unimod_accession", "codename"});
 
-    std::vector<String> all_mods;
+    std::vector<std::string> all_mods;
     ModificationsDB::getInstance()->getAllSearchModifications(all_mods);
-    std::vector<String> all_enzymes;
+    std::vector<std::string> all_enzymes;
     ProteaseDB::getInstance()->getAllNames(all_enzymes);
 
     defaults_.setValue("SearchSpace:enzyme", "Trypsin", "The enzyme used for in-silico digestion.");
@@ -1775,6 +1779,7 @@ namespace OpenMS
     stage2_min_matched_ions_ = static_cast<Int>(param_.getValue("Stage2:min_matched_ions"));
     stage2_strong_min_matched_ions_ = static_cast<Int>(param_.getValue("Stage2:strong_min_matched_ions"));
     stage2_strong_min_intensity_fraction_ = static_cast<double>(param_.getValue("Stage2:strong_min_intensity_fraction"));
+    stage2_decoys_ = param_.getValue("Stage2:decoys").toString() == "true";
     stage2_precursor_batch_size_ = static_cast<Size>(param_.getValue("Stage2:precursor_batch_size"));
     stage2_checkpoint_directory_ = param_.getValue("Stage2:checkpoint_directory").toString();
     if (!stage2_checkpoint_directory_.empty())
@@ -1812,7 +1817,8 @@ namespace OpenMS
     search_space_max_proteins_per_chunk_ = static_cast<Size>(param_.getValue("SearchSpace:sharding:max_proteins_per_chunk"));
     search_space_num_shards_ = static_cast<Size>(param_.getValue("SearchSpace:sharding:num_shards"));
     search_space_sharding_temp_directory_ =
-      File::absolutePath(param_.getValue("SearchSpace:sharding:temp_directory").toString()).ensureLastChar('/');
+      File::absolutePath(param_.getValue("SearchSpace:sharding:temp_directory").toString());
+    StringUtils::ensureLastChar(search_space_sharding_temp_directory_, '/');
     search_space_sharding_keep_temporary_files_ =
       param_.getValue("SearchSpace:sharding:keep_temporary_files").toString() == "true";
   }
@@ -2204,7 +2210,7 @@ namespace OpenMS
     params.setValue("precursor:isotope_error_min", 0);
     params.setValue("precursor:isotope_error_max", 0);
     params.setValue("scoring:max_candidates_per_spectrum", 500);
-    params.setValue("decoys", "false");
+    params.setValue("decoys", stage2_decoys_ ? "true" : "false");
     params.setValue("snes_enabled", "false");
     params.setValue("report:build_progress", "false");
 
@@ -2222,7 +2228,7 @@ namespace OpenMS
                                                                            const ChromExtractParams& ms1_params,
                                                                            const ChromExtractParams& ms2_params,
                                                                            int threads,
-                                                                           const String& checkpoint_directory) const
+                                                                           const std::string& checkpoint_directory) const
   {
     Stage2ScoreBundle bundle;
     if (candidates.empty())
@@ -2306,7 +2312,6 @@ namespace OpenMS
     const Size lower_order_min_null_scores = static_cast<Size>(std::max<Int>(1, stage2_lower_order_min_null_scores_));
     const Size lower_order_keep_ranks =
       use_lower_order_null ? std::max(lower_order_max_rank, lower_order_scored_ranks) : 0;
-
     const auto count_charge_queries_for_slice =
       [&](Size candidate_begin, Size candidate_end) -> Size
       {
@@ -2457,8 +2462,8 @@ namespace OpenMS
     checkpoint_meta.export_stage2_scores = export_stage2_scores_;
 
     SignedSize resumed_progress = 0;
-    const String checkpoint_meta_path =
-      checkpoint_directory.empty() ? String() : stage2CheckpointMetaPath_(checkpoint_directory);
+    const std::string checkpoint_meta_path =
+      checkpoint_directory.empty() ? std::string() : stage2CheckpointMetaPath_(checkpoint_directory);
     if (!checkpoint_directory.empty() && File::exists(checkpoint_meta_path))
     {
       checkpoint_meta = loadStage2CheckpointMeta_(checkpoint_directory);
@@ -2467,16 +2472,16 @@ namespace OpenMS
         throw Exception::IllegalArgument(
           __FILE__, __LINE__, OPENMS_PRETTY_FUNCTION,
           "Stage-2 checkpoint candidate count mismatch for '" + checkpoint_directory +
-          "'. Expected " + String(candidates.size()) + ", found " +
-          String(checkpoint_meta.candidate_count) + ".");
+          "'. Expected " + std::to_string(candidates.size()) + ", found " +
+          std::to_string(checkpoint_meta.candidate_count) + ".");
       }
       if (checkpoint_meta.total_groups != job_groups.size())
       {
         throw Exception::IllegalArgument(
           __FILE__, __LINE__, OPENMS_PRETTY_FUNCTION,
           "Stage-2 checkpoint group count mismatch for '" + checkpoint_directory +
-          "'. Expected " + String(job_groups.size()) + ", found " +
-          String(checkpoint_meta.total_groups) + ".");
+          "'. Expected " + std::to_string(job_groups.size()) + ", found " +
+          std::to_string(checkpoint_meta.total_groups) + ".");
       }
       if (checkpoint_meta.lower_order_null != use_lower_order_null)
       {
@@ -2498,7 +2503,7 @@ namespace OpenMS
           throw Exception::IllegalArgument(
             __FILE__, __LINE__, OPENMS_PRETTY_FUNCTION,
             "Stage-2 checkpoint '" + checkpoint_directory +
-            "' references out-of-range completed group index " + String(completed_group) + ".");
+            "' references out-of-range completed group index " + std::to_string(completed_group) + ".");
         }
         completed_group_flags[completed_group] = true;
         resumed_progress += computeGroupQueryUnits(job_groups[completed_group]);
@@ -3409,12 +3414,32 @@ namespace OpenMS
       throw Exception::IllegalArgument(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION,
                                        "FastaEvidenceFilter requires a non-empty FASTA database.");
     }
+    const auto makeEmptyResult =
+      [&](const std::string& reason, Size total_target_precursors_for_summary) -> Result
+      {
+        OPENMS_LOG_INFO << "Original target space: "
+                        << total_target_precursors_for_summary << " peptide precursors, "
+                        << fasta_entries.size() << " proteins." << std::endl;
+        if (!reason.empty())
+        {
+          OPENMS_LOG_INFO << reason << std::endl;
+        }
+
+        Result result;
+        result.summary = "FastaEvidenceFilter retained " +
+                         formatRetentionRatio_(0, total_target_precursors_for_summary) +
+                         " peptide precursors and " +
+                         formatRetentionRatio_(0, fasta_entries.size()) +
+                         " proteins after stage 2.";
+        return result;
+      };
+
     Param stage1_params = param_.copy("Stage1:", true);
     stage1_params.remove("max_concurrent_runs");
     stage1_params.remove("precursor_batch_size");
     stage1_params.remove("checkpoint_file");
     stage1_params.setValue("enabled", "false");
-    const String stage1_evidence_sources = stage1_params.getValue("evidence_sources").toString();
+    const std::string stage1_evidence_sources = stage1_params.getValue("evidence_sources").toString();
     const Size batch_size = std::max<Size>(1, stage1_precursor_batch_size_);
     const int thread_count = std::max(1, threads);
     const Size requested_max_concurrent_runs =
@@ -3447,7 +3472,7 @@ namespace OpenMS
     std::vector<PeptideEntry> stage1_candidate_peptides_storage;
     const std::vector<PeptideEntry>* stage1_candidate_peptides = nullptr;
     std::shared_ptr<File::TempDir> stage1_shard_dir;
-    std::vector<String> shard_paths;
+    std::vector<std::string> shard_paths;
 
     if (stage1_resume_from_checkpoint)
     {
@@ -3480,7 +3505,7 @@ namespace OpenMS
       for (Size shard_idx = 0; shard_idx < search_space_num_shards_; ++shard_idx)
       {
         shard_paths[shard_idx] = stage1_shard_dir->getPath() + "/stage1_precursors_shard_" +
-                                 String(shard_idx) + ".tsv";
+                                 std::to_string(shard_idx) + ".tsv";
       }
 
       const Size num_chunks =
@@ -3517,6 +3542,13 @@ namespace OpenMS
         }
       }
 
+      if (estimated_stage1_target_precursors == 0)
+      {
+        return makeEmptyResult(
+          "No peptide precursors were generated from the FASTA database under the current digestion and search-space settings.",
+          0);
+      }
+
       total_stage1_jobs =
         ((estimated_stage1_target_precursors + batch_size - 1) / batch_size) * runs.size();
       OPENMS_LOG_INFO << "Stage 1: filtering sharded precursor space across "
@@ -3529,8 +3561,9 @@ namespace OpenMS
       all_target_peptides = generatePeptideEntries_(fasta_entries, false);
       if (all_target_peptides.empty())
       {
-        throw Exception::IllegalArgument(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION,
-                                         "No peptide precursors were generated from the FASTA database.");
+        return makeEmptyResult(
+          "No peptide precursors were generated from the FASTA database under the current digestion and search-space settings.",
+          0);
       }
       total_target_precursors = all_target_peptides.size();
       OPENMS_LOG_INFO << "Original target space: "
@@ -3567,7 +3600,7 @@ namespace OpenMS
 
       const auto run_stage1_batches =
         [&](const std::vector<PeptideEntry>& peptide_pool,
-            const String& batch_context) -> std::unordered_map<std::string, Size>
+            const std::string& batch_context) -> std::unordered_map<std::string, Size>
         {
           std::unordered_map<std::string, Size> supported_run_counts;
           const Size num_batches = (peptide_pool.size() + batch_size - 1) / batch_size;
@@ -3671,7 +3704,7 @@ namespace OpenMS
 
             const auto shard_supported_run_counts = run_stage1_batches(
               *shard_stage1_candidates,
-              " in shard " + String(shard_idx + 1) + "/" + String(shard_paths.size()));
+              " in shard " + std::to_string(shard_idx + 1) + "/" + std::to_string(shard_paths.size()));
             for (const auto& peptide : *shard_stage1_candidates)
             {
               const auto support_it = shard_supported_run_counts.find(peptide.canonical_key);
@@ -3747,9 +3780,9 @@ namespace OpenMS
     if (selected_target_peptides.size() < stage1_min_supported_precursors_)
     {
       throw Exception::IllegalArgument(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION,
-                                       "FastaEvidenceFilter retained only " + String(selected_target_peptides.size()) +
+                                       "FastaEvidenceFilter retained only " + std::to_string(selected_target_peptides.size()) +
                                        " stage-1 precursors, fewer than Stage1:min_supported_precursors=" +
-                                       String(stage1_min_supported_precursors_) + ".");
+                                       std::to_string(stage1_min_supported_precursors_) + ".");
     }
 
     std::sort(selected_target_peptides.begin(), selected_target_peptides.end(),
@@ -3797,7 +3830,7 @@ namespace OpenMS
     stage2_space_message << ".";
     OPENMS_LOG_INFO << stage2_space_message.str() << std::endl;
 
-    String stage2_checkpoint_directory = stage2_checkpoint_directory_;
+    std::string stage2_checkpoint_directory = stage2_checkpoint_directory_;
     if (stage2_checkpoint_directory.empty() &&
         selected_target_peptides.size() >= stage2_auto_checkpoint_min_precursors_)
     {
@@ -3937,9 +3970,9 @@ namespace OpenMS
     result.stage2_confirmed_precursors = confirmed_target_peptides.size();
     result.retained_proteins = result.filtered_fasta.size();
     result.summary = "FastaEvidenceFilter retained " +
-                     String(formatRetentionRatio_(result.stage2_confirmed_precursors, total_target_precursors).c_str()) +
+                     formatRetentionRatio_(result.stage2_confirmed_precursors, total_target_precursors) +
                      " peptide precursors and " +
-                     String(formatRetentionRatio_(result.retained_proteins, fasta_entries.size()).c_str()) +
+                     formatRetentionRatio_(result.retained_proteins, fasta_entries.size()) +
                      " proteins after stage 2.";
     OPENMS_LOG_INFO << "Final retained space: "
                     << formatRetentionRatio_(result.stage2_confirmed_precursors, total_target_precursors)
