@@ -611,6 +611,7 @@ set(analysis_executables_list
   PeakGroup_test
   PScore_test
   FragmentIndex_test
+  TagLikeFragmentPatternScorer_test
   HyperScore_test
   MorpheusScore_test
   OpenPepXLAlgorithm_test

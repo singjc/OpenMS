@@ -23,6 +23,7 @@ FalseDiscoveryRate.cpp
 FIAMSDataProcessor.cpp
 FIAMSScheduler.cpp
 FragmentIndex.cpp
+TagLikeFragmentPatternScorer.cpp
 HyperScore.cpp
 IDBoostGraph.cpp
 IDConflictResolverAlgorithm.cpp
