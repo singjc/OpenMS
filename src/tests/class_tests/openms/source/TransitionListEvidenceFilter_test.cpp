@@ -176,7 +176,7 @@ START_TEST(TransitionListEvidenceFilter, "$Id$")
 START_SECTION(TransitionListEvidenceFilter())
 {
   TransitionListEvidenceFilter filter;
-  TEST_EQUAL(filter.getParameters().getValue("enabled").toString(), "true")
+  TEST_EQUAL(filter.getParameters().getValue("enabled").toString(), "false")
   TEST_EQUAL(filter.getParameters().getValue("evidence_sources").toString(), "hybrid")
 }
 END_SECTION
