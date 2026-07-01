@@ -1689,6 +1689,8 @@ namespace OpenMS
               }
               ++source.num_matched_;
               source.matched_intensity_sum_ += static_cast<float>(peak.getIntensity());
+              source.matched_abs_mz_error_sum_ +=
+                std::abs(static_cast<float>(peak.getMZ()) - hit.fragment_mz);
               if (hit.ion_series == 'b')
               {
                 set_matched_ordinal(source.matched_b_ordinal_words_, hit.ion_ordinal);

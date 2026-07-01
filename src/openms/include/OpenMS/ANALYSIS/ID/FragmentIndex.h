@@ -73,6 +73,7 @@ namespace OpenMS
     {
       uint32_t num_matched_{};       ///< Number of peaks-fragment hits
       float    matched_intensity_sum_{}; ///< Sum of intensities of matched query peaks
+      float    matched_abs_mz_error_sum_{}; ///< Sum of absolute fragment m/z errors in Dalton across all matched query peaks
       std::array<uint64_t, 2> matched_b_ordinal_words_{}; ///< Unique matched b-ion ordinals packed into two 64-bit words
       std::array<uint64_t, 2> matched_y_ordinal_words_{}; ///< Unique matched y-ion ordinals packed into two 64-bit words
       uint32_t subset_bitmask_{};    ///< SNES v1.1: active slots in the slot list returned by buildModSlots_. 0 = unmodified. Ignored in non-SNES mode.
