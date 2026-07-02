@@ -1290,10 +1290,7 @@ namespace OpenMS
               << ").";
       result.summary = summary.str();
 
-      if (getLogType() != ProgressLogger::NONE)
-      {
-        OPENMS_LOG_INFO << result.summary << std::endl;
-      }
+      OPENMS_LOG_INFO << result.summary << "\n";
       endProgress();
       progress_started = false;
       return result;
