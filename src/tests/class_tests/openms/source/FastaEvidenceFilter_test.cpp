@@ -17,6 +17,7 @@
 #include <filesystem>
 #include <set>
 #include <string>
+#include <tuple>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -56,10 +57,31 @@ namespace
     return spectrum;
   }
 
+  MSSpectrum makeIMSpectrum(double rt, const vector<tuple<double, double, double>>& peaks)
+  {
+    MSSpectrum spectrum;
+    spectrum.setRT(rt);
+    MSSpectrum::FloatDataArray im_array;
+    im_array.setName("Ion Mobility");
+    for (const auto& peak_data : peaks)
+    {
+      Peak1D peak;
+      peak.setMZ(get<0>(peak_data));
+      peak.setIntensity(get<1>(peak_data));
+      spectrum.push_back(peak);
+      im_array.push_back(get<2>(peak_data));
+    }
+    spectrum.getFloatDataArrays().push_back(im_array);
+    spectrum.sortByPosition();
+    return spectrum;
+  }
+
   SwathMap makeSwathMap(bool ms1,
                         double lower,
                         double upper,
-                        const vector<MSSpectrum>& spectra)
+                        const vector<MSSpectrum>& spectra,
+                        double im_lower = -1.0,
+                        double im_upper = -1.0)
   {
     PeakMap* peak_map = new PeakMap;
     for (const auto& spectrum : spectra)
@@ -68,7 +90,9 @@ namespace
     }
     shared_ptr<PeakMap> exp(peak_map);
 
-    SwathMap map(lower, upper, (lower + upper) * 0.5, ms1);
+    SwathMap map = im_lower >= 0.0 ?
+      SwathMap(lower, upper, (lower + upper) * 0.5, im_lower, im_upper, ms1) :
+      SwathMap(lower, upper, (lower + upper) * 0.5, ms1);
     map.sptr = SpectrumAccessPtr(new SpectrumAccessOpenMS(exp));
     return map;
   }
@@ -1357,6 +1381,55 @@ START_SECTION((filter() - stage1 ms2 batching skips precursors outside SWATH cov
   run.pasef = false;
 
   const auto result = filter.filter({run}, fasta_entries, makeExtractParams(0.01), makeExtractParams(0.01), 4);
+  TEST_EQUAL(result.stage1_supported_precursors, 1)
+  TEST_EQUAL(result.stage2_confirmed_precursors, 1)
+  TEST_EQUAL(result.retained_proteins, 1)
+  TEST_EQUAL(result.filtered_fasta.size(), 1)
+  TEST_EQUAL(result.filtered_fasta[0].identifier, "protA")
+}
+END_SECTION
+
+START_SECTION((filter() - stage1 ms2 PASEF filtering supports FASTA-derived precursors without precursor ion mobility))
+{
+  FastaEvidenceFilter filter = makeFilterForSingleChargePeptides();
+  Param params = filter.getParameters();
+  params.setValue("SearchSpace:min_size", 7);
+  params.setValue("SearchSpace:max_size", 7);
+  params.setValue("Stage1:evidence_sources", "ms2");
+  params.setValue("Stage1:min_supported_precursors", 1);
+  params.setValue("Stage1:ms2_min_fragment_hits", 2);
+  params.setValue("Stage2:mode", "raw_score");
+  params.setValue("Stage2:min_matched_ions", 1);
+  filter.setParameters(params);
+
+  const vector<FASTAFile::FASTAEntry> fasta_entries{makeFastaEntry("protA", "AAAAAAK")};
+  const auto peptides = filter.generatePeptideEntries(fasta_entries);
+  TEST_EQUAL(peptides.size(), 1)
+  TEST_TRUE(!peptides[0].fragments.empty())
+
+  vector<tuple<double, double, double>> im_fragments;
+  for (const auto& fragment : peptides[0].fragments)
+  {
+    im_fragments.emplace_back(fragment.product_mz, 1000.0, 0.70);
+  }
+
+  vector<OpenSwath::SwathMap> swath_maps;
+  swath_maps.push_back(makeSwathMap(false,
+                                    peptides[0].precursor_mz - 10.0,
+                                    peptides[0].precursor_mz + 10.0,
+                                    {makeIMSpectrum(12.0, im_fragments)},
+                                    0.60,
+                                    0.80));
+
+  FastaEvidenceFilter::RunData run;
+  run.swath_maps = std::move(swath_maps);
+  run.pasef = true;
+
+  const auto result = filter.filter({run},
+                                    fasta_entries,
+                                    makeExtractParams(0.01, false, 0.05),
+                                    makeExtractParams(0.01, false, 0.05),
+                                    1);
   TEST_EQUAL(result.stage1_supported_precursors, 1)
   TEST_EQUAL(result.stage2_confirmed_precursors, 1)
   TEST_EQUAL(result.retained_proteins, 1)
