@@ -14,6 +14,7 @@
 #include <OpenMS/KERNEL/Peak1D.h>
 
 #include <memory>
+#include <algorithm>
 #include <filesystem>
 #include <set>
 #include <string>
@@ -357,6 +358,185 @@ START_SECTION((filter() - stage2 can confirm a supported precursor))
 }
 END_SECTION
 
+<<<<<<< HEAD
+=======
+START_SECTION((filter() - stage1 peptide-local retention prunes weaker same-protein competitors))
+{
+  FastaEvidenceFilter filter = makeFilterForSingleChargePeptides();
+  Param params = filter.getParameters();
+  params.setValue("SearchSpace:min_size", 7);
+  params.setValue("SearchSpace:max_size", 7);
+  params.setValue("Stage1:evidence_sources", "ms1");
+  params.setValue("Stage1:min_supported_precursors", 1);
+  params.setValue("Stage1:peptide_local_retention:enabled", "true");
+  params.setValue("Stage1:peptide_local_retention:max_precursors_per_protein", 1);
+  params.setValue("Stage1:peptide_local_retention:max_precursors_per_unmodified_sequence", 0);
+  params.setValue("Stage2:mode", "raw_score");
+  params.setValue("Stage2:min_matched_ions", 1);
+  filter.setParameters(params);
+
+  const vector<FASTAFile::FASTAEntry> fasta_entries{makeFastaEntry("protA", "AAAAAAKCCCCCCK")};
+  const auto peptides = filter.generatePeptideEntries(fasta_entries);
+  TEST_EQUAL(peptides.size(), 2)
+
+  const auto peptide_a_it = find_if(peptides.begin(), peptides.end(),
+    [](const auto& peptide) { return peptide.peptide_sequence == "AAAAAAK"; });
+  const auto peptide_c_it = find_if(peptides.begin(), peptides.end(),
+    [](const auto& peptide) { return peptide.peptide_sequence == "CCCCCCK"; });
+  TEST_TRUE(peptide_a_it != peptides.end())
+  TEST_TRUE(peptide_c_it != peptides.end())
+
+  vector<pair<double, double>> stage2_peaks_a;
+  vector<pair<double, double>> stage2_peaks_c;
+  for (const auto& fragment : peptide_a_it->fragments)
+  {
+    stage2_peaks_a.emplace_back(fragment.product_mz, 1200.0);
+  }
+  for (const auto& fragment : peptide_c_it->fragments)
+  {
+    stage2_peaks_c.emplace_back(fragment.product_mz, 900.0);
+  }
+
+  vector<OpenSwath::SwathMap> swath_maps;
+  swath_maps.push_back(makeSwathMap(true, 0.0, 0.0,
+    {makeSpectrum(10.0, {{peptide_a_it->precursor_mz, 2000.0}, {peptide_c_it->precursor_mz, 800.0}})}));
+  swath_maps.push_back(makeSwathMap(false, peptide_a_it->precursor_mz - 10.0, peptide_a_it->precursor_mz + 10.0,
+                                    {makeSpectrum(12.0, stage2_peaks_a)}));
+  swath_maps.push_back(makeSwathMap(false, peptide_c_it->precursor_mz - 10.0, peptide_c_it->precursor_mz + 10.0,
+                                    {makeSpectrum(13.0, stage2_peaks_c)}));
+
+  FastaEvidenceFilter::RunData run;
+  run.swath_maps = std::move(swath_maps);
+  run.pasef = false;
+
+  const auto result = filter.filter({run}, fasta_entries, makeExtractParams(0.01), makeExtractParams(0.01), 1);
+  TEST_EQUAL(result.stage1_supported_precursors, 1)
+  TEST_EQUAL(result.stage2_confirmed_precursors, 1)
+  TEST_EQUAL(result.retained_proteins, 1)
+  TEST_EQUAL(result.confirmed_peptides.size(), 1)
+  TEST_EQUAL(result.confirmed_peptides[0].peptide_sequence, "AAAAAAK")
+}
+END_SECTION
+
+START_SECTION((filter() - stage2 peptide-local retention prunes weaker same-protein competitors))
+{
+  FastaEvidenceFilter filter = makeFilterForSingleChargePeptides();
+  Param params = filter.getParameters();
+  params.setValue("SearchSpace:min_size", 7);
+  params.setValue("SearchSpace:max_size", 7);
+  params.setValue("Stage1:evidence_sources", "ms1");
+  params.setValue("Stage1:min_supported_precursors", 1);
+  params.setValue("Stage2:mode", "raw_score");
+  params.setValue("Stage2:min_matched_ions", 1);
+  params.setValue("Stage2:peptide_local_retention:enabled", "true");
+  params.setValue("Stage2:peptide_local_retention:max_precursors_per_protein", 1);
+  params.setValue("Stage2:peptide_local_retention:max_precursors_per_unmodified_sequence", 0);
+  params.setValue("Export:export_stage2_scores", "true");
+  filter.setParameters(params);
+
+  const vector<FASTAFile::FASTAEntry> fasta_entries{makeFastaEntry("protA", "AAAAAAKCCCCCCK")};
+  const auto peptides = filter.generatePeptideEntries(fasta_entries);
+  TEST_EQUAL(peptides.size(), 2)
+
+  const auto peptide_a_it = find_if(peptides.begin(), peptides.end(),
+    [](const auto& peptide) { return peptide.peptide_sequence == "AAAAAAK"; });
+  const auto peptide_c_it = find_if(peptides.begin(), peptides.end(),
+    [](const auto& peptide) { return peptide.peptide_sequence == "CCCCCCK"; });
+  TEST_TRUE(peptide_a_it != peptides.end())
+  TEST_TRUE(peptide_c_it != peptides.end())
+
+  vector<pair<double, double>> stage2_peaks_a;
+  vector<pair<double, double>> stage2_peaks_c;
+  for (const auto& fragment : peptide_a_it->fragments)
+  {
+    stage2_peaks_a.emplace_back(fragment.product_mz, 1300.0);
+  }
+  stage2_peaks_c.emplace_back(peptide_c_it->fragments.front().product_mz, 700.0);
+
+  vector<OpenSwath::SwathMap> swath_maps;
+  swath_maps.push_back(makeSwathMap(true, 0.0, 0.0,
+    {makeSpectrum(10.0, {{peptide_a_it->precursor_mz, 1000.0}, {peptide_c_it->precursor_mz, 1000.0}})}));
+  swath_maps.push_back(makeSwathMap(false, peptide_a_it->precursor_mz - 10.0, peptide_a_it->precursor_mz + 10.0,
+                                    {makeSpectrum(12.0, stage2_peaks_a), makeSpectrum(12.5, stage2_peaks_a)}));
+  swath_maps.push_back(makeSwathMap(false, peptide_c_it->precursor_mz - 10.0, peptide_c_it->precursor_mz + 10.0,
+                                    {makeSpectrum(13.0, stage2_peaks_c)}));
+
+  FastaEvidenceFilter::RunData run;
+  run.swath_maps = std::move(swath_maps);
+  run.swath_map_sources = {"run.mzML", "run.mzML", "run.mzML"};
+  run.pasef = false;
+
+  const auto result = filter.filter({run}, fasta_entries, makeExtractParams(0.01), makeExtractParams(0.01), 1);
+  TEST_EQUAL(result.stage1_supported_precursors, 2)
+  TEST_EQUAL(result.stage2_confirmed_precursors, 1)
+  TEST_EQUAL(result.retained_proteins, 1)
+  TEST_EQUAL(result.confirmed_peptides.size(), 1)
+  TEST_EQUAL(result.confirmed_peptides[0].peptide_sequence, "AAAAAAK")
+  TEST_EQUAL(result.stage2_candidate_scores.size(), 2)
+
+  Size accepted_scores = 0;
+  for (const auto& score : result.stage2_candidate_scores)
+  {
+    if (score.accepted)
+    {
+      ++accepted_scores;
+      TEST_EQUAL(score.peptide_sequence, "AAAAAAK")
+    }
+  }
+  TEST_EQUAL(accepted_scores, 1)
+}
+END_SECTION
+
+START_SECTION((filter() - tag_like stage2 spectrum scoring confirms a supported precursor))
+{
+  FastaEvidenceFilter filter = makeFilterForSingleChargePeptides();
+  Param params = filter.getParameters();
+  params.setValue("SearchSpace:min_size", 7);
+  params.setValue("SearchSpace:max_size", 7);
+  params.setValue("Stage1:evidence_sources", "ms1");
+  params.setValue("Stage1:min_supported_precursors", 1);
+  params.setValue("Stage2:mode", "raw_score");
+  params.setValue("Stage2:min_matched_ions", 1);
+  params.setValue("Stage2:spectrum_score_type", "tag_like");
+  params.setValue("Export:export_stage2_scores", "true");
+  filter.setParameters(params);
+
+  const vector<FASTAFile::FASTAEntry> fasta_entries{makeFastaEntry("protA", "AAAAAAK")};
+  const auto peptides = filter.generatePeptideEntries(fasta_entries);
+  TEST_EQUAL(peptides.size(), 1)
+  TEST_TRUE(!peptides[0].fragments.empty())
+
+  vector<pair<double, double>> stage2_peaks;
+  double fragment_intensity = 1200.0;
+  for (const auto& fragment : peptides[0].fragments)
+  {
+    stage2_peaks.emplace_back(fragment.product_mz, fragment_intensity);
+    fragment_intensity -= 100.0;
+  }
+
+  const double precursor_mz = peptides[0].precursor_mz;
+  vector<OpenSwath::SwathMap> swath_maps;
+  swath_maps.push_back(makeSwathMap(true, 0.0, 0.0, {makeSpectrum(10.0, {{precursor_mz, 1000.0}})}));
+  swath_maps.push_back(makeSwathMap(false, precursor_mz - 10.0, precursor_mz + 10.0,
+                                    {makeSpectrum(12.0, stage2_peaks)}));
+
+  FastaEvidenceFilter::RunData run;
+  run.swath_maps = std::move(swath_maps);
+  run.pasef = false;
+
+  const auto result = filter.filter({run}, fasta_entries, makeExtractParams(0.01), makeExtractParams(0.01), 1);
+  TEST_EQUAL(result.stage1_supported_precursors, 1)
+  TEST_EQUAL(result.stage2_confirmed_precursors, 1)
+  TEST_EQUAL(result.retained_proteins, 1)
+  TEST_EQUAL(result.confirmed_peptides.size(), 1)
+  TEST_EQUAL(result.filtered_fasta.size(), 1)
+  TEST_TRUE(!result.stage2_candidate_scores.empty())
+  TEST_TRUE(result.stage2_candidate_scores[0].best_spectrum_score > 0.0)
+  TEST_TRUE(result.stage2_candidate_scores[0].best_spectrum_poisson_proxy >= 0.0)
+}
+END_SECTION
+
+>>>>>>> 3e92ce57b3 ([FEATURE,TEST] Add peptide-local retention to FastaEvidenceFilter)
 START_SECTION((filter() - empty theoretical search space returns an empty result))
 {
   FastaEvidenceFilter filter = makeFilterForSingleChargePeptides();

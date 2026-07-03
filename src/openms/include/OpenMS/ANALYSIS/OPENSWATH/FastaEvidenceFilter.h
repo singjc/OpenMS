@@ -238,9 +238,34 @@ private:
       double local_pvalue{-1.0};
     };
 
+    struct Stage1PeptideSupport
+    {
+      Size supporting_runs{0};
+      Size ms1_supporting_runs{0};
+      Size ms2_supporting_runs{0};
+      Size best_ms1_hit_count{0};
+      Size best_ms2_fragment_hits{0};
+      Size total_ms1_hit_count{0};
+      Size total_ms2_hit_count{0};
+      double best_ms1_max_intensity{0.0};
+      double best_ms2_max_intensity{0.0};
+      double total_ms1_sum_intensity{0.0};
+      double total_ms2_sum_intensity{0.0};
+    };
+
+    struct Stage2PeptideSupport
+    {
+      double composite_score{0.0};
+      Size best_matched_ions{0};
+      Size supporting_runs{0};
+      Size strong_supporting_runs{0};
+      double best_run_streak_score{0.0};
+    };
+
     struct Stage2ScoreBundle
     {
       std::unordered_map<std::string, Size> best_matched_ions;
+      std::unordered_map<std::string, Stage2PeptideSupport> peptide_support;
       std::unordered_map<std::string, Stage2CandidateScore> candidate_scores;
       std::vector<Stage2ObservationExport> observation_scores;
       std::unordered_map<std::string, double> peptide_pvalues;
@@ -262,6 +287,14 @@ private:
     std::vector<FASTAFile::FASTAEntry> buildReducedTargetFasta_(const std::vector<FASTAFile::FASTAEntry>& fasta_entries,
                                                                 const std::vector<PeptideEntry>& supported_peptides) const;
 
+    std::vector<PeptideEntry> applyStage1PeptideLocalRetention_(
+      const std::vector<PeptideEntry>& peptides,
+      const std::unordered_map<std::string, Stage1PeptideSupport>& peptide_support) const;
+
+    std::vector<PeptideEntry> applyStage2PeptideLocalRetention_(
+      const std::vector<PeptideEntry>& peptides,
+      const std::unordered_map<std::string, Stage2PeptideSupport>& peptide_support) const;
+
     Stage2ScoreBundle scoreStage2_(const std::vector<RunData>& runs,
                                    const std::vector<PeptideEntry>& candidates,
                                    const ChromExtractParams& ms1_params,
@@ -281,6 +314,9 @@ private:
     std::string aggregation_method_{"any"};
     Size stage1_min_supported_precursors_{1};
     std::string stage1_checkpoint_file_;
+    bool stage1_peptide_local_retention_enabled_{false};
+    Size stage1_peptide_local_max_precursors_per_protein_{25};
+    Size stage1_peptide_local_max_precursors_per_unmodified_sequence_{2};
     std::string stage2_checkpoint_directory_;
     std::string stage2_mode_{"lower_order_null"};
     double stage2_max_qvalue_{0.01};
@@ -295,6 +331,9 @@ private:
     Int stage2_lower_order_scored_ranks_{3};
     Int stage2_lower_order_min_null_scores_{256};
     std::string stage2_decoy_prefix_{"DECOY_"};
+    bool stage2_peptide_local_retention_enabled_{false};
+    Size stage2_peptide_local_max_precursors_per_protein_{25};
+    Size stage2_peptide_local_max_precursors_per_unmodified_sequence_{2};
     Size protein_min_confirmed_peptides_{1};
     bool protein_unique_peptides_only_{false};
     bool export_fragments_{false};
