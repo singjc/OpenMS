@@ -3779,7 +3779,6 @@ namespace OpenMS
     std::unordered_map<std::string, Stage1PeptideSupport> stage1_peptide_support;
     std::unordered_map<std::string, PeptideEntry> stage1_diagnostic_peptide_lookup;
     std::unordered_set<std::string> stage1_pre_local_selected_keys;
-    std::unordered_map<std::string, Stage1PeptideSupport> stage1_peptide_support;
     std::vector<PeptideEntry> all_target_peptides;
     std::vector<PeptideEntry> stage1_candidate_peptides_storage;
     const std::vector<PeptideEntry>* stage1_candidate_peptides = nullptr;
@@ -3816,12 +3815,6 @@ namespace OpenMS
         OPENMS_LOG_WARN << "Stage 1 diagnostic export was requested, but checkpoint resume only restores retained precursors."
                         << " Recompute Stage 1 without a checkpoint to export pre-pruning diagnostic support rows."
                         << std::endl;
-      }
-      if (stage1_peptide_local_retention_enabled_)
-      {
-        OPENMS_LOG_INFO << "Stage 1: checkpoint resume bypasses fresh peptide-local retention."
-                        << " Remove the checkpoint to recompute Stage 1 under the current"
-                        << " Stage1:peptide_local_retention settings." << std::endl;
       }
     }
     else if (use_search_space_sharding)
@@ -4105,22 +4098,6 @@ namespace OpenMS
               " in shard " + std::to_string(shard_idx + 1) + "/" + std::to_string(shard_paths.size()));
             const auto& shard_supported_run_counts = shard_stage1_result.first;
             record_stage1_diagnostic_candidates(*shard_stage1_candidates, shard_supported_run_counts);
-            for (const auto& item : shard_stage1_result.second)
-            {
-              auto& merged_support = stage1_peptide_support[item.first];
-              merged_support.supporting_runs += item.second.supporting_runs;
-              merged_support.ms1_supporting_runs += item.second.ms1_supporting_runs;
-              merged_support.ms2_supporting_runs += item.second.ms2_supporting_runs;
-              merged_support.best_ms1_hit_count = std::max(merged_support.best_ms1_hit_count, item.second.best_ms1_hit_count);
-              merged_support.best_ms2_fragment_hits = std::max(merged_support.best_ms2_fragment_hits, item.second.best_ms2_fragment_hits);
-              merged_support.total_ms1_hit_count += item.second.total_ms1_hit_count;
-              merged_support.total_ms2_hit_count += item.second.total_ms2_hit_count;
-              merged_support.best_ms1_max_intensity = std::max(merged_support.best_ms1_max_intensity, item.second.best_ms1_max_intensity);
-              merged_support.best_ms2_max_intensity = std::max(merged_support.best_ms2_max_intensity, item.second.best_ms2_max_intensity);
-              merged_support.total_ms1_sum_intensity += item.second.total_ms1_sum_intensity;
-              merged_support.total_ms2_sum_intensity += item.second.total_ms2_sum_intensity;
-            }
-            const auto& shard_supported_run_counts = shard_stage1_result.first;
             for (const auto& item : shard_stage1_result.second)
             {
               auto& merged_support = stage1_peptide_support[item.first];
