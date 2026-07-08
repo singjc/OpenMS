@@ -275,6 +275,28 @@ namespace OpenMS
       }
     }
 
+    void mergePeptideMetadata_(std::unordered_map<std::string, FastaEvidenceFilter::PeptideEntry>& peptide_map,
+                               const FastaEvidenceFilter::PeptideEntry& peptide)
+    {
+      auto [it, inserted] = peptide_map.emplace(peptide.canonical_key, FastaEvidenceFilter::PeptideEntry{});
+      auto& stored = it->second;
+      if (inserted)
+      {
+        stored = peptide;
+        stored.fragments.clear();
+      }
+
+      stored.protein_refs.insert(stored.protein_refs.end(), peptide.protein_refs.begin(), peptide.protein_refs.end());
+      for (const auto& gene_name_item : peptide.protein_gene_names_by_accession)
+      {
+        std::string& stored_gene_name = stored.protein_gene_names_by_accession[gene_name_item.first];
+        if (stored_gene_name.empty())
+        {
+          stored_gene_name = gene_name_item.second;
+        }
+      }
+    }
+
     void appendShardEntryBuffer_(std::string& buffer, const FastaEvidenceFilter::PeptideEntry& peptide)
     {
       std::ostringstream line_buffer;
@@ -1702,6 +1724,9 @@ namespace OpenMS
     defaults_.setValue("Export:export_fragments", "false",
                        "If true, emit one TSV row per precursor-fragment pair instead of one row per precursor.");
     defaults_.setValidStrings("Export:export_fragments", {"true", "false"});
+    defaults_.setValue("Export:export_stage1_diagnostics", "false",
+                       "If true, keep aggregated Stage-1 precursor support rows for optional TSV export before peptide-local pruning.");
+    defaults_.setValidStrings("Export:export_stage1_diagnostics", {"true", "false"});
     defaults_.setValue("Export:export_stage2_scores", "false",
                        "If true, keep scored Stage-2 export rows for optional TSV export.");
     defaults_.setValidStrings("Export:export_stage2_scores", {"true", "false"});
@@ -1826,6 +1851,7 @@ namespace OpenMS
     protein_unique_peptides_only_ = param_.getValue("Protein:unique_peptides_only").toString() == "true";
 
     export_fragments_ = param_.getValue("Export:export_fragments").toString() == "true";
+    export_stage1_diagnostics_ = param_.getValue("Export:export_stage1_diagnostics").toString() == "true";
     export_stage2_scores_ = param_.getValue("Export:export_stage2_scores").toString() == "true";
 
     enzyme_ = param_.getValue("SearchSpace:enzyme").toString();
@@ -3633,6 +3659,7 @@ namespace OpenMS
         }
 
         Result result;
+        result.stage1_diagnostics_complete = false;
         result.summary = "FastaEvidenceFilter retained " +
                          formatRetentionRatio_(0, total_target_precursors_for_summary) +
                          " peptide precursors and " +
@@ -3672,6 +3699,8 @@ namespace OpenMS
     const bool stage1_checkpoint_enabled = !stage1_checkpoint_file_.empty();
     const bool stage1_resume_from_checkpoint =
       stage1_checkpoint_enabled && File::exists(stage1_checkpoint_file_);
+    const Size required_stage1_supporting_runs =
+      aggregation_method_ == "all" ? runs.size() : 1;
 
     Size total_target_precursors = 0;
     Size total_stage1_candidate_precursors = 0;
@@ -3679,6 +3708,8 @@ namespace OpenMS
     Size total_stage1_jobs = 0;
     std::vector<PeptideEntry> selected_target_peptides;
     std::unordered_map<std::string, Stage1PeptideSupport> stage1_peptide_support;
+    std::unordered_map<std::string, PeptideEntry> stage1_diagnostic_peptide_lookup;
+    std::unordered_set<std::string> stage1_pre_local_selected_keys;
     std::vector<PeptideEntry> all_target_peptides;
     std::vector<PeptideEntry> stage1_candidate_peptides_storage;
     const std::vector<PeptideEntry>* stage1_candidate_peptides = nullptr;
@@ -3709,6 +3740,12 @@ namespace OpenMS
         OPENMS_LOG_INFO << "Stage 1: checkpoint resume bypasses fresh peptide-local retention."
                         << " Remove the checkpoint to recompute Stage 1 under the current"
                         << " Stage1:peptide_local_retention settings." << std::endl;
+      }
+      if (export_stage1_diagnostics_)
+      {
+        OPENMS_LOG_WARN << "Stage 1 diagnostic export was requested, but checkpoint resume only restores retained precursors."
+                        << " Recompute Stage 1 without a checkpoint to export pre-pruning diagnostic support rows."
+                        << std::endl;
       }
     }
     else if (use_search_space_sharding)
@@ -3937,6 +3974,25 @@ namespace OpenMS
           }
           return std::make_pair(std::move(supported_run_counts), std::move(peptide_support));
         };
+
+      const auto record_stage1_diagnostic_candidates =
+        [&](const std::vector<PeptideEntry>& peptide_pool,
+            const std::unordered_map<std::string, Size>& supported_run_counts)
+        {
+          if (!export_stage1_diagnostics_ || supported_run_counts.empty())
+          {
+            return;
+          }
+
+          for (const auto& peptide : peptide_pool)
+          {
+            if (supported_run_counts.find(peptide.canonical_key) == supported_run_counts.end())
+            {
+              continue;
+            }
+            mergePeptideMetadata_(stage1_diagnostic_peptide_lookup, peptide);
+          }
+        };
       try
       {
         if (use_search_space_sharding)
@@ -3972,6 +4028,7 @@ namespace OpenMS
               *shard_stage1_candidates,
               " in shard " + std::to_string(shard_idx + 1) + "/" + std::to_string(shard_paths.size()));
             const auto& shard_supported_run_counts = shard_stage1_result.first;
+            record_stage1_diagnostic_candidates(*shard_stage1_candidates, shard_supported_run_counts);
             for (const auto& item : shard_stage1_result.second)
             {
               auto& merged_support = stage1_peptide_support[item.first];
@@ -3997,6 +4054,7 @@ namespace OpenMS
               if ((aggregation_method_ == "any" && support_it->second > 0) ||
                   (aggregation_method_ == "all" && support_it->second == runs.size()))
               {
+                stage1_pre_local_selected_keys.insert(peptide.canonical_key);
                 selected_target_peptides.push_back(peptide);
               }
             }
@@ -4006,6 +4064,7 @@ namespace OpenMS
         {
           auto stage1_batch_result = run_stage1_batches(*stage1_candidate_peptides, "");
           const auto& supported_run_counts = stage1_batch_result.first;
+          record_stage1_diagnostic_candidates(*stage1_candidate_peptides, supported_run_counts);
           stage1_peptide_support = std::move(stage1_batch_result.second);
           std::unordered_set<std::string> selected_target_keys;
           for (const auto& item : supported_run_counts)
@@ -4016,6 +4075,7 @@ namespace OpenMS
               selected_target_keys.insert(item.first);
             }
           }
+          stage1_pre_local_selected_keys = selected_target_keys;
 
           selected_target_peptides.reserve(selected_target_keys.size());
           for (const auto& peptide : all_target_peptides)
@@ -4072,6 +4132,16 @@ namespace OpenMS
                         << ", max_precursors_per_unmodified_sequence="
                         << stage1_peptide_local_max_precursors_per_unmodified_sequence_
                         << ")." << std::endl;
+      }
+    }
+
+    std::unordered_set<std::string> stage1_final_selected_keys;
+    if (export_stage1_diagnostics_ && !stage1_resume_from_checkpoint)
+    {
+      stage1_final_selected_keys.reserve(selected_target_peptides.size());
+      for (const auto& peptide : selected_target_peptides)
+      {
+        stage1_final_selected_keys.insert(peptide.canonical_key);
       }
     }
 
@@ -4207,6 +4277,79 @@ namespace OpenMS
     Result result;
     result.filtered_fasta = std::move(filtered_fasta);
     result.confirmed_peptides = confirmed_target_peptides;
+    result.stage1_diagnostics_complete = export_stage1_diagnostics_ && !stage1_resume_from_checkpoint;
+    if (result.stage1_diagnostics_complete)
+    {
+      result.stage1_diagnostic_entries.reserve(stage1_peptide_support.size());
+      for (auto& item : stage1_diagnostic_peptide_lookup)
+      {
+        auto& refs = item.second.protein_refs;
+        std::sort(refs.begin(), refs.end());
+        refs.erase(std::unique(refs.begin(), refs.end()), refs.end());
+      }
+
+      for (const auto& item : stage1_peptide_support)
+      {
+        const auto peptide_it = stage1_diagnostic_peptide_lookup.find(item.first);
+        if (peptide_it == stage1_diagnostic_peptide_lookup.end())
+        {
+          continue;
+        }
+
+        const PeptideEntry& peptide = peptide_it->second;
+        Stage1DiagnosticEntry entry;
+        entry.peptide_key = peptide.canonical_key;
+        entry.peptide_sequence = peptide.peptide_sequence;
+        entry.modified_peptide_sequence = peptide.modified_peptide_sequence;
+        entry.precursor_mz = peptide.precursor_mz;
+        entry.precursor_charge = peptide.precursor_charge;
+        entry.protein_refs = peptide.protein_refs;
+        entry.protein_gene_names_by_accession = peptide.protein_gene_names_by_accession;
+        entry.supporting_runs = item.second.supporting_runs;
+        entry.required_supporting_runs = required_stage1_supporting_runs;
+        entry.ms1_supporting_runs = item.second.ms1_supporting_runs;
+        entry.ms2_supporting_runs = item.second.ms2_supporting_runs;
+        entry.best_ms1_hit_count = item.second.best_ms1_hit_count;
+        entry.best_ms2_fragment_hits = item.second.best_ms2_fragment_hits;
+        entry.total_ms1_hit_count = item.second.total_ms1_hit_count;
+        entry.total_ms2_hit_count = item.second.total_ms2_hit_count;
+        entry.best_ms1_max_intensity = item.second.best_ms1_max_intensity;
+        entry.best_ms2_max_intensity = item.second.best_ms2_max_intensity;
+        entry.total_ms1_sum_intensity = item.second.total_ms1_sum_intensity;
+        entry.total_ms2_sum_intensity = item.second.total_ms2_sum_intensity;
+        entry.passes_run_aggregation = stage1_pre_local_selected_keys.find(item.first) != stage1_pre_local_selected_keys.end();
+        entry.retained_after_stage1 = stage1_final_selected_keys.find(item.first) != stage1_final_selected_keys.end();
+        if (entry.retained_after_stage1)
+        {
+          entry.stage1_status = "retained";
+        }
+        else if (entry.passes_run_aggregation)
+        {
+          entry.stage1_status = "pruned_by_stage1_local_retention";
+        }
+        else
+        {
+          entry.stage1_status = "failed_run_aggregation";
+        }
+        result.stage1_diagnostic_entries.push_back(std::move(entry));
+      }
+
+      std::sort(result.stage1_diagnostic_entries.begin(), result.stage1_diagnostic_entries.end(),
+                [](const Stage1DiagnosticEntry& lhs, const Stage1DiagnosticEntry& rhs)
+                {
+                  if (lhs.retained_after_stage1 != rhs.retained_after_stage1) return lhs.retained_after_stage1 > rhs.retained_after_stage1;
+                  if (lhs.passes_run_aggregation != rhs.passes_run_aggregation) return lhs.passes_run_aggregation > rhs.passes_run_aggregation;
+                  if (lhs.supporting_runs != rhs.supporting_runs) return lhs.supporting_runs > rhs.supporting_runs;
+                  if (lhs.ms2_supporting_runs != rhs.ms2_supporting_runs) return lhs.ms2_supporting_runs > rhs.ms2_supporting_runs;
+                  if (lhs.best_ms2_fragment_hits != rhs.best_ms2_fragment_hits) return lhs.best_ms2_fragment_hits > rhs.best_ms2_fragment_hits;
+                  if (lhs.total_ms2_hit_count != rhs.total_ms2_hit_count) return lhs.total_ms2_hit_count > rhs.total_ms2_hit_count;
+                  if (lhs.ms1_supporting_runs != rhs.ms1_supporting_runs) return lhs.ms1_supporting_runs > rhs.ms1_supporting_runs;
+                  if (lhs.best_ms1_hit_count != rhs.best_ms1_hit_count) return lhs.best_ms1_hit_count > rhs.best_ms1_hit_count;
+                  if (lhs.precursor_mz != rhs.precursor_mz) return lhs.precursor_mz < rhs.precursor_mz;
+                  if (lhs.precursor_charge != rhs.precursor_charge) return lhs.precursor_charge < rhs.precursor_charge;
+                  return lhs.peptide_key < rhs.peptide_key;
+                });
+    }
     if (export_stage2_scores_)
     {
       if (stage2_mode_ == "lower_order_null" && !stage2_scores.observation_scores.empty())

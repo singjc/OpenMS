@@ -73,6 +73,10 @@ protected:
     setValidFormats_("out_fasta", {"fasta"});
     registerOutputFile_("out_peptides", "<file>", "", "Filtered peptide precursor table in TSV format.");
     setValidFormats_("out_peptides", {"tsv"});
+    registerOutputFile_("out_stage1_diagnostics", "<file>", "",
+                        "Optional Stage-1 diagnostic precursor table in TSV format before peptide-local pruning.",
+                        false);
+    setValidFormats_("out_stage1_diagnostics", {"tsv"});
     registerOutputFile_("out_stage2_scores", "<file>", "",
                         "Optional Stage-2 scored observation table in TSV format for score-distribution inspection.",
                         false);
@@ -157,6 +161,7 @@ protected:
     const std::string database_file = getStringOption_("database");
     const std::string out_fasta_file = getStringOption_("out_fasta");
     const std::string out_peptides_file = getStringOption_("out_peptides");
+    const std::string out_stage1_diagnostics_file = getStringOption_("out_stage1_diagnostics");
     const std::string out_stage2_scores_file = getStringOption_("out_stage2_scores");
 
     if (File::isDirectory(database_file))
@@ -172,6 +177,11 @@ protected:
     if (File::exists(out_peptides_file) && File::isDirectory(out_peptides_file))
     {
       writeLogError_("Error: Parameter '-out_peptides' must point to a TSV file, not a directory: '" + out_peptides_file + "'.");
+      return ILLEGAL_PARAMETERS;
+    }
+    if (!out_stage1_diagnostics_file.empty() && File::exists(out_stage1_diagnostics_file) && File::isDirectory(out_stage1_diagnostics_file))
+    {
+      writeLogError_("Error: Parameter '-out_stage1_diagnostics' must point to a TSV file, not a directory: '" + out_stage1_diagnostics_file + "'.");
       return ILLEGAL_PARAMETERS;
     }
     if (!out_stage2_scores_file.empty() && File::exists(out_stage2_scores_file) && File::isDirectory(out_stage2_scores_file))
@@ -329,6 +339,7 @@ protected:
     algorithm_params.setValue("SearchSpace:sharding:temp_directory", tmp_dir);
     algorithm_params.setValue("SearchSpace:sharding:keep_temporary_files", keep_cached_files ? "true" : "false");
     algorithm_params.update(getParam_().copy("Export:"));
+    algorithm_params.setValue("Export:export_stage1_diagnostics", out_stage1_diagnostics_file.empty() ? "false" : "true");
     algorithm_params.setValue("Export:export_stage2_scores", out_stage2_scores_file.empty() ? "false" : "true");
     algorithm.setParameters(algorithm_params);
     algorithm.setLogType(log_type_);
@@ -339,6 +350,16 @@ protected:
     writePeptideTable_(out_peptides_file, result.confirmed_peptides,
                        getParam_().getValue("Export:export_fragments").toString() == "true",
                        modified_sequence_format);
+    if (!out_stage1_diagnostics_file.empty())
+    {
+      writeStage1DiagnosticTable_(out_stage1_diagnostics_file, result.stage1_diagnostic_entries, modified_sequence_format);
+      if (!result.stage1_diagnostics_complete)
+      {
+        OPENMS_LOG_WARN << "Stage-1 diagnostics were requested, but only a partial or empty export was available."
+                        << " Recompute Stage 1 without checkpoint resume to export pre-pruning support rows."
+                        << std::endl;
+      }
+    }
     if (!out_stage2_scores_file.empty())
     {
       writeStage2ScoreTable_(out_stage2_scores_file, result.stage2_candidate_scores, modified_sequence_format);
@@ -579,6 +600,61 @@ private:
       }
       out << '\t'
           << (score.accepted ? 1 : 0) << '\n';
+    }
+  }
+
+  static void writeStage1DiagnosticTable_(const std::string& filename,
+                                          const std::vector<FastaEvidenceFilter::Stage1DiagnosticEntry>& entries,
+                                          const std::string& modified_sequence_format)
+  {
+    std::ofstream out(filename.c_str());
+    if (!out)
+    {
+      throw Exception::FileNotWritable(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION, filename);
+    }
+
+    out << "peptide_key\tprotein_accession\tgene_name\tpeptide_sequence\tmodified_peptide_sequence\tprecursor_mz\tprecursor_charge\tsupporting_runs\trequired_supporting_runs\tms1_supporting_runs\tms2_supporting_runs\tbest_ms1_hit_count\tbest_ms2_fragment_hits\ttotal_ms1_hit_count\ttotal_ms2_hit_count\tbest_ms1_max_intensity\tbest_ms2_max_intensity\ttotal_ms1_sum_intensity\ttotal_ms2_sum_intensity\tpasses_run_aggregation\tretained_after_stage1\tstage1_status\n";
+    out << std::fixed << std::setprecision(6);
+    std::unordered_map<std::string, std::string> modified_sequence_cache;
+    modified_sequence_cache.reserve(std::min<Size>(entries.size(), 100000));
+    for (const auto& entry : entries)
+    {
+      std::vector<std::string> gene_names;
+      gene_names.reserve(entry.protein_refs.size());
+      for (const auto& protein_ref : entry.protein_refs)
+      {
+        const auto gene_name_it = entry.protein_gene_names_by_accession.find(protein_ref);
+        gene_names.push_back(gene_name_it != entry.protein_gene_names_by_accession.end() ? gene_name_it->second : std::string{});
+      }
+
+      const std::string protein_accessions = joinNormalizedProteinAccessions_(entry.protein_refs);
+      const std::string joined_gene_names = ListUtils::concatenate(gene_names, ";");
+      const std::string& exported_modified_sequence = formatModifiedPeptideSequence_(entry.modified_peptide_sequence,
+                                                                                     modified_sequence_format,
+                                                                                     modified_sequence_cache);
+
+      out << entry.peptide_key << '\t'
+          << protein_accessions << '\t'
+          << joined_gene_names << '\t'
+          << entry.peptide_sequence << '\t'
+          << exported_modified_sequence << '\t'
+          << entry.precursor_mz << '\t'
+          << entry.precursor_charge << '\t'
+          << entry.supporting_runs << '\t'
+          << entry.required_supporting_runs << '\t'
+          << entry.ms1_supporting_runs << '\t'
+          << entry.ms2_supporting_runs << '\t'
+          << entry.best_ms1_hit_count << '\t'
+          << entry.best_ms2_fragment_hits << '\t'
+          << entry.total_ms1_hit_count << '\t'
+          << entry.total_ms2_hit_count << '\t'
+          << entry.best_ms1_max_intensity << '\t'
+          << entry.best_ms2_max_intensity << '\t'
+          << entry.total_ms1_sum_intensity << '\t'
+          << entry.total_ms2_sum_intensity << '\t'
+          << (entry.passes_run_aggregation ? 1 : 0) << '\t'
+          << (entry.retained_after_stage1 ? 1 : 0) << '\t'
+          << entry.stage1_status << '\n';
     }
   }
 };

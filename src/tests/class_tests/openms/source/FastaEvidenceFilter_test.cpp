@@ -133,6 +133,7 @@ START_SECTION(FastaEvidenceFilter())
   TEST_EQUAL(filter.getParameters().getValue("Stage2:checkpoint_directory").toString(), "")
   TEST_EQUAL(static_cast<Int>(filter.getParameters().getValue("Stage2:precursor_batch_size")), 100000)
   TEST_EQUAL(static_cast<Int>(filter.getParameters().getValue("Stage2:auto_checkpoint_min_precursors")), 10000000)
+  TEST_EQUAL(filter.getParameters().getValue("Export:export_stage1_diagnostics").toString(), "false")
   TEST_EQUAL(filter.getParameters().getValue("Export:modified_sequence_format").toString(), "unimod_accession")
   TEST_EQUAL(static_cast<Int>(filter.getParameters().getValue("Protein:min_confirmed_peptides")), 1)
 }
@@ -413,6 +414,81 @@ START_SECTION((filter() - stage1 peptide-local retention prunes weaker same-prot
   TEST_EQUAL(result.retained_proteins, 1)
   TEST_EQUAL(result.confirmed_peptides.size(), 1)
   TEST_EQUAL(result.confirmed_peptides[0].peptide_sequence, "AAAAAAK")
+}
+END_SECTION
+
+START_SECTION((filter() - stage1 diagnostic export captures pre-pruning support and local-retention pruning))
+{
+  FastaEvidenceFilter filter = makeFilterForSingleChargePeptides();
+  Param params = filter.getParameters();
+  params.setValue("SearchSpace:min_size", 7);
+  params.setValue("SearchSpace:max_size", 7);
+  params.setValue("Stage1:evidence_sources", "ms1");
+  params.setValue("Stage1:min_supported_precursors", 1);
+  params.setValue("Stage1:peptide_local_retention:enabled", "true");
+  params.setValue("Stage1:peptide_local_retention:max_precursors_per_protein", 1);
+  params.setValue("Stage1:peptide_local_retention:max_precursors_per_unmodified_sequence", 0);
+  params.setValue("Stage2:mode", "raw_score");
+  params.setValue("Stage2:min_matched_ions", 1);
+  params.setValue("Export:export_stage1_diagnostics", "true");
+  filter.setParameters(params);
+
+  const vector<FASTAFile::FASTAEntry> fasta_entries{makeFastaEntry("protA", "AAAAAAKCCCCCCK")};
+  const auto peptides = filter.generatePeptideEntries(fasta_entries);
+  TEST_EQUAL(peptides.size(), 2)
+
+  const auto peptide_a_it = find_if(peptides.begin(), peptides.end(),
+    [](const auto& peptide) { return peptide.peptide_sequence == "AAAAAAK"; });
+  const auto peptide_c_it = find_if(peptides.begin(), peptides.end(),
+    [](const auto& peptide) { return peptide.peptide_sequence == "CCCCCCK"; });
+  TEST_TRUE(peptide_a_it != peptides.end())
+  TEST_TRUE(peptide_c_it != peptides.end())
+
+  vector<pair<double, double>> stage2_peaks_a;
+  vector<pair<double, double>> stage2_peaks_c;
+  for (const auto& fragment : peptide_a_it->fragments)
+  {
+    stage2_peaks_a.emplace_back(fragment.product_mz, 1200.0);
+  }
+  for (const auto& fragment : peptide_c_it->fragments)
+  {
+    stage2_peaks_c.emplace_back(fragment.product_mz, 900.0);
+  }
+
+  vector<OpenSwath::SwathMap> swath_maps;
+  swath_maps.push_back(makeSwathMap(true, 0.0, 0.0,
+    {makeSpectrum(10.0, {{peptide_a_it->precursor_mz, 2000.0}, {peptide_c_it->precursor_mz, 800.0}})}));
+  swath_maps.push_back(makeSwathMap(false, peptide_a_it->precursor_mz - 10.0, peptide_a_it->precursor_mz + 10.0,
+                                    {makeSpectrum(12.0, stage2_peaks_a)}));
+  swath_maps.push_back(makeSwathMap(false, peptide_c_it->precursor_mz - 10.0, peptide_c_it->precursor_mz + 10.0,
+                                    {makeSpectrum(13.0, stage2_peaks_c)}));
+
+  FastaEvidenceFilter::RunData run;
+  run.swath_maps = std::move(swath_maps);
+  run.pasef = false;
+
+  const auto result = filter.filter({run}, fasta_entries, makeExtractParams(0.01), makeExtractParams(0.01), 1);
+  TEST_TRUE(result.stage1_diagnostics_complete)
+  TEST_EQUAL(result.stage1_diagnostic_entries.size(), 2)
+
+  const auto diagnostic_a_it = find_if(result.stage1_diagnostic_entries.begin(), result.stage1_diagnostic_entries.end(),
+    [](const auto& entry) { return entry.peptide_sequence == "AAAAAAK"; });
+  const auto diagnostic_c_it = find_if(result.stage1_diagnostic_entries.begin(), result.stage1_diagnostic_entries.end(),
+    [](const auto& entry) { return entry.peptide_sequence == "CCCCCCK"; });
+  TEST_TRUE(diagnostic_a_it != result.stage1_diagnostic_entries.end())
+  TEST_TRUE(diagnostic_c_it != result.stage1_diagnostic_entries.end())
+
+  TEST_EQUAL(diagnostic_a_it->supporting_runs, 1)
+  TEST_EQUAL(diagnostic_a_it->required_supporting_runs, 1)
+  TEST_TRUE(diagnostic_a_it->passes_run_aggregation)
+  TEST_TRUE(diagnostic_a_it->retained_after_stage1)
+  TEST_EQUAL(diagnostic_a_it->stage1_status, "retained")
+
+  TEST_EQUAL(diagnostic_c_it->supporting_runs, 1)
+  TEST_EQUAL(diagnostic_c_it->required_supporting_runs, 1)
+  TEST_TRUE(diagnostic_c_it->passes_run_aggregation)
+  TEST_FALSE(diagnostic_c_it->retained_after_stage1)
+  TEST_EQUAL(diagnostic_c_it->stage1_status, "pruned_by_stage1_local_retention")
 }
 END_SECTION
 
