@@ -1656,15 +1656,12 @@ namespace OpenMS
     defaults_.setMinInt("Stage1:max_concurrent_runs", 0);
     defaults_.setValue("Stage1:checkpoint_file", "",
                        "Optional path to a Stage-1 checkpoint TSV. If the file exists, Stage 1 is resumed from it and skipped. If the file does not exist, the retained Stage-1 precursors are written there after Stage 1 completes.");
-    defaults_.setValue("Stage1:peptide_local_retention:enabled", "false",
-                       "If true, prune Stage-1 supported precursors by peptide-local evidence within each protein and optional unmodified-sequence groups.");
-    defaults_.setValidStrings("Stage1:peptide_local_retention:enabled", {"true", "false"});
-    defaults_.setValue("Stage1:peptide_local_retention:max_precursors_per_protein", 25,
-                       "When Stage1:peptide_local_retention:enabled is true, keep at most this many peptide precursors per protein, ranked by aggregated stage-1 evidence. 0 disables the per-protein cap.");
-    defaults_.setMinInt("Stage1:peptide_local_retention:max_precursors_per_protein", 0);
-    defaults_.setValue("Stage1:peptide_local_retention:max_precursors_per_unmodified_sequence", 2,
-                       "When Stage1:peptide_local_retention:enabled is true, keep at most this many precursor variants per unmodified peptide sequence after the per-protein cap. 0 disables the sequence-level cap.");
-    defaults_.setMinInt("Stage1:peptide_local_retention:max_precursors_per_unmodified_sequence", 0);
+    defaults_.setValue("Stage1:peptide_local_rescue:enabled", "false",
+                       "If true, rescue a bounded number of sibling precursor variants from the same unmodified peptide sequence once any exact Stage-1 precursor variant has supporting evidence.");
+    defaults_.setValidStrings("Stage1:peptide_local_rescue:enabled", {"true", "false"});
+    defaults_.setValue("Stage1:peptide_local_rescue:max_additional_precursors_per_unmodified_sequence", 2,
+                       "When Stage1:peptide_local_rescue:enabled is true, keep up to this many additional unsupported precursor variants per supported unmodified peptide sequence. 0 disables rescue.");
+    defaults_.setMinInt("Stage1:peptide_local_rescue:max_additional_precursors_per_unmodified_sequence", 0);
     defaults_.setValue("Stage1:peptide_local_retention:enabled", "false",
                        "If true, prune Stage-1 supported precursors by peptide-local evidence within each protein and optional unmodified-sequence groups.");
     defaults_.setValidStrings("Stage1:peptide_local_retention:enabled", {"true", "false"});
@@ -1728,15 +1725,6 @@ namespace OpenMS
                        "When Stage2:peptide_local_retention:enabled is true, keep at most this many precursor variants per unmodified peptide sequence after the per-protein cap. 0 disables the sequence-level cap.");
     defaults_.setMinInt("Stage2:peptide_local_retention:max_precursors_per_unmodified_sequence", 0);
     defaults_.insert("Stage2:tag_like:", TagLikeFragmentPatternScorer().getParameters());
-    defaults_.setValue("Stage2:peptide_local_retention:enabled", "false",
-                       "If true, prune Stage-2 confirmed precursors by peptide-local evidence within each protein and optional unmodified-sequence groups.");
-    defaults_.setValidStrings("Stage2:peptide_local_retention:enabled", {"true", "false"});
-    defaults_.setValue("Stage2:peptide_local_retention:max_precursors_per_protein", 25,
-                       "When Stage2:peptide_local_retention:enabled is true, keep at most this many confirmed peptide precursors per protein, ranked by Stage-2 composite peptide evidence. 0 disables the per-protein cap.");
-    defaults_.setMinInt("Stage2:peptide_local_retention:max_precursors_per_protein", 0);
-    defaults_.setValue("Stage2:peptide_local_retention:max_precursors_per_unmodified_sequence", 2,
-                       "When Stage2:peptide_local_retention:enabled is true, keep at most this many precursor variants per unmodified peptide sequence after the per-protein cap. 0 disables the sequence-level cap.");
-    defaults_.setMinInt("Stage2:peptide_local_retention:max_precursors_per_unmodified_sequence", 0);
     defaults_.setValue("Protein:min_confirmed_peptides", 1,
                        "Minimum number of confirmed peptides needed to keep a protein.");
     defaults_.setMinInt("Protein:min_confirmed_peptides", 1);
@@ -1835,6 +1823,10 @@ namespace OpenMS
     stage1_precursor_batch_size_ = static_cast<Size>(param_.getValue("Stage1:precursor_batch_size"));
     stage1_max_concurrent_runs_ = static_cast<Size>(param_.getValue("Stage1:max_concurrent_runs"));
     stage1_checkpoint_file_ = param_.getValue("Stage1:checkpoint_file").toString();
+    stage1_peptide_local_rescue_enabled_ =
+      param_.getValue("Stage1:peptide_local_rescue:enabled").toString() == "true";
+    stage1_peptide_local_rescue_max_additional_precursors_per_unmodified_sequence_ =
+      static_cast<Size>(param_.getValue("Stage1:peptide_local_rescue:max_additional_precursors_per_unmodified_sequence"));
     stage1_peptide_local_retention_enabled_ =
       param_.getValue("Stage1:peptide_local_retention:enabled").toString() == "true";
     stage1_peptide_local_max_precursors_per_protein_ =
@@ -2400,6 +2392,141 @@ namespace OpenMS
         if (lhs.precursor_charge != rhs.precursor_charge) return lhs.precursor_charge < rhs.precursor_charge;
         return lhs.internal_key < rhs.internal_key;
       });
+  }
+
+  std::vector<FastaEvidenceFilter::PeptideEntry> FastaEvidenceFilter::applyStage1PeptideLocalRescue_(
+    const std::vector<PeptideEntry>& supported_peptides,
+    const std::vector<PeptideEntry>& rescue_candidates,
+    const std::unordered_map<std::string, Stage1PeptideSupport>& peptide_support) const
+  {
+    if (!stage1_peptide_local_rescue_enabled_ ||
+        stage1_peptide_local_rescue_max_additional_precursors_per_unmodified_sequence_ == 0 ||
+        supported_peptides.empty() ||
+        rescue_candidates.empty())
+    {
+      return supported_peptides;
+    }
+
+    const auto make_sequence_key = [](const PeptideEntry& peptide) -> std::string
+    {
+      return peptide.peptide_sequence.empty() ? peptide.modified_peptide_sequence : peptide.peptide_sequence;
+    };
+
+    std::unordered_map<std::string, std::vector<const PeptideEntry*>> supported_by_sequence;
+    supported_by_sequence.reserve(supported_peptides.size());
+    for (const auto& peptide : supported_peptides)
+    {
+      supported_by_sequence[make_sequence_key(peptide)].push_back(&peptide);
+    }
+
+    std::unordered_map<std::string, std::vector<const PeptideEntry*>> rescue_by_sequence;
+    rescue_by_sequence.reserve(rescue_candidates.size());
+    for (const auto& peptide : rescue_candidates)
+    {
+      const std::string sequence_key = make_sequence_key(peptide);
+      if (supported_by_sequence.find(sequence_key) == supported_by_sequence.end())
+      {
+        continue;
+      }
+      rescue_by_sequence[sequence_key].push_back(&peptide);
+    }
+
+    auto stronger_supported = [&](const PeptideEntry& lhs, const PeptideEntry& rhs)
+    {
+      static const Stage1PeptideSupport empty_support;
+      const auto lhs_it = peptide_support.find(lhs.canonical_key);
+      const auto rhs_it = peptide_support.find(rhs.canonical_key);
+      const Stage1PeptideSupport& lhs_support = lhs_it != peptide_support.end() ? lhs_it->second : empty_support;
+      const Stage1PeptideSupport& rhs_support = rhs_it != peptide_support.end() ? rhs_it->second : empty_support;
+
+      if (lhs_support.supporting_runs != rhs_support.supporting_runs) return lhs_support.supporting_runs > rhs_support.supporting_runs;
+      if (lhs_support.ms2_supporting_runs != rhs_support.ms2_supporting_runs) return lhs_support.ms2_supporting_runs > rhs_support.ms2_supporting_runs;
+      if (lhs_support.best_ms2_fragment_hits != rhs_support.best_ms2_fragment_hits) return lhs_support.best_ms2_fragment_hits > rhs_support.best_ms2_fragment_hits;
+      if (lhs_support.total_ms2_hit_count != rhs_support.total_ms2_hit_count) return lhs_support.total_ms2_hit_count > rhs_support.total_ms2_hit_count;
+      if (lhs_support.best_ms2_max_intensity != rhs_support.best_ms2_max_intensity) return lhs_support.best_ms2_max_intensity > rhs_support.best_ms2_max_intensity;
+      if (lhs_support.total_ms2_sum_intensity != rhs_support.total_ms2_sum_intensity) return lhs_support.total_ms2_sum_intensity > rhs_support.total_ms2_sum_intensity;
+      if (lhs_support.ms1_supporting_runs != rhs_support.ms1_supporting_runs) return lhs_support.ms1_supporting_runs > rhs_support.ms1_supporting_runs;
+      if (lhs_support.best_ms1_hit_count != rhs_support.best_ms1_hit_count) return lhs_support.best_ms1_hit_count > rhs_support.best_ms1_hit_count;
+      if (lhs_support.total_ms1_hit_count != rhs_support.total_ms1_hit_count) return lhs_support.total_ms1_hit_count > rhs_support.total_ms1_hit_count;
+      if (lhs_support.best_ms1_max_intensity != rhs_support.best_ms1_max_intensity) return lhs_support.best_ms1_max_intensity > rhs_support.best_ms1_max_intensity;
+      if (lhs_support.total_ms1_sum_intensity != rhs_support.total_ms1_sum_intensity) return lhs_support.total_ms1_sum_intensity > rhs_support.total_ms1_sum_intensity;
+      if (lhs.precursor_mz != rhs.precursor_mz) return lhs.precursor_mz < rhs.precursor_mz;
+      if (lhs.precursor_charge != rhs.precursor_charge) return lhs.precursor_charge < rhs.precursor_charge;
+      return lhs.internal_key < rhs.internal_key;
+    };
+
+    auto rescue_better = [&](const PeptideEntry& lhs,
+                             const PeptideEntry& rhs,
+                             const std::vector<const PeptideEntry*>& anchors)
+    {
+      auto relation_metrics = [&](const PeptideEntry& candidate)
+      {
+        bool same_modified_sequence = false;
+        int min_charge_delta = std::numeric_limits<int>::max();
+        double min_mz_delta = std::numeric_limits<double>::infinity();
+        for (const auto* anchor : anchors)
+        {
+          same_modified_sequence = same_modified_sequence ||
+                                   candidate.modified_peptide_sequence == anchor->modified_peptide_sequence;
+          min_charge_delta = std::min(min_charge_delta,
+                                      std::abs(candidate.precursor_charge - anchor->precursor_charge));
+          min_mz_delta = std::min(min_mz_delta,
+                                  std::abs(candidate.precursor_mz - anchor->precursor_mz));
+        }
+        return std::make_tuple(!same_modified_sequence,
+                               min_charge_delta,
+                               min_mz_delta,
+                               candidate.precursor_charge,
+                               candidate.precursor_mz,
+                               candidate.internal_key);
+      };
+
+      return relation_metrics(lhs) < relation_metrics(rhs);
+    };
+
+    std::vector<PeptideEntry> retained = supported_peptides;
+    std::sort(retained.begin(), retained.end(), stronger_supported);
+
+    std::unordered_set<std::string> retained_keys;
+    retained_keys.reserve(retained.size() + rescue_candidates.size());
+    for (const auto& peptide : retained)
+    {
+      retained_keys.insert(peptide.internal_key);
+    }
+
+    for (const auto& sequence_item : rescue_by_sequence)
+    {
+      const auto supported_it = supported_by_sequence.find(sequence_item.first);
+      if (supported_it == supported_by_sequence.end())
+      {
+        continue;
+      }
+
+      auto group = sequence_item.second;
+      std::sort(group.begin(), group.end(),
+                [&](const PeptideEntry* lhs, const PeptideEntry* rhs)
+                {
+                  return rescue_better(*lhs, *rhs, supported_it->second);
+                });
+
+      Size rescued_for_sequence = 0;
+      for (const auto* candidate : group)
+      {
+        if (retained_keys.find(candidate->internal_key) != retained_keys.end())
+        {
+          continue;
+        }
+        retained.push_back(*candidate);
+        retained_keys.insert(candidate->internal_key);
+        ++rescued_for_sequence;
+        if (rescued_for_sequence >= stage1_peptide_local_rescue_max_additional_precursors_per_unmodified_sequence_)
+        {
+          break;
+        }
+      }
+    }
+
+    return retained;
   }
 
   std::vector<FastaEvidenceFilter::PeptideEntry> FastaEvidenceFilter::applyStage2PeptideLocalRetention_(
@@ -3779,6 +3906,7 @@ namespace OpenMS
     std::unordered_map<std::string, Stage1PeptideSupport> stage1_peptide_support;
     std::unordered_map<std::string, PeptideEntry> stage1_diagnostic_peptide_lookup;
     std::unordered_set<std::string> stage1_pre_local_selected_keys;
+    std::unordered_set<std::string> stage1_rescued_selected_keys;
     std::vector<PeptideEntry> all_target_peptides;
     std::vector<PeptideEntry> stage1_candidate_peptides_storage;
     const std::vector<PeptideEntry>* stage1_candidate_peptides = nullptr;
@@ -3809,6 +3937,12 @@ namespace OpenMS
         OPENMS_LOG_INFO << "Stage 1: checkpoint resume bypasses fresh peptide-local retention."
                         << " Remove the checkpoint to recompute Stage 1 under the current"
                         << " Stage1:peptide_local_retention settings." << std::endl;
+      }
+      if (stage1_peptide_local_rescue_enabled_)
+      {
+        OPENMS_LOG_INFO << "Stage 1: checkpoint resume bypasses fresh peptide-local rescue."
+                        << " Remove the checkpoint to recompute Stage 1 under the current"
+                        << " Stage1:peptide_local_rescue settings." << std::endl;
       }
       if (export_stage1_diagnostics_)
       {
@@ -4189,6 +4323,104 @@ namespace OpenMS
                       << std::chrono::duration<double>(std::chrono::steady_clock::now() - stage1_begin).count()
                       << " s." << std::endl;
 
+      if (stage1_peptide_local_rescue_enabled_ &&
+          stage1_peptide_local_rescue_max_additional_precursors_per_unmodified_sequence_ > 0 &&
+          !selected_target_peptides.empty())
+      {
+        const auto sequence_key_for = [](const PeptideEntry& peptide) -> std::string
+        {
+          return peptide.peptide_sequence.empty() ? peptide.modified_peptide_sequence : peptide.peptide_sequence;
+        };
+
+        std::unordered_set<std::string> supported_sequence_keys;
+        supported_sequence_keys.reserve(selected_target_peptides.size());
+        std::unordered_set<std::string> exact_selected_keys;
+        exact_selected_keys.reserve(selected_target_peptides.size());
+        for (const auto& peptide : selected_target_peptides)
+        {
+          supported_sequence_keys.insert(sequence_key_for(peptide));
+          exact_selected_keys.insert(peptide.canonical_key);
+        }
+
+        std::vector<PeptideEntry> stage1_rescue_candidates;
+        std::unordered_set<std::string> seen_rescue_candidate_keys;
+        seen_rescue_candidate_keys.reserve(selected_target_peptides.size() * 2);
+        const auto collect_stage1_rescue_candidates =
+          [&](const std::vector<PeptideEntry>& peptide_pool)
+          {
+            for (const auto& peptide : peptide_pool)
+            {
+              if (supported_sequence_keys.find(sequence_key_for(peptide)) == supported_sequence_keys.end())
+              {
+                continue;
+              }
+              if (exact_selected_keys.find(peptide.canonical_key) != exact_selected_keys.end())
+              {
+                continue;
+              }
+              if (!seen_rescue_candidate_keys.insert(peptide.canonical_key).second)
+              {
+                continue;
+              }
+              stage1_rescue_candidates.push_back(peptide);
+            }
+          };
+
+        if (use_search_space_sharding)
+        {
+          for (Size shard_idx = 0; shard_idx < shard_paths.size(); ++shard_idx)
+          {
+            if (!File::exists(shard_paths[shard_idx]))
+            {
+              continue;
+            }
+
+            auto shard_peptides = loadMergedShardEntries_(shard_paths[shard_idx]);
+            if (shard_peptides.empty())
+            {
+              continue;
+            }
+
+            const std::vector<PeptideEntry>* shard_stage1_candidates = &shard_peptides;
+            std::vector<PeptideEntry> filtered_shard_peptides;
+            if (stage1_apply_ms2_prefilter)
+            {
+              filtered_shard_peptides = filterPeptidesByMzCoverage_(shard_peptides, stage1_coverage);
+              shard_stage1_candidates = &filtered_shard_peptides;
+            }
+            collect_stage1_rescue_candidates(*shard_stage1_candidates);
+          }
+        }
+        else
+        {
+          collect_stage1_rescue_candidates(*stage1_candidate_peptides);
+        }
+
+        const Size before_rescue = selected_target_peptides.size();
+        selected_target_peptides = applyStage1PeptideLocalRescue_(selected_target_peptides,
+                                                                  stage1_rescue_candidates,
+                                                                  stage1_peptide_support);
+        stage1_rescued_selected_keys.clear();
+        stage1_rescued_selected_keys.reserve(selected_target_peptides.size());
+        for (const auto& peptide : selected_target_peptides)
+        {
+          if (exact_selected_keys.find(peptide.canonical_key) == exact_selected_keys.end())
+          {
+            stage1_rescued_selected_keys.insert(peptide.canonical_key);
+          }
+          if (export_stage1_diagnostics_)
+          {
+            mergePeptideMetadata_(stage1_diagnostic_peptide_lookup, peptide);
+          }
+        }
+        OPENMS_LOG_INFO << "Stage 1 peptide-local rescue kept "
+                        << before_rescue << " exact-supported precursors and rescued "
+                        << stage1_rescued_selected_keys.size()
+                        << " sibling variants (max_additional_precursors_per_unmodified_sequence="
+                        << stage1_peptide_local_rescue_max_additional_precursors_per_unmodified_sequence_
+                        << ")." << std::endl;
+      }
+
       if (stage1_peptide_local_retention_enabled_)
       {
         const Size before_retention = selected_target_peptides.size();
@@ -4211,20 +4443,7 @@ namespace OpenMS
       for (const auto& peptide : selected_target_peptides)
       {
         stage1_final_selected_keys.insert(peptide.canonical_key);
-      }
-
-      if (stage1_peptide_local_retention_enabled_)
-      {
-        const Size before_retention = selected_target_peptides.size();
-        selected_target_peptides = applyStage1PeptideLocalRetention_(selected_target_peptides,
-                                                                     stage1_peptide_support);
-        OPENMS_LOG_INFO << "Stage 1 peptide-local retention kept "
-                        << selected_target_peptides.size() << " of " << before_retention
-                        << " supported precursors (max_precursors_per_protein="
-                        << stage1_peptide_local_max_precursors_per_protein_
-                        << ", max_precursors_per_unmodified_sequence="
-                        << stage1_peptide_local_max_precursors_per_unmodified_sequence_
-                        << ")." << std::endl;
+        mergePeptideMetadata_(stage1_diagnostic_peptide_lookup, peptide);
       }
     }
 
@@ -4364,7 +4583,23 @@ namespace OpenMS
     result.stage1_diagnostics_complete = export_stage1_diagnostics_ && !stage1_resume_from_checkpoint;
     if (result.stage1_diagnostics_complete)
     {
-      result.stage1_diagnostic_entries.reserve(stage1_peptide_support.size());
+      std::unordered_set<std::string> diagnostic_keys;
+      diagnostic_keys.reserve(stage1_peptide_support.size() + stage1_final_selected_keys.size() +
+                              stage1_rescued_selected_keys.size());
+      for (const auto& item : stage1_peptide_support)
+      {
+        diagnostic_keys.insert(item.first);
+      }
+      for (const auto& key : stage1_final_selected_keys)
+      {
+        diagnostic_keys.insert(key);
+      }
+      for (const auto& key : stage1_rescued_selected_keys)
+      {
+        diagnostic_keys.insert(key);
+      }
+
+      result.stage1_diagnostic_entries.reserve(diagnostic_keys.size());
       for (auto& item : stage1_diagnostic_peptide_lookup)
       {
         auto& refs = item.second.protein_refs;
@@ -4372,15 +4607,18 @@ namespace OpenMS
         refs.erase(std::unique(refs.begin(), refs.end()), refs.end());
       }
 
-      for (const auto& item : stage1_peptide_support)
+      for (const auto& key : diagnostic_keys)
       {
-        const auto peptide_it = stage1_diagnostic_peptide_lookup.find(item.first);
+        const auto peptide_it = stage1_diagnostic_peptide_lookup.find(key);
         if (peptide_it == stage1_diagnostic_peptide_lookup.end())
         {
           continue;
         }
 
         const PeptideEntry& peptide = peptide_it->second;
+        const auto support_it = stage1_peptide_support.find(key);
+        const Stage1PeptideSupport empty_support;
+        const Stage1PeptideSupport& support = support_it != stage1_peptide_support.end() ? support_it->second : empty_support;
         Stage1DiagnosticEntry entry;
         entry.peptide_key = peptide.canonical_key;
         entry.peptide_sequence = peptide.peptide_sequence;
@@ -4389,21 +4627,31 @@ namespace OpenMS
         entry.precursor_charge = peptide.precursor_charge;
         entry.protein_refs = peptide.protein_refs;
         entry.protein_gene_names_by_accession = peptide.protein_gene_names_by_accession;
-        entry.supporting_runs = item.second.supporting_runs;
+        entry.supporting_runs = support.supporting_runs;
         entry.required_supporting_runs = required_stage1_supporting_runs;
-        entry.ms1_supporting_runs = item.second.ms1_supporting_runs;
-        entry.ms2_supporting_runs = item.second.ms2_supporting_runs;
-        entry.best_ms1_hit_count = item.second.best_ms1_hit_count;
-        entry.best_ms2_fragment_hits = item.second.best_ms2_fragment_hits;
-        entry.total_ms1_hit_count = item.second.total_ms1_hit_count;
-        entry.total_ms2_hit_count = item.second.total_ms2_hit_count;
-        entry.best_ms1_max_intensity = item.second.best_ms1_max_intensity;
-        entry.best_ms2_max_intensity = item.second.best_ms2_max_intensity;
-        entry.total_ms1_sum_intensity = item.second.total_ms1_sum_intensity;
-        entry.total_ms2_sum_intensity = item.second.total_ms2_sum_intensity;
-        entry.passes_run_aggregation = stage1_pre_local_selected_keys.find(item.first) != stage1_pre_local_selected_keys.end();
-        entry.retained_after_stage1 = stage1_final_selected_keys.find(item.first) != stage1_final_selected_keys.end();
-        if (entry.retained_after_stage1)
+        entry.ms1_supporting_runs = support.ms1_supporting_runs;
+        entry.ms2_supporting_runs = support.ms2_supporting_runs;
+        entry.best_ms1_hit_count = support.best_ms1_hit_count;
+        entry.best_ms2_fragment_hits = support.best_ms2_fragment_hits;
+        entry.total_ms1_hit_count = support.total_ms1_hit_count;
+        entry.total_ms2_hit_count = support.total_ms2_hit_count;
+        entry.best_ms1_max_intensity = support.best_ms1_max_intensity;
+        entry.best_ms2_max_intensity = support.best_ms2_max_intensity;
+        entry.total_ms1_sum_intensity = support.total_ms1_sum_intensity;
+        entry.total_ms2_sum_intensity = support.total_ms2_sum_intensity;
+        entry.passes_run_aggregation = stage1_pre_local_selected_keys.find(key) != stage1_pre_local_selected_keys.end();
+        entry.retained_after_stage1 = stage1_final_selected_keys.find(key) != stage1_final_selected_keys.end();
+        const bool rescued_by_stage1_local =
+          stage1_rescued_selected_keys.find(key) != stage1_rescued_selected_keys.end();
+        if (rescued_by_stage1_local && entry.retained_after_stage1)
+        {
+          entry.stage1_status = "rescued_by_stage1_peptide_local";
+        }
+        else if (rescued_by_stage1_local)
+        {
+          entry.stage1_status = "rescued_then_pruned_by_stage1_local_retention";
+        }
+        else if (entry.retained_after_stage1)
         {
           entry.stage1_status = "retained";
         }

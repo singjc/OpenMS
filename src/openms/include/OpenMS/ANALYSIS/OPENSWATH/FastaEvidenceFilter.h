@@ -320,6 +320,11 @@ private:
       const std::vector<PeptideEntry>& peptides,
       const std::unordered_map<std::string, Stage1PeptideSupport>& peptide_support) const;
 
+    std::vector<PeptideEntry> applyStage1PeptideLocalRescue_(
+      const std::vector<PeptideEntry>& supported_peptides,
+      const std::vector<PeptideEntry>& rescue_candidates,
+      const std::unordered_map<std::string, Stage1PeptideSupport>& peptide_support) const;
+
     std::vector<PeptideEntry> applyStage2PeptideLocalRetention_(
       const std::vector<PeptideEntry>& peptides,
       const std::unordered_map<std::string, Stage2PeptideSupport>& peptide_support) const;
@@ -343,6 +348,8 @@ private:
     std::string aggregation_method_{"any"};
     Size stage1_min_supported_precursors_{1};
     std::string stage1_checkpoint_file_;
+    bool stage1_peptide_local_rescue_enabled_{false};
+    Size stage1_peptide_local_rescue_max_additional_precursors_per_unmodified_sequence_{2};
     bool stage1_peptide_local_retention_enabled_{false};
     Size stage1_peptide_local_max_precursors_per_protein_{25};
     Size stage1_peptide_local_max_precursors_per_unmodified_sequence_{2};
