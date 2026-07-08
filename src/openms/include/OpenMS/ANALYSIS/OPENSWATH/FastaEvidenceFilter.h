@@ -118,6 +118,33 @@ public:
       bool accepted{false};
     };
 
+    /// One aggregated Stage-1 support row for diagnostic export before optional peptide-local pruning.
+    struct Stage1DiagnosticEntry
+    {
+      std::string peptide_key;
+      std::string peptide_sequence;
+      std::string modified_peptide_sequence;
+      double precursor_mz{0.0};
+      int precursor_charge{0};
+      std::vector<std::string> protein_refs;
+      std::map<std::string, std::string> protein_gene_names_by_accession;
+      Size supporting_runs{0};
+      Size required_supporting_runs{0};
+      Size ms1_supporting_runs{0};
+      Size ms2_supporting_runs{0};
+      Size best_ms1_hit_count{0};
+      Size best_ms2_fragment_hits{0};
+      Size total_ms1_hit_count{0};
+      Size total_ms2_hit_count{0};
+      double best_ms1_max_intensity{0.0};
+      double best_ms2_max_intensity{0.0};
+      double total_ms1_sum_intensity{0.0};
+      double total_ms2_sum_intensity{0.0};
+      bool passes_run_aggregation{false};
+      bool retained_after_stage1{false};
+      std::string stage1_status;
+    };
+
     /// One DIA run loaded into OpenSWATH map containers.
     struct RunData
     {
@@ -133,10 +160,12 @@ public:
     {
       std::vector<FASTAFile::FASTAEntry> filtered_fasta;
       std::vector<PeptideEntry> confirmed_peptides;
+      std::vector<Stage1DiagnosticEntry> stage1_diagnostic_entries;
       std::vector<Stage2CandidateScore> stage2_candidate_scores;
       Size stage1_supported_precursors{0};
       Size stage2_confirmed_precursors{0};
       Size retained_proteins{0};
+      bool stage1_diagnostics_complete{false};
       std::string summary;
     };
 
@@ -338,6 +367,7 @@ private:
     Size protein_min_confirmed_peptides_{1};
     bool protein_unique_peptides_only_{false};
     bool export_fragments_{false};
+    bool export_stage1_diagnostics_{false};
     bool export_stage2_scores_{false};
     std::string enzyme_{"Trypsin"};
     std::string enzyme_specificity_{"full"};
