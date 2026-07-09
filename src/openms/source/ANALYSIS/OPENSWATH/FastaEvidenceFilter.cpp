@@ -3871,6 +3871,8 @@ namespace OpenMS
     stage1_params.remove("peptide_local_retention:enabled");
     stage1_params.remove("peptide_local_retention:max_precursors_per_protein");
     stage1_params.remove("peptide_local_retention:max_precursors_per_unmodified_sequence");
+    stage1_params.remove("peptide_local_rescue:enabled");
+    stage1_params.remove("peptide_local_rescue:max_additional_precursors_per_unmodified_sequence");
     stage1_params.setValue("enabled", "false");
     const std::string stage1_evidence_sources = stage1_params.getValue("evidence_sources").toString();
     const Size batch_size = std::max<Size>(1, stage1_precursor_batch_size_);
