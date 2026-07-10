@@ -2358,7 +2358,8 @@ namespace OpenMS
 
   std::vector<FastaEvidenceFilter::PeptideEntry> FastaEvidenceFilter::applyStage1PeptideLocalRetention_(
     const std::vector<PeptideEntry>& peptides,
-    const std::unordered_map<std::string, Stage1PeptideSupport>& peptide_support) const
+    const std::unordered_map<std::string, Stage1PeptideSupport>& peptide_support,
+    const std::unordered_set<std::string>& protected_peptide_keys) const
   {
     if (!stage1_peptide_local_retention_enabled_ || peptides.empty())
     {
@@ -2366,8 +2367,28 @@ namespace OpenMS
     }
 
     const Stage1PeptideSupport empty_support;
-    return applyPeptideLocalCaps_(
-      peptides,
+    std::vector<PeptideEntry> capping_candidates;
+    capping_candidates.reserve(peptides.size());
+    Size protected_count = 0;
+    for (const auto& peptide : peptides)
+    {
+      if (protected_peptide_keys.find(peptide.canonical_key) != protected_peptide_keys.end())
+      {
+        ++protected_count;
+      }
+      else
+      {
+        capping_candidates.push_back(peptide);
+      }
+    }
+
+    if (capping_candidates.empty())
+    {
+      return peptides;
+    }
+
+    std::vector<PeptideEntry> retained_capping_candidates = applyPeptideLocalCaps_(
+      capping_candidates,
       stage1_peptide_local_max_precursors_per_protein_,
       stage1_peptide_local_max_precursors_per_unmodified_sequence_,
       [&](const PeptideEntry& lhs, const PeptideEntry& rhs)
@@ -2392,6 +2413,25 @@ namespace OpenMS
         if (lhs.precursor_charge != rhs.precursor_charge) return lhs.precursor_charge < rhs.precursor_charge;
         return lhs.internal_key < rhs.internal_key;
       });
+
+    std::unordered_set<std::string> retained_capping_keys;
+    retained_capping_keys.reserve(retained_capping_candidates.size());
+    for (const auto& peptide : retained_capping_candidates)
+    {
+      retained_capping_keys.insert(peptide.internal_key);
+    }
+
+    std::vector<PeptideEntry> retained;
+    retained.reserve(protected_count + retained_capping_candidates.size());
+    for (const auto& peptide : peptides)
+    {
+      if (protected_peptide_keys.find(peptide.canonical_key) != protected_peptide_keys.end() ||
+          retained_capping_keys.find(peptide.internal_key) != retained_capping_keys.end())
+      {
+        retained.push_back(peptide);
+      }
+    }
+    return retained;
   }
 
   std::vector<FastaEvidenceFilter::PeptideEntry> FastaEvidenceFilter::applyStage1PeptideLocalRescue_(
@@ -4427,10 +4467,11 @@ namespace OpenMS
       {
         const Size before_retention = selected_target_peptides.size();
         selected_target_peptides = applyStage1PeptideLocalRetention_(selected_target_peptides,
-                                                                     stage1_peptide_support);
+                                                                     stage1_peptide_support,
+                                                                     stage1_pre_local_selected_keys);
         OPENMS_LOG_INFO << "Stage 1 peptide-local retention kept "
                         << selected_target_peptides.size() << " of " << before_retention
-                        << " supported precursors (max_precursors_per_protein="
+                        << " selected precursors (max_precursors_per_protein="
                         << stage1_peptide_local_max_precursors_per_protein_
                         << ", max_precursors_per_unmodified_sequence="
                         << stage1_peptide_local_max_precursors_per_unmodified_sequence_

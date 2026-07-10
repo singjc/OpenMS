@@ -418,7 +418,7 @@ START_SECTION((filter() - stage1 peptide-local retention prunes weaker same-prot
 }
 END_SECTION
 
-START_SECTION((filter() - stage1 diagnostic export captures pre-pruning support and local-retention pruning))
+START_SECTION((filter() - stage1 diagnostic export preserves exact-supported precursors during local retention))
 {
   FastaEvidenceFilter filter = makeFilterForSingleChargePeptides();
   Param params = filter.getParameters();
@@ -470,6 +470,7 @@ START_SECTION((filter() - stage1 diagnostic export captures pre-pruning support 
 
   const auto result = filter.filter({run}, fasta_entries, makeExtractParams(0.01), makeExtractParams(0.01), 1);
   TEST_TRUE(result.stage1_diagnostics_complete)
+  TEST_EQUAL(result.stage1_supported_precursors, 2)
   TEST_EQUAL(result.stage1_diagnostic_entries.size(), 2)
 
   const auto diagnostic_a_it = find_if(result.stage1_diagnostic_entries.begin(), result.stage1_diagnostic_entries.end(),
@@ -488,8 +489,8 @@ START_SECTION((filter() - stage1 diagnostic export captures pre-pruning support 
   TEST_EQUAL(diagnostic_c_it->supporting_runs, 1)
   TEST_EQUAL(diagnostic_c_it->required_supporting_runs, 1)
   TEST_TRUE(diagnostic_c_it->passes_run_aggregation)
-  TEST_FALSE(diagnostic_c_it->retained_after_stage1)
-  TEST_EQUAL(diagnostic_c_it->stage1_status, "pruned_by_stage1_local_retention")
+  TEST_TRUE(diagnostic_c_it->retained_after_stage1)
+  TEST_EQUAL(diagnostic_c_it->stage1_status, "retained")
 }
 END_SECTION
 
@@ -566,6 +567,96 @@ START_SECTION((filter() - stage1 peptide-local rescue retains sibling precursor 
   TEST_FALSE(diagnostic_charge3_it->passes_run_aggregation)
   TEST_TRUE(diagnostic_charge3_it->retained_after_stage1)
   TEST_EQUAL(diagnostic_charge3_it->stage1_status, "rescued_by_stage1_peptide_local")
+}
+END_SECTION
+
+START_SECTION((filter() - stage1 local retention prunes rescued siblings before exact-supported precursors))
+{
+  FastaEvidenceFilter filter;
+  Param params = filter.getParameters();
+  params.setValue("SearchSpace:missed_cleavages", 0);
+  params.setValue("SearchSpace:min_size", 7);
+  params.setValue("SearchSpace:max_size", 7);
+  params.setValue("SearchSpace:precursor:min_charge", 2);
+  params.setValue("SearchSpace:precursor:max_charge", 4);
+  params.setValue("SearchSpace:fragment:min_charge", 1);
+  params.setValue("SearchSpace:fragment:max_charge", 1);
+  params.setValue("SearchSpace:fragment:max_per_precursor", 4);
+  params.setValue("Stage1:evidence_sources", "ms2");
+  params.setValue("Stage1:ms2_min_fragment_hits", 1);
+  params.setValue("Stage1:min_supported_precursors", 1);
+  params.setValue("Stage1:peptide_local_rescue:enabled", "true");
+  params.setValue("Stage1:peptide_local_rescue:max_additional_precursors_per_unmodified_sequence", 2);
+  params.setValue("Stage1:peptide_local_retention:enabled", "true");
+  params.setValue("Stage1:peptide_local_retention:max_precursors_per_protein", 0);
+  params.setValue("Stage1:peptide_local_retention:max_precursors_per_unmodified_sequence", 1);
+  params.setValue("Stage2:mode", "raw_score");
+  params.setValue("Stage2:min_matched_ions", 0);
+  params.setValue("Stage2:strong_min_matched_ions", 0);
+  params.setValue("Export:export_stage1_diagnostics", "true");
+  filter.setParameters(params);
+
+  const vector<FASTAFile::FASTAEntry> fasta_entries{makeFastaEntry("protA", "AAAAAAK")};
+  const auto peptides = filter.generatePeptideEntries(fasta_entries);
+  TEST_EQUAL(peptides.size(), 3)
+
+  const auto peptide_charge2_it = find_if(peptides.begin(), peptides.end(),
+    [](const auto& peptide) { return peptide.precursor_charge == 2; });
+  const auto peptide_charge3_it = find_if(peptides.begin(), peptides.end(),
+    [](const auto& peptide) { return peptide.precursor_charge == 3; });
+  const auto peptide_charge4_it = find_if(peptides.begin(), peptides.end(),
+    [](const auto& peptide) { return peptide.precursor_charge == 4; });
+  TEST_TRUE(peptide_charge2_it != peptides.end())
+  TEST_TRUE(peptide_charge3_it != peptides.end())
+  TEST_TRUE(peptide_charge4_it != peptides.end())
+
+  vector<pair<double, double>> stage2_peaks;
+  for (const auto& fragment : peptide_charge2_it->fragments)
+  {
+    stage2_peaks.emplace_back(fragment.product_mz, 1500.0);
+  }
+
+  vector<OpenSwath::SwathMap> swath_maps;
+  swath_maps.push_back(makeSwathMap(true, 0.0, 0.0,
+    {makeSpectrum(10.0, {{peptide_charge2_it->precursor_mz, 1000.0}})}));
+  swath_maps.push_back(makeSwathMap(false,
+                                    peptide_charge2_it->precursor_mz - 10.0,
+                                    peptide_charge2_it->precursor_mz + 10.0,
+                                    {makeSpectrum(12.0, stage2_peaks)}));
+
+  FastaEvidenceFilter::RunData run;
+  run.swath_maps = std::move(swath_maps);
+  run.pasef = false;
+
+  const auto result = filter.filter({run}, fasta_entries, makeExtractParams(0.01), makeExtractParams(0.01), 1);
+  TEST_TRUE(result.stage1_diagnostics_complete)
+  TEST_EQUAL(result.stage1_supported_precursors, 2)
+  TEST_EQUAL(result.stage1_diagnostic_entries.size(), 3)
+
+  const auto diagnostic_charge2_it = find_if(result.stage1_diagnostic_entries.begin(), result.stage1_diagnostic_entries.end(),
+    [](const auto& entry) { return entry.precursor_charge == 2; });
+  const auto diagnostic_charge3_it = find_if(result.stage1_diagnostic_entries.begin(), result.stage1_diagnostic_entries.end(),
+    [](const auto& entry) { return entry.precursor_charge == 3; });
+  const auto diagnostic_charge4_it = find_if(result.stage1_diagnostic_entries.begin(), result.stage1_diagnostic_entries.end(),
+    [](const auto& entry) { return entry.precursor_charge == 4; });
+  TEST_TRUE(diagnostic_charge2_it != result.stage1_diagnostic_entries.end())
+  TEST_TRUE(diagnostic_charge3_it != result.stage1_diagnostic_entries.end())
+  TEST_TRUE(diagnostic_charge4_it != result.stage1_diagnostic_entries.end())
+
+  TEST_EQUAL(diagnostic_charge2_it->supporting_runs, 1)
+  TEST_TRUE(diagnostic_charge2_it->passes_run_aggregation)
+  TEST_TRUE(diagnostic_charge2_it->retained_after_stage1)
+  TEST_EQUAL(diagnostic_charge2_it->stage1_status, "retained")
+
+  TEST_EQUAL(diagnostic_charge3_it->supporting_runs, 0)
+  TEST_FALSE(diagnostic_charge3_it->passes_run_aggregation)
+  TEST_FALSE(diagnostic_charge3_it->retained_after_stage1)
+  TEST_EQUAL(diagnostic_charge3_it->stage1_status, "rescued_then_pruned_by_stage1_local_retention")
+
+  TEST_EQUAL(diagnostic_charge4_it->supporting_runs, 0)
+  TEST_FALSE(diagnostic_charge4_it->passes_run_aggregation)
+  TEST_TRUE(diagnostic_charge4_it->retained_after_stage1)
+  TEST_EQUAL(diagnostic_charge4_it->stage1_status, "rescued_by_stage1_peptide_local")
 }
 END_SECTION
 

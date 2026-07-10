@@ -318,7 +318,8 @@ private:
 
     std::vector<PeptideEntry> applyStage1PeptideLocalRetention_(
       const std::vector<PeptideEntry>& peptides,
-      const std::unordered_map<std::string, Stage1PeptideSupport>& peptide_support) const;
+      const std::unordered_map<std::string, Stage1PeptideSupport>& peptide_support,
+      const std::unordered_set<std::string>& protected_peptide_keys) const;
 
     std::vector<PeptideEntry> applyStage1PeptideLocalRescue_(
       const std::vector<PeptideEntry>& supported_peptides,
