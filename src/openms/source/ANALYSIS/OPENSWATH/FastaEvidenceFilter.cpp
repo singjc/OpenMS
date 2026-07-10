@@ -1655,15 +1655,12 @@ namespace OpenMS
     defaults_.setMinInt("Stage1:max_concurrent_runs", 0);
     defaults_.setValue("Stage1:checkpoint_file", "",
                        "Optional path to a Stage-1 checkpoint TSV. If the file exists, Stage 1 is resumed from it and skipped. If the file does not exist, the retained Stage-1 precursors are written there after Stage 1 completes.");
-<<<<<<< Updated upstream
-=======
     defaults_.setValue("Stage1:peptide_local_rescue:enabled", "false",
                        "If true, rescue a bounded number of sibling precursor variants from the same unmodified peptide sequence once any exact Stage-1 precursor variant has supporting evidence.");
     defaults_.setValidStrings("Stage1:peptide_local_rescue:enabled", {"true", "false"});
     defaults_.setValue("Stage1:peptide_local_rescue:max_additional_precursors_per_unmodified_sequence", 2,
                        "When Stage1:peptide_local_rescue:enabled is true, keep up to this many additional unsupported precursor variants per supported unmodified peptide sequence. 0 disables rescue.");
     defaults_.setMinInt("Stage1:peptide_local_rescue:max_additional_precursors_per_unmodified_sequence", 0);
->>>>>>> Stashed changes
     defaults_.setValue("Stage1:peptide_local_retention:enabled", "false",
                        "If true, prune Stage-1 supported precursors by peptide-local evidence within each protein and optional unmodified-sequence groups.");
     defaults_.setValidStrings("Stage1:peptide_local_retention:enabled", {"true", "false"});
@@ -1723,10 +1720,7 @@ namespace OpenMS
     defaults_.setValue("Stage2:peptide_local_retention:max_precursors_per_unmodified_sequence", 2,
                        "When Stage2:peptide_local_retention:enabled is true, keep at most this many precursor variants per unmodified peptide sequence after the per-protein cap. 0 disables the sequence-level cap.");
     defaults_.setMinInt("Stage2:peptide_local_retention:max_precursors_per_unmodified_sequence", 0);
-<<<<<<< Updated upstream
-=======
     defaults_.insert("Stage2:tag_like:", TagLikeFragmentPatternScorer().getParameters());
->>>>>>> Stashed changes
     defaults_.setValue("Protein:min_confirmed_peptides", 1,
                        "Minimum number of confirmed peptides needed to keep a protein.");
     defaults_.setMinInt("Protein:min_confirmed_peptides", 1);
@@ -2359,7 +2353,8 @@ namespace OpenMS
 
   std::vector<FastaEvidenceFilter::PeptideEntry> FastaEvidenceFilter::applyStage1PeptideLocalRetention_(
     const std::vector<PeptideEntry>& peptides,
-    const std::unordered_map<std::string, Stage1PeptideSupport>& peptide_support) const
+    const std::unordered_map<std::string, Stage1PeptideSupport>& peptide_support,
+    const std::unordered_set<std::string>& protected_peptide_keys) const
   {
     if (!stage1_peptide_local_retention_enabled_ || peptides.empty())
     {
@@ -2367,8 +2362,28 @@ namespace OpenMS
     }
 
     const Stage1PeptideSupport empty_support;
-    return applyPeptideLocalCaps_(
-      peptides,
+    std::vector<PeptideEntry> capping_candidates;
+    capping_candidates.reserve(peptides.size());
+    Size protected_count = 0;
+    for (const auto& peptide : peptides)
+    {
+      if (protected_peptide_keys.find(peptide.canonical_key) != protected_peptide_keys.end())
+      {
+        ++protected_count;
+      }
+      else
+      {
+        capping_candidates.push_back(peptide);
+      }
+    }
+
+    if (capping_candidates.empty())
+    {
+      return peptides;
+    }
+
+    std::vector<PeptideEntry> retained_capping_candidates = applyPeptideLocalCaps_(
+      capping_candidates,
       stage1_peptide_local_max_precursors_per_protein_,
       stage1_peptide_local_max_precursors_per_unmodified_sequence_,
       [&](const PeptideEntry& lhs, const PeptideEntry& rhs)
@@ -2393,6 +2408,25 @@ namespace OpenMS
         if (lhs.precursor_charge != rhs.precursor_charge) return lhs.precursor_charge < rhs.precursor_charge;
         return lhs.internal_key < rhs.internal_key;
       });
+
+    std::unordered_set<std::string> retained_capping_keys;
+    retained_capping_keys.reserve(retained_capping_candidates.size());
+    for (const auto& peptide : retained_capping_candidates)
+    {
+      retained_capping_keys.insert(peptide.internal_key);
+    }
+
+    std::vector<PeptideEntry> retained;
+    retained.reserve(protected_count + retained_capping_candidates.size());
+    for (const auto& peptide : peptides)
+    {
+      if (protected_peptide_keys.find(peptide.canonical_key) != protected_peptide_keys.end() ||
+          retained_capping_keys.find(peptide.internal_key) != retained_capping_keys.end())
+      {
+        retained.push_back(peptide);
+      }
+    }
+    return retained;
   }
 
   std::vector<FastaEvidenceFilter::PeptideEntry> FastaEvidenceFilter::applyStage1PeptideLocalRescue_(
@@ -4383,10 +4417,11 @@ namespace OpenMS
       {
         const Size before_retention = selected_target_peptides.size();
         selected_target_peptides = applyStage1PeptideLocalRetention_(selected_target_peptides,
-                                                                     stage1_peptide_support);
+                                                                     stage1_peptide_support,
+                                                                     stage1_pre_local_selected_keys);
         OPENMS_LOG_INFO << "Stage 1 peptide-local retention kept "
                         << selected_target_peptides.size() << " of " << before_retention
-                        << " supported precursors (max_precursors_per_protein="
+                        << " selected precursors (max_precursors_per_protein="
                         << stage1_peptide_local_max_precursors_per_protein_
                         << ", max_precursors_per_unmodified_sequence="
                         << stage1_peptide_local_max_precursors_per_unmodified_sequence_
@@ -4401,10 +4436,7 @@ namespace OpenMS
       for (const auto& peptide : selected_target_peptides)
       {
         stage1_final_selected_keys.insert(peptide.canonical_key);
-<<<<<<< Updated upstream
-=======
         mergePeptideMetadata_(stage1_diagnostic_peptide_lookup, peptide);
->>>>>>> Stashed changes
       }
     }
 
