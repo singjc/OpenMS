@@ -12,6 +12,7 @@
 #include <OpenMS/KERNEL/MSExperiment.h>
 #include <OpenMS/ANALYSIS/TARGETED/TargetedExperiment.h>
 #include <OpenMS/OPENSWATHALGO/DATAACCESS/TransitionExperiment.h>
+#include <OpenMS/OPENSWATHALGO/DATAACCESS/SwathMap.h>
 #include <OpenMS/ANALYSIS/OPENSWATH/MRMFeatureFinderScoring.h>
 #include <OpenMS/CONCEPT/LogStream.h>
 
@@ -24,6 +25,39 @@ namespace OpenMS
   {
 
 public:
+    /**
+      @brief One candidate diaPASEF SWATH/IM window for a precursor.
+
+      Used for both stage-internal assignment and debug/audit reporting.
+    */
+    struct PasefMapCandidate
+    {
+      int swath_map_index{-1};
+      double mz_lower{0.0};
+      double mz_upper{0.0};
+      double mz_center{0.0};
+      double im_lower{-1.0};
+      double im_upper{-1.0};
+      double im_center{-1.0};
+      double upper_edge_distance{0.0};
+      double mz_center_distance{0.0};
+      double im_center_distance{0.0};
+      bool selected_best{false};
+    };
+
+    /**
+      @brief All matching diaPASEF SWATH/IM windows for one precursor.
+    */
+    struct PasefMapMatch
+    {
+      int selected_swath_map_index{-1};
+      std::vector<PasefMapCandidate> candidates;
+
+      bool hasMatch() const
+      {
+        return selected_swath_map_index >= 0;
+      }
+    };
 
     /**
       @brief Compute unique precursor identifier
@@ -108,7 +142,62 @@ public:
      @param[in] swath_maps vector of SwathMap objects defining mz and im bounds
     */
     static void selectSwathTransitionsPasef(const OpenSwath::LightTargetedExperiment& transition_exp, std::vector<int>& tr_win_map,
-		                     double min_upper_edge_dist, const std::vector< OpenSwath::SwathMap > & swath_maps);
+		                     double min_upper_edge_dist, const std::vector< OpenSwath::SwathMap > & swath_maps,
+                                 double im_match_tolerance = 0.0);
+
+    /**
+      @brief Convert a full IM extraction window into a symmetric diaPASEF map-matching slack.
+
+      OpenSWATH IM extraction windows are configured as full widths, while
+      diaPASEF map matching compares a single precursor IM against window
+      bounds. Using half the extraction window as a matching slack prevents
+      hard drops when the library IM scale and the raw-data IM scale differ
+      slightly, without changing the downstream extraction width.
+
+      @param[in] im_extraction_window Full IM extraction window width
+      @return Half-window matching slack, or 0 if the input window is non-positive/non-finite
+    */
+    static double computePasefMapMatchingImTolerance(double im_extraction_window);
+
+    /**
+      @brief Check whether a precursor falls into one diaPASEF SWATH/IM window.
+
+      @param[in] swath_map SWATH/IM window to test
+      @param[in] precursor_mz Precursor m/z
+      @param[in] precursor_im Precursor ion mobility
+      @param[in] min_upper_edge_dist Distance in Th to the upper edge
+      @param[in] include_upper_bound If true, allow precursor values exactly on the upper m/z/IM boundary
+      @param[in] im_match_tolerance Symmetric IM slack applied to the lower/upper window bounds during matching
+      @return True if the precursor is inside the window
+    */
+    static bool pasefSwathMapContainsPrecursor(const OpenSwath::SwathMap& swath_map,
+                                               double precursor_mz,
+                                               double precursor_im,
+                                               double min_upper_edge_dist,
+                                               bool include_upper_bound = false,
+                                               double im_match_tolerance = 0.0);
+
+    /**
+      @brief Collect all matching diaPASEF SWATH/IM windows for one precursor and mark the best match.
+
+      The best match is the window whose ion-mobility center is closest to the
+      precursor ion mobility. Ties keep the earliest encountered SWATH map to
+      preserve existing deterministic behavior.
+
+      @param[in] precursor_mz Precursor m/z
+      @param[in] precursor_im Precursor ion mobility
+      @param[in] min_upper_edge_dist Distance in Th to the upper edge
+      @param[in] swath_maps SWATH/IM windows
+      @param[in] include_upper_bound If true, allow precursor values exactly on the upper m/z/IM boundary
+      @param[in] im_match_tolerance Symmetric IM slack applied to the lower/upper window bounds during matching
+      @return Matching windows and the selected best match
+    */
+    static PasefMapMatch matchPasefSwathMaps(double precursor_mz,
+                                             double precursor_im,
+                                             double min_upper_edge_dist,
+                                             const std::vector<OpenSwath::SwathMap>& swath_maps,
+                                             bool include_upper_bound = false,
+                                             double im_match_tolerance = 0.0);
 
     /**
       @brief Get the lower / upper offset for this SWATH map and do some sanity checks
@@ -231,4 +320,3 @@ public:
   };
 
 } // namespace OpenMS
-

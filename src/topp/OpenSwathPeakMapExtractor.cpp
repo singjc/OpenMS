@@ -778,7 +778,9 @@ protected:
       std::vector<int> tr_win_map;
       if (pasef)
       {
-        OpenSwathHelper::selectSwathTransitionsPasef(transition_exp_run, tr_win_map, cp_current.min_upper_edge_dist, swath_maps);
+        OpenSwathHelper::selectSwathTransitionsPasef(
+          transition_exp_run, tr_win_map, cp_current.min_upper_edge_dist, swath_maps,
+          OpenSwathHelper::computePasefMapMatchingImTolerance(cp_current.im_extraction_window));
       }
       else if (prm)
       {
