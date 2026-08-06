@@ -541,7 +541,7 @@ namespace OpenMS
         const double scaled_im = candidate.precursor_im * transform.factor(candidate);
         const auto match = OpenSwathHelper::matchPasefSwathMaps(
           candidate.precursor_mz, scaled_im, params.min_upper_edge_dist, swath_maps, false,
-          im_match_tolerance);
+          im_match_tolerance, params.pasef_map_selection_strategy);
         if (match.hasMatch())
         {
           ++matches;

@@ -12,6 +12,7 @@
 
 #include <OpenMS/OPENSWATHALGO/DATAACCESS/SwathMap.h>
 #include <OpenMS/ANALYSIS/OPENSWATH/MRMFeatureFinderScoring.h>
+#include <OpenMS/ANALYSIS/OPENSWATH/OpenSwathHelper.h>
 
 namespace OpenMS
 {
@@ -149,6 +150,8 @@ public:
     bool mz_extraction_window_ppm_;
     bool ms1_im_;
     double im_extraction_window_;
+    OpenSwathHelper::PasefMapSelectionStrategy pasef_map_selection_strategy_{
+      OpenSwathHelper::PasefMapSelectionStrategy::CLOSEST_IM_CENTER};
     std::string mz_correction_function_;
     std::string im_correction_function_;
     std::string debug_im_file_;

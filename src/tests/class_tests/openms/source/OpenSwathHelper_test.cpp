@@ -133,7 +133,22 @@ START_SECTION((static double computePasefMapMatchingImTolerance(double im_extrac
 }
 END_SECTION
 
-START_SECTION((static OpenSwathHelper::PasefMapMatch matchPasefSwathMaps(double precursor_mz, double precursor_im, double min_upper_edge_dist, const std::vector<OpenSwath::SwathMap>& swath_maps, bool include_upper_bound, double im_match_tolerance)))
+START_SECTION((static OpenSwathHelper::PasefMapSelectionStrategy pasefMapSelectionStrategyFromString(const std::string& strategy)))
+{
+  TEST_EQUAL(static_cast<int>(OpenSwathHelper::pasefMapSelectionStrategyFromString("closest_im_center")),
+             static_cast<int>(OpenSwathHelper::PasefMapSelectionStrategy::CLOSEST_IM_CENTER))
+  TEST_EQUAL(static_cast<int>(OpenSwathHelper::pasefMapSelectionStrategyFromString("maximum_im_overlap")),
+             static_cast<int>(OpenSwathHelper::PasefMapSelectionStrategy::MAXIMUM_IM_OVERLAP))
+  TEST_EQUAL(OpenSwathHelper::pasefMapSelectionStrategyToString(
+               OpenSwathHelper::PasefMapSelectionStrategy::CLOSEST_IM_CENTER),
+             "closest_im_center")
+  TEST_EQUAL(OpenSwathHelper::pasefMapSelectionStrategyToString(
+               OpenSwathHelper::PasefMapSelectionStrategy::MAXIMUM_IM_OVERLAP),
+             "maximum_im_overlap")
+}
+END_SECTION
+
+START_SECTION((static OpenSwathHelper::PasefMapMatch matchPasefSwathMaps(double precursor_mz, double precursor_im, double min_upper_edge_dist, const std::vector<OpenSwath::SwathMap>& swath_maps, bool include_upper_bound, double im_match_tolerance, OpenSwathHelper::PasefMapSelectionStrategy selection_strategy)))
 {
   vector<SwathMap> swath_maps(3);
   swath_maps[0].lower = 500.0;
@@ -168,6 +183,41 @@ START_SECTION((static OpenSwathHelper::PasefMapMatch matchPasefSwathMaps(double 
   const auto lower_slack_match = OpenSwathHelper::matchPasefSwathMaps(510.0, 0.58, 0.0, swath_maps, false, 0.03);
   TEST_EQUAL(lower_slack_match.candidates.size(), 1)
   TEST_EQUAL(lower_slack_match.selected_swath_map_index, 0)
+  TEST_REAL_SIMILAR(lower_slack_match.candidates[0].im_overlap_width, 0.01)
+  TEST_REAL_SIMILAR(lower_slack_match.candidates[0].im_overlap_fraction, 1.0 / 6.0)
+
+  // Construct two eligible maps where the closest center and maximum usable
+  // target-window overlap select different maps.
+  vector<SwathMap> overlap_maps(2);
+  overlap_maps[0].lower = 500.0;
+  overlap_maps[0].upper = 525.0;
+  overlap_maps[0].center = 512.5;
+  overlap_maps[0].imLower = 0.60;
+  overlap_maps[0].imUpper = 0.70;
+  overlap_maps[0].ms1 = false;
+
+  overlap_maps[1].lower = 500.0;
+  overlap_maps[1].upper = 525.0;
+  overlap_maps[1].center = 512.5;
+  overlap_maps[1].imLower = 0.68;
+  overlap_maps[1].imUpper = 0.72;
+  overlap_maps[1].ms1 = false;
+
+  const auto closest_match = OpenSwathHelper::matchPasefSwathMaps(
+    510.0, 0.69, 0.0, overlap_maps, false, 0.05,
+    OpenSwathHelper::PasefMapSelectionStrategy::CLOSEST_IM_CENTER);
+  TEST_EQUAL(closest_match.selected_swath_map_index, 1)
+  TEST_REAL_SIMILAR(closest_match.candidates[0].im_overlap_width, 0.06)
+  TEST_REAL_SIMILAR(closest_match.candidates[1].im_overlap_width, 0.04)
+
+  const auto overlap_match = OpenSwathHelper::matchPasefSwathMaps(
+    510.0, 0.69, 0.0, overlap_maps, false, 0.05,
+    OpenSwathHelper::PasefMapSelectionStrategy::MAXIMUM_IM_OVERLAP);
+  TEST_EQUAL(overlap_match.selected_swath_map_index, 0)
+  TEST_TRUE(overlap_match.candidates[0].selected_best)
+  TEST_FALSE(overlap_match.candidates[1].selected_best)
+  TEST_REAL_SIMILAR(overlap_match.candidates[0].im_overlap_fraction, 0.60)
+  TEST_REAL_SIMILAR(overlap_match.candidates[1].im_overlap_fraction, 0.40)
 }
 END_SECTION
 

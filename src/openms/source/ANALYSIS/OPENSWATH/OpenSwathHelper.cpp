@@ -7,6 +7,7 @@
 // --------------------------------------------------------------------------
 
 #include <OpenMS/ANALYSIS/OPENSWATH/OpenSwathHelper.h>
+#include <OpenMS/CONCEPT/Exception.h>
 
 #include <random>
 #include <algorithm>
@@ -15,11 +16,66 @@
 
 namespace OpenMS
 {
+  namespace
+  {
+    constexpr double PASEF_MAP_SELECTION_EPSILON = 1e-12;
+
+    bool isBetterPasefMapCandidate_(const OpenSwathHelper::PasefMapCandidate& candidate,
+                                    const OpenSwathHelper::PasefMapCandidate& best,
+                                    OpenSwathHelper::PasefMapSelectionStrategy strategy)
+    {
+      if (strategy == OpenSwathHelper::PasefMapSelectionStrategy::MAXIMUM_IM_OVERLAP)
+      {
+        const double overlap_delta = candidate.im_overlap_width - best.im_overlap_width;
+        if (overlap_delta > PASEF_MAP_SELECTION_EPSILON)
+        {
+          return true;
+        }
+        if (overlap_delta < -PASEF_MAP_SELECTION_EPSILON)
+        {
+          return false;
+        }
+      }
+
+      // CLOSEST_IM_CENTER is the primary criterion for the historical strategy
+      // and the deterministic tie-break for equal maximum overlap. Exact ties
+      // retain the earliest map because candidates are visited in map order.
+      return candidate.im_center_distance + PASEF_MAP_SELECTION_EPSILON < best.im_center_distance;
+    }
+  }
+
   double OpenSwathHelper::computePasefMapMatchingImTolerance(double im_extraction_window)
   {
     return (std::isfinite(im_extraction_window) && im_extraction_window > 0.0) ?
       im_extraction_window / 2.0 :
       0.0;
+  }
+
+  OpenSwathHelper::PasefMapSelectionStrategy OpenSwathHelper::pasefMapSelectionStrategyFromString(const std::string& strategy)
+  {
+    if (strategy == "closest_im_center")
+    {
+      return PasefMapSelectionStrategy::CLOSEST_IM_CENTER;
+    }
+    if (strategy == "maximum_im_overlap")
+    {
+      return PasefMapSelectionStrategy::MAXIMUM_IM_OVERLAP;
+    }
+    throw Exception::InvalidValue(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION,
+                                  "Unsupported diaPASEF map-selection strategy", strategy);
+  }
+
+  std::string OpenSwathHelper::pasefMapSelectionStrategyToString(PasefMapSelectionStrategy strategy)
+  {
+    switch (strategy)
+    {
+      case PasefMapSelectionStrategy::CLOSEST_IM_CENTER:
+        return "closest_im_center";
+      case PasefMapSelectionStrategy::MAXIMUM_IM_OVERLAP:
+        return "maximum_im_overlap";
+    }
+    throw Exception::InvalidValue(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION,
+                                  "Unsupported diaPASEF map-selection strategy enum", std::to_string(static_cast<int>(strategy)));
   }
 
   bool OpenSwathHelper::pasefSwathMapContainsPrecursor(const OpenSwath::SwathMap& swath_map,
@@ -55,7 +111,8 @@ namespace OpenMS
                                                                       double min_upper_edge_dist,
                                                                       const std::vector<OpenSwath::SwathMap>& swath_maps,
                                                                       bool include_upper_bound,
-                                                                      double im_match_tolerance)
+                                                                      double im_match_tolerance,
+                                                                      PasefMapSelectionStrategy selection_strategy)
   {
     PasefMapMatch match;
     SignedSize best_candidate_index = -1;
@@ -82,11 +139,29 @@ namespace OpenMS
       candidate.mz_center_distance = std::fabs(swath_map.center - precursor_mz);
       candidate.im_center_distance = std::fabs(candidate.im_center - precursor_im);
 
+      const double full_im_extraction_window = 2.0 * im_match_tolerance;
+      if (full_im_extraction_window > 0.0 && std::isfinite(full_im_extraction_window))
+      {
+        const double extraction_im_lower = precursor_im - im_match_tolerance;
+        const double extraction_im_upper = precursor_im + im_match_tolerance;
+        const double overlap_lower = std::max(extraction_im_lower, swath_map.imLower);
+        const double overlap_upper = std::min(extraction_im_upper, swath_map.imUpper);
+        candidate.im_overlap_width = std::max(0.0, overlap_upper - overlap_lower);
+        candidate.im_overlap_fraction = candidate.im_overlap_width / full_im_extraction_window;
+
+        // A zero-width boundary touch contains no extractable IM interval.
+        if (candidate.im_overlap_width <= 0.0)
+        {
+          continue;
+        }
+      }
+
       match.candidates.push_back(candidate);
       const SignedSize current_candidate_index = static_cast<SignedSize>(match.candidates.size()) - 1;
       if (best_candidate_index == -1 ||
-          match.candidates[static_cast<Size>(best_candidate_index)].im_center_distance >
-            match.candidates[static_cast<Size>(current_candidate_index)].im_center_distance)
+          isBetterPasefMapCandidate_(match.candidates[static_cast<Size>(current_candidate_index)],
+                                     match.candidates[static_cast<Size>(best_candidate_index)],
+                                     selection_strategy))
       {
         best_candidate_index = current_candidate_index;
       }
@@ -121,12 +196,12 @@ namespace OpenMS
     }
   }
 
-  // For PASEF experiments it is possible to have DIA windows with the same m/z however different IM.
-  // Extract from the DIA window in which the precursor is more centered across its IM.
-  // Unlike the function above, current implementation may not be parrelization safe
+  // For PASEF experiments it is possible to have DIA windows with the same m/z but different IM.
+  // Select one eligible map using the configured strategy.
   void OpenSwathHelper::selectSwathTransitionsPasef(const OpenSwath::LightTargetedExperiment& transition_exp, std::vector<int>& tr_win_map,
-                                               double min_upper_edge_dist, const std::vector< OpenSwath::SwathMap > & swath_maps,
-                                               double im_match_tolerance)
+                                               double min_upper_edge_dist, const std::vector< OpenSwath::SwathMap >& swath_maps,
+                                               double im_match_tolerance,
+                                               PasefMapSelectionStrategy selection_strategy)
   {
       OPENMS_PRECONDITION(std::any_of(transition_exp.transitions.begin(), transition_exp.transitions.end(), [](auto i){return i.getPrecursorIM()!=-1;}), "All transitions must have a valid IM value (not -1)");
 
@@ -136,7 +211,7 @@ namespace OpenMS
         const OpenSwath::LightTransition& tr = transition_exp.transitions[k];
         const PasefMapMatch match = matchPasefSwathMaps(tr.getPrecursorMZ(), tr.getPrecursorIM(),
                                                         min_upper_edge_dist, swath_maps, false,
-                                                        im_match_tolerance);
+                                                        im_match_tolerance, selection_strategy);
         if (match.hasMatch())
         {
           tr_win_map[k] = match.selected_swath_map_index;
@@ -153,7 +228,10 @@ namespace OpenMS
           {
             OPENMS_LOG_DEBUG << "For precursor IM " << tr.getPrecursorIM()
                              << " selecting SWATH map " << selected_it->swath_map_index
-                             << " with IM-center distance " << selected_it->im_center_distance
+                             << " using " << pasefMapSelectionStrategyToString(selection_strategy)
+                             << " (IM-center distance " << selected_it->im_center_distance
+                             << ", usable IM overlap " << selected_it->im_overlap_width
+                             << ", overlap fraction " << selected_it->im_overlap_fraction << ")"
                              << " among " << match.candidates.size() << " matching diaPASEF windows."
                              << std::endl;
           }

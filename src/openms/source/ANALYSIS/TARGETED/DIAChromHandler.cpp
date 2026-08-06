@@ -55,7 +55,8 @@ std::vector<MSChromatogram> DIAChromHandler::collectIrtChromatogramsForIrt(
     }
     OpenSwathHelper::selectSwathTransitionsPasef(
       irt_transitions, tr_win_map, cp.min_upper_edge_dist, swath_maps,
-      OpenSwathHelper::computePasefMapMatchingImTolerance(cp.im_extraction_window));
+      OpenSwathHelper::computePasefMapMatchingImTolerance(cp.im_extraction_window),
+      cp.pasef_map_selection_strategy);
   }
 
   // Progress reporting removed - not essential for functionality

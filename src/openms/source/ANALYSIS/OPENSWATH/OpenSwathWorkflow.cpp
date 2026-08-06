@@ -424,7 +424,8 @@ namespace OpenMS
           cp.min_upper_edge_dist,
           swath_maps,
           false,
-          im_match_tolerance);
+          im_match_tolerance,
+          cp.pasef_map_selection_strategy);
         if (match.hasMatch())
         {
           tr_win_map[k] = match.selected_swath_map_index;

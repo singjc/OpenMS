@@ -73,7 +73,8 @@ namespace OpenMS
       0.0,
       swath_maps,
       true,
-      im_match_tolerance);
+      im_match_tolerance,
+      pasef_map_selection_strategy_);
     if (match.hasMatch())
     {
       used_maps.push_back(swath_maps[static_cast<Size>(match.selected_swath_map_index)]);
@@ -90,6 +91,10 @@ namespace OpenMS
     defaults_.setValue("ms1_im_calibration", "false", "Whether to use MS1 precursor data for the ion mobility calibration (default = false, uses MS2 / fragment ions for calibration)", {"advanced"});
     defaults_.setValidStrings("ms1_im_calibration", {"true","false"});
     defaults_.setValue("im_extraction_window", -1.0, "Ion mobility extraction window width");
+    defaults_.setValue("pasef_map_selection", "closest_im_center",
+                       "How to select one diaPASEF map when multiple maps overlap the target extraction interval.",
+                       {"advanced"});
+    defaults_.setValidStrings("pasef_map_selection", {"closest_im_center", "maximum_im_overlap"});
     defaults_.setValue("mz_estimation_padding_factor", 1.3, "A padding factor to multiply the estimated m/z window by. For example, a factor of 1.3 will add a 30% padding to the estimated m/z window, so if the estimated m/z window is 18, then 5.4 will be added for a total estimated m/z window of 23.4. A factor of 1.0 will not add any padding to the estimated window.");
     defaults_.setMinFloat("mz_estimation_padding_factor", 1.0);
     defaults_.setValue("im_estimation_padding_factor", 1.3, "A padding factor to multiply the estimated ion_mobility window by. For example, a factor of 1.3 will add a 30% padding to the estimated ion_mobility window, so if the estimated ion_mobility window is 0.03, then 0.009 will be added for a total estimated ion_mobility window of 0.039. A factor of 1.0 will not add any padding to the estimated window.");
@@ -118,6 +123,8 @@ namespace OpenMS
     mz_extraction_window_ppm_ = param_.getValue("mz_extraction_window_ppm") == "true";
     ms1_im_ = param_.getValue("ms1_im_calibration") == "true";
     im_extraction_window_ = (double)param_.getValue("im_extraction_window");
+    pasef_map_selection_strategy_ = OpenSwathHelper::pasefMapSelectionStrategyFromString(
+      param_.getValue("pasef_map_selection").toString());
     mz_estimation_padding_factor_ = (double)param_.getValue("mz_estimation_padding_factor");
     im_estimation_padding_factor_ = (double)param_.getValue("im_estimation_padding_factor");
     mz_estimation_percentile_ = (double)param_.getValue("mz_estimation_percentile");

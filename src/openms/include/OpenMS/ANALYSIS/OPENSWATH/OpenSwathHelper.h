@@ -26,6 +26,19 @@ namespace OpenMS
 
 public:
     /**
+      @brief Strategy used to choose one map when multiple diaPASEF maps are eligible.
+
+      CLOSEST_IM_CENTER preserves the historical behavior. MAXIMUM_IM_OVERLAP
+      selects the map containing the largest fraction of the target-centered IM
+      extraction interval and uses center distance as a tie-break.
+    */
+    enum class PasefMapSelectionStrategy
+    {
+      CLOSEST_IM_CENTER,
+      MAXIMUM_IM_OVERLAP
+    };
+
+    /**
       @brief One candidate diaPASEF SWATH/IM window for a precursor.
 
       Used for both stage-internal assignment and debug/audit reporting.
@@ -42,6 +55,10 @@ public:
       double upper_edge_distance{0.0};
       double mz_center_distance{0.0};
       double im_center_distance{0.0};
+      /// Width of the overlap between the target-centered IM extraction interval and this map.
+      double im_overlap_width{0.0};
+      /// Fraction of the configured full IM extraction interval available in this map.
+      double im_overlap_fraction{0.0};
       bool selected_best{false};
     };
 
@@ -140,10 +157,13 @@ public:
      @param[out] tr_win_map Mapping from transition (index) to the best matching entry in @p swath_maps
      @param[in] min_upper_edge_dist Distance in Th to the upper edge
      @param[in] swath_maps vector of SwathMap objects defining mz and im bounds
+     @param[in] im_match_tolerance Symmetric half-width of the target-centered IM extraction interval
+     @param[in] selection_strategy Strategy used to choose one eligible map
     */
     static void selectSwathTransitionsPasef(const OpenSwath::LightTargetedExperiment& transition_exp, std::vector<int>& tr_win_map,
-		                     double min_upper_edge_dist, const std::vector< OpenSwath::SwathMap > & swath_maps,
-                                 double im_match_tolerance = 0.0);
+                                       double min_upper_edge_dist, const std::vector< OpenSwath::SwathMap >& swath_maps,
+                                       double im_match_tolerance = 0.0,
+                                       PasefMapSelectionStrategy selection_strategy = PasefMapSelectionStrategy::CLOSEST_IM_CENTER);
 
     /**
       @brief Convert a full IM extraction window into a symmetric diaPASEF map-matching slack.
@@ -158,6 +178,16 @@ public:
       @return Half-window matching slack, or 0 if the input window is non-positive/non-finite
     */
     static double computePasefMapMatchingImTolerance(double im_extraction_window);
+
+    /**
+      @brief Parse a user-facing diaPASEF map-selection strategy.
+
+      Supported values are @c closest_im_center and @c maximum_im_overlap.
+    */
+    static PasefMapSelectionStrategy pasefMapSelectionStrategyFromString(const std::string& strategy);
+
+    /// Convert a diaPASEF map-selection strategy to its user-facing string.
+    static std::string pasefMapSelectionStrategyToString(PasefMapSelectionStrategy strategy);
 
     /**
       @brief Check whether a precursor falls into one diaPASEF SWATH/IM window.
@@ -180,16 +210,18 @@ public:
     /**
       @brief Collect all matching diaPASEF SWATH/IM windows for one precursor and mark the best match.
 
-      The best match is the window whose ion-mobility center is closest to the
-      precursor ion mobility. Ties keep the earliest encountered SWATH map to
-      preserve existing deterministic behavior.
+      Candidate eligibility is determined by m/z containment and by overlap of
+      the target-centered IM extraction interval with the acquired map. The
+      selected candidate is controlled by @p selection_strategy. Exact ties keep
+      the earliest encountered SWATH map to preserve deterministic behavior.
 
       @param[in] precursor_mz Precursor m/z
       @param[in] precursor_im Precursor ion mobility
       @param[in] min_upper_edge_dist Distance in Th to the upper edge
       @param[in] swath_maps SWATH/IM windows
       @param[in] include_upper_bound If true, allow precursor values exactly on the upper m/z/IM boundary
-      @param[in] im_match_tolerance Symmetric IM slack applied to the lower/upper window bounds during matching
+      @param[in] im_match_tolerance Symmetric IM half-window used for candidate eligibility and overlap calculation
+      @param[in] selection_strategy Strategy used to choose one candidate map
       @return Matching windows and the selected best match
     */
     static PasefMapMatch matchPasefSwathMaps(double precursor_mz,
@@ -197,7 +229,8 @@ public:
                                              double min_upper_edge_dist,
                                              const std::vector<OpenSwath::SwathMap>& swath_maps,
                                              bool include_upper_bound = false,
-                                             double im_match_tolerance = 0.0);
+                                             double im_match_tolerance = 0.0,
+                                             PasefMapSelectionStrategy selection_strategy = PasefMapSelectionStrategy::CLOSEST_IM_CENTER);
 
     /**
       @brief Get the lower / upper offset for this SWATH map and do some sanity checks
