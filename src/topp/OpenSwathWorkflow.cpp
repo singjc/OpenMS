@@ -293,10 +293,6 @@ protected:
     // misc options
     registerDoubleOption_("min_upper_edge_dist", "<double>", 0.0, "Minimal distance to the upper edge of a Swath window to still consider a precursor, in Thomson", false, true);
     registerFlag_("pasef", "data is PASEF data");
-    registerStringOption_("pasef_map_selection", "<method>", "closest_im_center",
-                          "How to choose one diaPASEF map when multiple maps overlap the target-centered IM extraction interval. 'closest_im_center' preserves the current behavior; 'maximum_im_overlap' chooses the largest usable overlap and breaks ties by IM-center distance.",
-                          false, true);
-    setValidStrings_("pasef_map_selection", ListUtils::create<std::string>("closest_im_center,maximum_im_overlap"));
 
     registerDoubleOption_("rt_extraction_window", "<double>", 600.0, "Only extract RT around this value (-1 means extract over the whole range, a value of 600 means to extract around +/- 300 s of the expected elution).", false);
     registerDoubleOption_("extra_rt_extraction_window", "<double>", 0.0, "Output an XIC with a RT-window by this much larger (e.g. to visually inspect a larger area of the chromatogram)", false, true);
@@ -1113,8 +1109,6 @@ protected:
     cp.ppm                   = getStringOption_("mz_extraction_window_unit") == "ppm";
     cp.rt_extraction_window  = getDoubleOption_("rt_extraction_window");
     cp.im_extraction_window  = getDoubleOption_("ion_mobility_window");
-    cp.pasef_map_selection_strategy = OpenSwathHelper::pasefMapSelectionStrategyFromString(
-      getStringOption_("pasef_map_selection"));
     cp.extraction_function   = getStringOption_("extraction_function");
     cp.extra_rt_extract      = getDoubleOption_("extra_rt_extraction_window");
 
@@ -1587,8 +1581,6 @@ protected:
       calibration_param.setValue("mz_extraction_window", cp_irt_current.mz_extraction_window);
       calibration_param.setValue("mz_extraction_window_ppm", cp_irt_current.ppm ? "true" : "false");
       calibration_param.setValue("im_extraction_window", cp_irt_current.im_extraction_window);
-      calibration_param.setValue("pasef_map_selection",
-                                 OpenSwathHelper::pasefMapSelectionStrategyToString(cp_current.pasef_map_selection_strategy));
 
       // Detect SRM/MRM mode: check if all swath_maps are chromatogram-only (no spectra, not MS1)
       

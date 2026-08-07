@@ -107,7 +107,7 @@ START_SECTION(static void selectSwathTransitions(const OpenSwath::LightTargetedE
 }
 END_SECTION
 
-START_SECTION((static bool pasefSwathMapContainsPrecursor(const OpenSwath::SwathMap& swath_map, double precursor_mz, double precursor_im, double min_upper_edge_dist, bool include_upper_bound, double im_match_tolerance)))
+START_SECTION((static bool pasefSwathMapMatchesPrecursor(const OpenSwath::SwathMap& swath_map, double precursor_mz, double precursor_im, double min_upper_edge_dist, bool include_upper_bound, double im_extraction_window)))
 {
   SwathMap swath_map;
   swath_map.lower = 500.0;
@@ -117,38 +117,33 @@ START_SECTION((static bool pasefSwathMapContainsPrecursor(const OpenSwath::Swath
   swath_map.imUpper = 0.70;
   swath_map.ms1 = false;
 
-  TEST_TRUE(OpenSwathHelper::pasefSwathMapContainsPrecursor(swath_map, 510.0, 0.65, 1.0, false))
-  TEST_FALSE(OpenSwathHelper::pasefSwathMapContainsPrecursor(swath_map, 524.5, 0.65, 1.0, false))
-  TEST_FALSE(OpenSwathHelper::pasefSwathMapContainsPrecursor(swath_map, 525.0, 0.65, 0.0, false))
-  TEST_TRUE(OpenSwathHelper::pasefSwathMapContainsPrecursor(swath_map, 525.0, 0.65, 0.0, true))
-  TEST_FALSE(OpenSwathHelper::pasefSwathMapContainsPrecursor(swath_map, 510.0, 0.58, 0.0, false))
-  TEST_TRUE(OpenSwathHelper::pasefSwathMapContainsPrecursor(swath_map, 510.0, 0.58, 0.0, false, 0.03))
+  TEST_TRUE(OpenSwathHelper::pasefSwathMapMatchesPrecursor(swath_map, 510.0, 0.65, 1.0, false))
+  TEST_FALSE(OpenSwathHelper::pasefSwathMapMatchesPrecursor(swath_map, 524.5, 0.65, 1.0, false))
+  TEST_FALSE(OpenSwathHelper::pasefSwathMapMatchesPrecursor(swath_map, 525.0, 0.65, 0.0, false))
+  TEST_TRUE(OpenSwathHelper::pasefSwathMapMatchesPrecursor(swath_map, 525.0, 0.65, 0.0, true))
+
+  // Strict point matching rejects a target below the acquired IM map.
+  TEST_FALSE(OpenSwathHelper::pasefSwathMapMatchesPrecursor(swath_map, 510.0, 0.58, 0.0, false))
+
+  // A full 0.06 IM extraction interval centred at 0.58 overlaps [0.60, 0.70].
+  TEST_TRUE(OpenSwathHelper::pasefSwathMapMatchesPrecursor(swath_map, 510.0, 0.58, 0.0, false, 0.06))
+
+  // A zero-width boundary touch contains no extractable IM interval.
+  TEST_FALSE(OpenSwathHelper::pasefSwathMapMatchesPrecursor(swath_map, 510.0, 0.57, 0.0, false, 0.06))
+
+  // The same interval-overlap rule rescues targets above the map.
+  TEST_TRUE(OpenSwathHelper::pasefSwathMapMatchesPrecursor(swath_map, 510.0, 0.72, 0.0, false, 0.06))
+
+  // Non-positive widths retain strict point-matching behavior.
+  TEST_FALSE(OpenSwathHelper::pasefSwathMapMatchesPrecursor(swath_map, 510.0, 0.58, 0.0, false, -1.0))
+
+  // Preserve the historical inclusive upper IM bound used during calibration.
+  TEST_FALSE(OpenSwathHelper::pasefSwathMapMatchesPrecursor(swath_map, 510.0, 0.70, 0.0, false))
+  TEST_TRUE(OpenSwathHelper::pasefSwathMapMatchesPrecursor(swath_map, 510.0, 0.70, 0.0, true))
 }
 END_SECTION
 
-START_SECTION((static double computePasefMapMatchingImTolerance(double im_extraction_window)))
-{
-  TEST_REAL_SIMILAR(OpenSwathHelper::computePasefMapMatchingImTolerance(0.06), 0.03)
-  TEST_REAL_SIMILAR(OpenSwathHelper::computePasefMapMatchingImTolerance(-1.0), 0.0)
-}
-END_SECTION
-
-START_SECTION((static OpenSwathHelper::PasefMapSelectionStrategy pasefMapSelectionStrategyFromString(const std::string& strategy)))
-{
-  TEST_EQUAL(static_cast<int>(OpenSwathHelper::pasefMapSelectionStrategyFromString("closest_im_center")),
-             static_cast<int>(OpenSwathHelper::PasefMapSelectionStrategy::CLOSEST_IM_CENTER))
-  TEST_EQUAL(static_cast<int>(OpenSwathHelper::pasefMapSelectionStrategyFromString("maximum_im_overlap")),
-             static_cast<int>(OpenSwathHelper::PasefMapSelectionStrategy::MAXIMUM_IM_OVERLAP))
-  TEST_EQUAL(OpenSwathHelper::pasefMapSelectionStrategyToString(
-               OpenSwathHelper::PasefMapSelectionStrategy::CLOSEST_IM_CENTER),
-             "closest_im_center")
-  TEST_EQUAL(OpenSwathHelper::pasefMapSelectionStrategyToString(
-               OpenSwathHelper::PasefMapSelectionStrategy::MAXIMUM_IM_OVERLAP),
-             "maximum_im_overlap")
-}
-END_SECTION
-
-START_SECTION((static OpenSwathHelper::PasefMapMatch matchPasefSwathMaps(double precursor_mz, double precursor_im, double min_upper_edge_dist, const std::vector<OpenSwath::SwathMap>& swath_maps, bool include_upper_bound, double im_match_tolerance, OpenSwathHelper::PasefMapSelectionStrategy selection_strategy)))
+START_SECTION((static int findBestPasefSwathMap(double precursor_mz, double precursor_im, double min_upper_edge_dist, const std::vector<OpenSwath::SwathMap>& swath_maps, bool include_upper_bound, double im_extraction_window)))
 {
   vector<SwathMap> swath_maps(3);
   swath_maps[0].lower = 500.0;
@@ -172,52 +167,56 @@ START_SECTION((static OpenSwathHelper::PasefMapMatch matchPasefSwathMaps(double 
   swath_maps[2].imUpper = 0.70;
   swath_maps[2].ms1 = false;
 
-  const auto match = OpenSwathHelper::matchPasefSwathMaps(510.0, 0.69, 1.0, swath_maps, false);
-  TEST_EQUAL(match.candidates.size(), 2)
-  TEST_EQUAL(match.selected_swath_map_index, 1)
-  TEST_EQUAL(match.candidates[0].swath_map_index, 0)
-  TEST_EQUAL(match.candidates[1].swath_map_index, 1)
-  TEST_FALSE(match.candidates[0].selected_best)
-  TEST_TRUE(match.candidates[1].selected_best)
+  // Preserve historical closest-IM-centre selection when multiple maps match.
+  TEST_EQUAL(OpenSwathHelper::findBestPasefSwathMap(510.0, 0.69, 1.0, swath_maps, false), 1)
 
-  const auto lower_slack_match = OpenSwathHelper::matchPasefSwathMaps(510.0, 0.58, 0.0, swath_maps, false, 0.03);
-  TEST_EQUAL(lower_slack_match.candidates.size(), 1)
-  TEST_EQUAL(lower_slack_match.selected_swath_map_index, 0)
-  TEST_REAL_SIMILAR(lower_slack_match.candidates[0].im_overlap_width, 0.01)
-  TEST_REAL_SIMILAR(lower_slack_match.candidates[0].im_overlap_fraction, 1.0 / 6.0)
+  // The configured full extraction interval rescues a target below the map.
+  TEST_EQUAL(OpenSwathHelper::findBestPasefSwathMap(510.0, 0.58, 0.0, swath_maps, false, 0.06), 0)
 
-  // Construct two eligible maps where the closest center and maximum usable
-  // target-window overlap select different maps.
-  vector<SwathMap> overlap_maps(2);
-  overlap_maps[0].lower = 500.0;
-  overlap_maps[0].upper = 525.0;
-  overlap_maps[0].center = 512.5;
-  overlap_maps[0].imLower = 0.60;
-  overlap_maps[0].imUpper = 0.70;
-  overlap_maps[0].ms1 = false;
+  // A target interval that does not overlap any map remains unmatched.
+  TEST_EQUAL(OpenSwathHelper::findBestPasefSwathMap(510.0, 0.56, 0.0, swath_maps, false, 0.06), -1)
 
-  overlap_maps[1].lower = 500.0;
-  overlap_maps[1].upper = 525.0;
-  overlap_maps[1].center = 512.5;
-  overlap_maps[1].imLower = 0.68;
-  overlap_maps[1].imUpper = 0.72;
-  overlap_maps[1].ms1 = false;
+  // Exact centre-distance ties retain the earliest map.
+  // Use binary-exact fractions so the two calculated centres are exactly equal.
+  vector<SwathMap> tied_maps(2);
+  tied_maps[0] = swath_maps[0];
+  tied_maps[0].imLower = 0.50;
+  tied_maps[0].imUpper = 0.75;
 
-  const auto closest_match = OpenSwathHelper::matchPasefSwathMaps(
-    510.0, 0.69, 0.0, overlap_maps, false, 0.05,
-    OpenSwathHelper::PasefMapSelectionStrategy::CLOSEST_IM_CENTER);
-  TEST_EQUAL(closest_match.selected_swath_map_index, 1)
-  TEST_REAL_SIMILAR(closest_match.candidates[0].im_overlap_width, 0.06)
-  TEST_REAL_SIMILAR(closest_match.candidates[1].im_overlap_width, 0.04)
+  tied_maps[1] = swath_maps[0];
+  tied_maps[1].imLower = 0.5625;
+  tied_maps[1].imUpper = 0.6875;
 
-  const auto overlap_match = OpenSwathHelper::matchPasefSwathMaps(
-    510.0, 0.69, 0.0, overlap_maps, false, 0.05,
-    OpenSwathHelper::PasefMapSelectionStrategy::MAXIMUM_IM_OVERLAP);
-  TEST_EQUAL(overlap_match.selected_swath_map_index, 0)
-  TEST_TRUE(overlap_match.candidates[0].selected_best)
-  TEST_FALSE(overlap_match.candidates[1].selected_best)
-  TEST_REAL_SIMILAR(overlap_match.candidates[0].im_overlap_fraction, 0.60)
-  TEST_REAL_SIMILAR(overlap_match.candidates[1].im_overlap_fraction, 0.40)
+  TEST_EQUAL(OpenSwathHelper::findBestPasefSwathMap(510.0, 0.625, 0.0, tied_maps, false), 0)
+}
+END_SECTION
+
+START_SECTION((static void selectSwathTransitionsPasef(const OpenSwath::LightTargetedExperiment& transition_exp, std::vector<int>& tr_win_map, double min_upper_edge_dist, const std::vector<OpenSwath::SwathMap>& swath_maps, double im_extraction_window)))
+{
+  vector<SwathMap> swath_maps(1);
+  swath_maps[0].lower = 500.0;
+  swath_maps[0].upper = 525.0;
+  swath_maps[0].center = 512.5;
+  swath_maps[0].imLower = 0.60;
+  swath_maps[0].imUpper = 0.70;
+  swath_maps[0].ms1 = false;
+
+  LightTargetedExperiment transition_exp;
+  LightTransition rescued;
+  rescued.precursor_mz = 510.0;
+  rescued.precursor_im = 0.58;
+  transition_exp.transitions.push_back(rescued);
+
+  LightTransition unmatched;
+  unmatched.precursor_mz = 510.0;
+  unmatched.precursor_im = 0.56;
+  transition_exp.transitions.push_back(unmatched);
+
+  vector<int> tr_win_map;
+  OpenSwathHelper::selectSwathTransitionsPasef(transition_exp, tr_win_map, 0.0, swath_maps, 0.06);
+  TEST_EQUAL(tr_win_map.size(), 2)
+  TEST_EQUAL(tr_win_map[0], 0)
+  TEST_EQUAL(tr_win_map[1], -1)
 }
 END_SECTION
 

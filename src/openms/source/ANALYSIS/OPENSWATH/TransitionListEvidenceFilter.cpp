@@ -499,11 +499,9 @@ namespace OpenMS
         {
           return true;
         }
-        const double im_match_tolerance =
-          OpenSwathHelper::computePasefMapMatchingImTolerance(params.im_extraction_window);
-        return OpenSwathHelper::pasefSwathMapContainsPrecursor(
+        return OpenSwathHelper::pasefSwathMapMatchesPrecursor(
           map, candidate.precursor_mz, candidate.precursor_im, params.min_upper_edge_dist, false,
-          im_match_tolerance);
+          params.im_extraction_window);
       }
       return true;
     }
@@ -530,8 +528,6 @@ namespace OpenMS
                                   const PrecursorIMTransform& transform)
     {
       Size matches = 0;
-      const double im_match_tolerance =
-        OpenSwathHelper::computePasefMapMatchingImTolerance(params.im_extraction_window);
       for (const auto& candidate : candidates)
       {
         if (candidate.precursor_mz <= 0.0 || candidate.precursor_im < 0.0)
@@ -539,10 +535,10 @@ namespace OpenMS
           continue;
         }
         const double scaled_im = candidate.precursor_im * transform.factor(candidate);
-        const auto match = OpenSwathHelper::matchPasefSwathMaps(
+        const int selected_map = OpenSwathHelper::findBestPasefSwathMap(
           candidate.precursor_mz, scaled_im, params.min_upper_edge_dist, swath_maps, false,
-          im_match_tolerance, params.pasef_map_selection_strategy);
-        if (match.hasMatch())
+          params.im_extraction_window);
+        if (selected_map >= 0)
         {
           ++matches;
         }

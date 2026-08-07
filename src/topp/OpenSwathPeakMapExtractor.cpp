@@ -98,10 +98,6 @@ protected:
 
     registerDoubleOption_("min_upper_edge_dist", "<double>", 0.0, "Minimal distance to the upper edge of a SWATH window to still consider a precursor, in Thomson", false, true);
     registerFlag_("pasef", "Data is PASEF data");
-    registerStringOption_("pasef_map_selection", "<method>", "closest_im_center",
-                          "How to choose one diaPASEF map when multiple maps overlap the target-centered IM extraction interval. 'closest_im_center' preserves the current behavior; 'maximum_im_overlap' chooses the largest usable overlap and breaks ties by IM-center distance.",
-                          false, true);
-    setValidStrings_("pasef_map_selection", ListUtils::create<std::string>("closest_im_center,maximum_im_overlap"));
     registerStringOption_("matching_window_only", "<name>", "false", "Assume the input data is targeted / PRM-like data with potentially overlapping DIA windows. Only extract each assay from the best matching DIA window.", false, true);
     setValidStrings_("matching_window_only", ListUtils::create<std::string>("true,false"));
 
@@ -533,8 +529,6 @@ protected:
     cp.ppm = getStringOption_("mz_extraction_window_unit") == "ppm";
     cp.rt_extraction_window = getDoubleOption_("rt_extraction_window");
     cp.im_extraction_window = getDoubleOption_("ion_mobility_window");
-    cp.pasef_map_selection_strategy = OpenSwathHelper::pasefMapSelectionStrategyFromString(
-      getStringOption_("pasef_map_selection"));
     cp.extraction_function = getStringOption_("extraction_function");
     cp.extra_rt_extract = getDoubleOption_("extra_rt_extraction_window");
 
@@ -561,8 +555,6 @@ protected:
     calibration_param.setValue("mz_extraction_window", cp_irt.mz_extraction_window);
     calibration_param.setValue("mz_extraction_window_ppm", cp_irt.ppm ? "true" : "false");
     calibration_param.setValue("im_extraction_window", cp_irt.im_extraction_window);
-    calibration_param.setValue("pasef_map_selection",
-                               OpenSwathHelper::pasefMapSelectionStrategyToString(cp.pasef_map_selection_strategy));
 
     Param tmp_mrm_map_param = getParam_().copy("MRMMapping:", true);
     Param irt_mrm_map_param = OpenMS::MRMMapping().getDefaults();
@@ -788,8 +780,7 @@ protected:
       {
         OpenSwathHelper::selectSwathTransitionsPasef(
           transition_exp_run, tr_win_map, cp_current.min_upper_edge_dist, swath_maps,
-          OpenSwathHelper::computePasefMapMatchingImTolerance(cp_current.im_extraction_window),
-          cp_current.pasef_map_selection_strategy);
+          cp_current.im_extraction_window);
       }
       else if (prm)
       {
