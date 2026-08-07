@@ -7,6 +7,7 @@
 // --------------------------------------------------------------------------
 
 #include <OpenMS/ANALYSIS/OPENSWATH/SwathMapMassCorrection.h>
+#include <OpenMS/ANALYSIS/OPENSWATH/OpenSwathHelper.h>
 
 #include <OpenMS/CONCEPT/LogStream.h>
 #include <OpenMS/ML/REGRESSION/LinearRegression.h>
@@ -61,31 +62,22 @@ namespace OpenMS
                                                  const std::vector< OpenSwath::SwathMap > & swath_maps)
   {
     OPENMS_PRECONDITION(transition_group.getTransitions()[0].precursor_im != -1, "All transitions must have a valid IM value (not -1)");
-    // Although theoretically there can be more than one map, for this case, just use the "best" map, best map is defined as the one in which the IM is closest to the center of the window
+    // Although theoretically there can be more than one map, calibration uses
+    // a single best map. Preserve the historical inclusive upper-bound check.
     std::vector<OpenSwath::SwathMap> used_maps;
-    for (const auto& m : swath_maps)
+    const double im_match_tolerance =
+      OpenSwathHelper::computePasefMapMatchingImTolerance(im_extraction_window_);
+    const auto match = OpenSwathHelper::matchPasefSwathMaps(
+      transition_group.getTransitions()[0].precursor_mz,
+      transition_group.getTransitions()[0].precursor_im,
+      0.0,
+      swath_maps,
+      true,
+      im_match_tolerance,
+      pasef_map_selection_strategy_);
+    if (match.hasMatch())
     {
-      // If precursor m/z and IM in Swath window
-      if (m.lower < transition_group.getTransitions()[0].precursor_mz &&
-          m.upper >= transition_group.getTransitions()[0].precursor_mz &&
-          m.imLower < transition_group.getTransitions()[0].precursor_im &&
-          m.imUpper >= transition_group.getTransitions()[0].precursor_im)
-      {
-        // if no other windows at this position just add it
-        if (used_maps.empty())
-        {
-          used_maps.push_back(m);
-        }
-        else //there is another window at this position, check if the new window found is better
-        {
-          double imCenterDiffOld = std::fabs(((used_maps[0].imLower + used_maps[0].imUpper) / 2) - transition_group.getTransitions()[0].precursor_im);
-          double imCenterDiffNew = std::fabs(((m.imLower + m.imUpper) / 2) - transition_group.getTransitions()[0].precursor_im);
-          if (imCenterDiffOld > imCenterDiffNew)
-          {
-            used_maps[0] = m;
-          }
-        }
-      }
+      used_maps.push_back(swath_maps[static_cast<Size>(match.selected_swath_map_index)]);
     }
     return used_maps;
   }
@@ -99,6 +91,10 @@ namespace OpenMS
     defaults_.setValue("ms1_im_calibration", "false", "Whether to use MS1 precursor data for the ion mobility calibration (default = false, uses MS2 / fragment ions for calibration)", {"advanced"});
     defaults_.setValidStrings("ms1_im_calibration", {"true","false"});
     defaults_.setValue("im_extraction_window", -1.0, "Ion mobility extraction window width");
+    defaults_.setValue("pasef_map_selection", "closest_im_center",
+                       "How to select one diaPASEF map when multiple maps overlap the target extraction interval.",
+                       {"advanced"});
+    defaults_.setValidStrings("pasef_map_selection", {"closest_im_center", "maximum_im_overlap"});
     defaults_.setValue("mz_estimation_padding_factor", 1.3, "A padding factor to multiply the estimated m/z window by. For example, a factor of 1.3 will add a 30% padding to the estimated m/z window, so if the estimated m/z window is 18, then 5.4 will be added for a total estimated m/z window of 23.4. A factor of 1.0 will not add any padding to the estimated window.");
     defaults_.setMinFloat("mz_estimation_padding_factor", 1.0);
     defaults_.setValue("im_estimation_padding_factor", 1.3, "A padding factor to multiply the estimated ion_mobility window by. For example, a factor of 1.3 will add a 30% padding to the estimated ion_mobility window, so if the estimated ion_mobility window is 0.03, then 0.009 will be added for a total estimated ion_mobility window of 0.039. A factor of 1.0 will not add any padding to the estimated window.");
@@ -127,6 +123,8 @@ namespace OpenMS
     mz_extraction_window_ppm_ = param_.getValue("mz_extraction_window_ppm") == "true";
     ms1_im_ = param_.getValue("ms1_im_calibration") == "true";
     im_extraction_window_ = (double)param_.getValue("im_extraction_window");
+    pasef_map_selection_strategy_ = OpenSwathHelper::pasefMapSelectionStrategyFromString(
+      param_.getValue("pasef_map_selection").toString());
     mz_estimation_padding_factor_ = (double)param_.getValue("mz_estimation_padding_factor");
     im_estimation_padding_factor_ = (double)param_.getValue("im_estimation_padding_factor");
     mz_estimation_percentile_ = (double)param_.getValue("mz_estimation_percentile");
@@ -816,4 +814,3 @@ namespace OpenMS
   }
 
   }
-
