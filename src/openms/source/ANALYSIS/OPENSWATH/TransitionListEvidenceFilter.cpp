@@ -8,6 +8,7 @@
 
 #include <OpenMS/ANALYSIS/OPENSWATH/TransitionListEvidenceFilter.h>
 
+#include <OpenMS/ANALYSIS/OPENSWATH/OpenSwathHelper.h>
 #include <OpenMS/ANALYSIS/OPENSWATH/OpenSwathWorkflowScheduler.h>
 #include <OpenMS/ANALYSIS/OPENSWATH/DATAACCESS/DataAccessHelper.h>
 #include <OpenMS/CONCEPT/Exception.h>
@@ -498,8 +499,9 @@ namespace OpenMS
         {
           return true;
         }
-        return map.imLower < candidate.precursor_im &&
-               candidate.precursor_im < map.imUpper;
+        return OpenSwathHelper::pasefSwathMapMatchesPrecursor(
+          map, candidate.precursor_mz, candidate.precursor_im, params.min_upper_edge_dist, false,
+          params.im_extraction_window);
       }
       return true;
     }
@@ -533,21 +535,12 @@ namespace OpenMS
           continue;
         }
         const double scaled_im = candidate.precursor_im * transform.factor(candidate);
-        for (const auto& map : swath_maps)
+        const int selected_map = OpenSwathHelper::findBestPasefSwathMap(
+          candidate.precursor_mz, scaled_im, params.min_upper_edge_dist, swath_maps, false,
+          params.im_extraction_window);
+        if (selected_map >= 0)
         {
-          if (map.ms1 || map.imLower < 0.0 || map.imUpper < 0.0)
-          {
-            continue;
-          }
-          if (map.lower < candidate.precursor_mz &&
-              candidate.precursor_mz < map.upper &&
-              std::fabs(map.upper - candidate.precursor_mz) >= params.min_upper_edge_dist &&
-              map.imLower < scaled_im &&
-              scaled_im < map.imUpper)
-          {
-            ++matches;
-            break;
-          }
+          ++matches;
         }
       }
       return matches;
