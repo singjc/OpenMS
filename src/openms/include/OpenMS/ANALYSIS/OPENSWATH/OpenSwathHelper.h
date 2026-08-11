@@ -12,6 +12,7 @@
 #include <OpenMS/KERNEL/MSExperiment.h>
 #include <OpenMS/ANALYSIS/TARGETED/TargetedExperiment.h>
 #include <OpenMS/OPENSWATHALGO/DATAACCESS/TransitionExperiment.h>
+#include <OpenMS/OPENSWATHALGO/DATAACCESS/SwathMap.h>
 #include <OpenMS/ANALYSIS/OPENSWATH/MRMFeatureFinderScoring.h>
 #include <OpenMS/CONCEPT/LogStream.h>
 
@@ -100,15 +101,62 @@ public:
                                        double min_upper_edge_dist,
                                        double lower, double upper);
     /**
-     @brief Match transitions with their "best" window across m/z and ion mobility, save results in a vector.
+      @brief Match each transition to the best diaPASEF map.
 
-     @param[in] transition_exp Transition list for selection
-     @param[out] tr_win_map Mapping from transition (index) to the best matching entry in @p swath_maps
-     @param[in] min_upper_edge_dist Distance in Th to the upper edge
-     @param[in] swath_maps vector of SwathMap objects defining mz and im bounds
+      A map is eligible when it contains the precursor m/z and its acquired IM
+      interval overlaps the target-centred IM extraction interval. If multiple
+      maps are eligible, the map whose IM centre is closest to the precursor IM
+      is selected, preserving the historical behavior.
+
+      @param[in] transition_exp Transition list for selection
+      @param[out] tr_win_map Mapping from transition index to the selected entry in @p swath_maps
+      @param[in] min_upper_edge_dist Distance in Th to the upper m/z edge
+      @param[in] swath_maps SWATH maps defining m/z and IM bounds
+      @param[in] im_extraction_window Full target-centred IM extraction width; non-positive values use strict point matching
     */
-    static void selectSwathTransitionsPasef(const OpenSwath::LightTargetedExperiment& transition_exp, std::vector<int>& tr_win_map,
-		                     double min_upper_edge_dist, const std::vector< OpenSwath::SwathMap > & swath_maps);
+    static void selectSwathTransitionsPasef(const OpenSwath::LightTargetedExperiment& transition_exp,
+                                            std::vector<int>& tr_win_map,
+                                            double min_upper_edge_dist,
+                                            const std::vector<OpenSwath::SwathMap>& swath_maps,
+                                            double im_extraction_window = -1.0);
+
+    /**
+      @brief Test whether one diaPASEF map is eligible for a precursor.
+
+      With a positive finite @p im_extraction_window, eligibility requires a
+      non-zero overlap between the target-centred extraction interval and the
+      acquired map IM interval. Otherwise, the precursor IM itself must be
+      inside the map.
+
+      @param[in] swath_map SWATH map to test
+      @param[in] precursor_mz Precursor m/z
+      @param[in] precursor_im Precursor ion mobility
+      @param[in] min_upper_edge_dist Distance in Th to the upper m/z edge
+      @param[in] include_upper_bound Preserve inclusive upper-bound matching for calibration
+      @param[in] im_extraction_window Full target-centred IM extraction width
+      @return True if the precursor can be extracted from the map
+    */
+    static bool pasefSwathMapMatchesPrecursor(const OpenSwath::SwathMap& swath_map,
+                                              double precursor_mz,
+                                              double precursor_im,
+                                              double min_upper_edge_dist,
+                                              bool include_upper_bound = false,
+                                              double im_extraction_window = -1.0);
+
+    /**
+      @brief Find the best eligible diaPASEF map for one precursor.
+
+      If multiple maps are eligible, the map whose IM centre is closest to the
+      precursor IM is selected. Exact ties retain the earliest map.
+
+      @return Selected SWATH-map index, or -1 if no map is eligible
+    */
+    static int findBestPasefSwathMap(double precursor_mz,
+                                     double precursor_im,
+                                     double min_upper_edge_dist,
+                                     const std::vector<OpenSwath::SwathMap>& swath_maps,
+                                     bool include_upper_bound = false,
+                                     double im_extraction_window = -1.0);
 
     /**
       @brief Get the lower / upper offset for this SWATH map and do some sanity checks
@@ -231,4 +279,3 @@ public:
   };
 
 } // namespace OpenMS
-

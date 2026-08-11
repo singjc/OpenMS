@@ -331,6 +331,7 @@ namespace OpenMS
       // OSWPQ precursor_id is the persistent operational identifier. traml_id is
       // provenance metadata and must not replace the canonical foreign key.
       compound.id = precursor_id_str;
+      compound.setDecoy(info.decoy);
       compound.drift_time = info.drift_time;
       compound.rt = info.library_rt;
       compound.charge = info.charge;
@@ -471,11 +472,20 @@ namespace OpenMS
 
     std::unordered_map<std::string, bool> compound_decoy;
     compound_decoy.reserve(targeted_exp.compounds.size());
+    for (const auto& compound : targeted_exp.compounds)
+    {
+      if (compound.hasDecoy())
+      {
+        compound_decoy.emplace(compound.id, compound.getDecoy());
+      }
+    }
     for (const auto& transition : targeted_exp.transitions)
     {
-      if (transition.getDecoy())
+      // Preserve an explicit precursor annotation. For legacy/in-memory libraries
+      // without one, infer the precursor state from a detecting transition.
+      if (!compound_decoy.contains(transition.peptide_ref) && transition.isDetectingTransition())
       {
-        compound_decoy[transition.peptide_ref] = true;
+        compound_decoy.emplace(transition.peptide_ref, transition.getDecoy());
       }
     }
 
@@ -486,6 +496,7 @@ namespace OpenMS
       // validateCanonicalIDs() above guarantees canonical decimal form, uniqueness,
       // and non-negativity. Persistent writers must preserve this operational ID.
       compound_to_precursor.emplace(compound.id, StringUtils::toInt64(compound.id));
+      compound_decoy.try_emplace(compound.id, false);
     }
 
     std::unordered_map<std::string, double> precursor_mz;

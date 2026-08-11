@@ -7,13 +7,85 @@
 // --------------------------------------------------------------------------
 
 #include <OpenMS/ANALYSIS/OPENSWATH/OpenSwathHelper.h>
+#include <OpenMS/CONCEPT/Exception.h>
 
 #include <random>
 #include <algorithm>
+#include <cmath>
+#include <limits>
 #include <unordered_set>
 
 namespace OpenMS
 {
+  bool OpenSwathHelper::pasefSwathMapMatchesPrecursor(const OpenSwath::SwathMap& swath_map,
+                                                       double precursor_mz,
+                                                       double precursor_im,
+                                                       double min_upper_edge_dist,
+                                                       bool include_upper_bound,
+                                                       double im_extraction_window)
+  {
+    if (swath_map.ms1 || precursor_mz <= 0.0 || precursor_im < 0.0 ||
+        swath_map.imLower < 0.0 || swath_map.imUpper < 0.0)
+    {
+      return false;
+    }
+
+    const bool mz_in_window = include_upper_bound ?
+      (swath_map.lower < precursor_mz && precursor_mz <= swath_map.upper) :
+      (swath_map.lower < precursor_mz && precursor_mz < swath_map.upper);
+    if (!mz_in_window || std::fabs(swath_map.upper - precursor_mz) < min_upper_edge_dist)
+    {
+      return false;
+    }
+
+    if (!std::isfinite(im_extraction_window) || im_extraction_window <= 0.0)
+    {
+      return include_upper_bound ?
+        (swath_map.imLower < precursor_im && precursor_im <= swath_map.imUpper) :
+        (swath_map.imLower < precursor_im && precursor_im < swath_map.imUpper);
+    }
+
+    const double im_half_window = im_extraction_window / 2.0;
+    const double extraction_im_lower = precursor_im - im_half_window;
+    const double extraction_im_upper = precursor_im + im_half_window;
+
+    // Require a non-zero overlap. A boundary touch contains no extractable IM interval.
+    return extraction_im_upper > swath_map.imLower &&
+           extraction_im_lower < swath_map.imUpper;
+  }
+
+  int OpenSwathHelper::findBestPasefSwathMap(double precursor_mz,
+                                              double precursor_im,
+                                              double min_upper_edge_dist,
+                                              const std::vector<OpenSwath::SwathMap>& swath_maps,
+                                              bool include_upper_bound,
+                                              double im_extraction_window)
+  {
+    int best_map_index = -1;
+    double best_im_center_distance = std::numeric_limits<double>::infinity();
+
+    for (SignedSize i = 0; i < boost::numeric_cast<SignedSize>(swath_maps.size()); ++i)
+    {
+      const auto& swath_map = swath_maps[static_cast<Size>(i)];
+      if (!pasefSwathMapMatchesPrecursor(swath_map, precursor_mz, precursor_im,
+                                         min_upper_edge_dist, include_upper_bound,
+                                         im_extraction_window))
+      {
+        continue;
+      }
+
+      const double im_center = (swath_map.imLower + swath_map.imUpper) / 2.0;
+      const double im_center_distance = std::fabs(im_center - precursor_im);
+      if (best_map_index == -1 || im_center_distance < best_im_center_distance)
+      {
+        best_map_index = static_cast<int>(i);
+        best_im_center_distance = im_center_distance;
+      }
+    }
+
+    return best_map_index;
+  }
+
   void OpenSwathHelper::selectSwathTransitions(const OpenMS::TargetedExperiment& targeted_exp,
                                                OpenMS::TargetedExperiment& transition_exp_used, double min_upper_edge_dist,
                                                double lower, double upper)
@@ -33,50 +105,30 @@ namespace OpenMS
     }
   }
 
-  // For PASEF experiments it is possible to have DIA windows with the same m/z however different IM.
-  // Extract from the DIA window in which the precursor is more centered across its IM.
-  // Unlike the function above, current implementation may not be parrelization safe
-  void OpenSwathHelper::selectSwathTransitionsPasef(const OpenSwath::LightTargetedExperiment& transition_exp, std::vector<int>& tr_win_map,
-                                               double min_upper_edge_dist, const std::vector< OpenSwath::SwathMap > & swath_maps)
+  // For PASEF experiments it is possible to have DIA windows with the same m/z but different IM.
+  // Extract from the eligible DIA window whose IM centre is closest to the precursor IM.
+  void OpenSwathHelper::selectSwathTransitionsPasef(const OpenSwath::LightTargetedExperiment& transition_exp,
+                                                     std::vector<int>& tr_win_map,
+                                                     double min_upper_edge_dist,
+                                                     const std::vector<OpenSwath::SwathMap>& swath_maps,
+                                                     double im_extraction_window)
   {
-      OPENMS_PRECONDITION(std::any_of(transition_exp.transitions.begin(), transition_exp.transitions.end(), [](auto i){return i.getPrecursorIM()!=-1;}), "All transitions must have a valid IM value (not -1)");
+    OPENMS_PRECONDITION(std::any_of(transition_exp.transitions.begin(), transition_exp.transitions.end(),
+                                    [](const auto& transition) { return transition.getPrecursorIM() != -1; }),
+                        "All transitions must have a valid IM value (not -1)");
 
-      tr_win_map.resize(transition_exp.transitions.size(), -1);
-      for (SignedSize i = 0; i < boost::numeric_cast<SignedSize>(swath_maps.size()); ++i)
-      {
-        for (Size k = 0; k < transition_exp.transitions.size(); k++)
-        {
-          const OpenSwath::LightTransition& tr = transition_exp.transitions[k];
-
-          // If the transition falls inside the current DIA window (both in IM and m/z axis), check
-          // if the window is potentially a better match for extraction than
-          // the one previously stored in the map:
-          if (
-             swath_maps[i].imLower < tr.getPrecursorIM() && tr.getPrecursorIM() < swath_maps[i].imUpper &&
-             swath_maps[i].lower < tr.getPrecursorMZ() && tr.getPrecursorMZ() < swath_maps[i].upper &&
-             std::fabs(swath_maps[i].upper - tr.getPrecursorMZ()) >= min_upper_edge_dist )
-          {
-            if (tr_win_map[k] == -1)
-            {
-              tr_win_map[k] = i;
-            }
-            else
-            {
-              // Check if the current window is better than the previously assigned window (across IM)
-              double imOld = std::fabs(((swath_maps[ tr_win_map[k] ].imLower + swath_maps [ tr_win_map[k] ].imUpper) / 2) - tr.getPrecursorIM() );
-              double imNew = std::fabs(((swath_maps[ i ].imLower + swath_maps [ i ].imUpper) / 2) - tr.getPrecursorIM() );
-              if (imOld > imNew)
-              {
-                // current DIA window "i" is a better match
-                OPENMS_LOG_DEBUG << "For Precursor " << tr.getPrecursorIM() << " Replacing Swath Map with IM center of " <<
-                  imOld << " with swath map of im center " << imNew << std::endl;
-                tr_win_map[k] = i;
-              }
-            }
-          }
-        }
-      }
+    tr_win_map.resize(transition_exp.transitions.size(), -1);
+    for (Size k = 0; k < transition_exp.transitions.size(); ++k)
+    {
+      const OpenSwath::LightTransition& transition = transition_exp.transitions[k];
+      tr_win_map[k] = findBestPasefSwathMap(transition.getPrecursorMZ(),
+                                            transition.getPrecursorIM(),
+                                            min_upper_edge_dist,
+                                            swath_maps,
+                                            false,
+                                            im_extraction_window);
     }
+  }
 
   void OpenSwathHelper::checkSwathMap(const OpenMS::PeakMap& swath_map,
                                       double& lower, double& upper, double& center)

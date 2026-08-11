@@ -8,6 +8,7 @@
 
 #include <OpenMS/ANALYSIS/OPENSWATH/OpenSwathWorkflow.h>
 #include <OpenMS/ANALYSIS/OPENSWATH/CalibrationWorkflow.h>
+#include <OpenMS/ANALYSIS/OPENSWATH/OpenSwathHelper.h>
 #include <OpenMS/ANALYSIS/OPENSWATH/OpenSwathWorkflowScheduler.h>
 #include <OpenMS/ANALYSIS/TARGETED/IChromatogramHandler.h>
 #include <OpenMS/ANALYSIS/TARGETED/ChromatogramProcessor.h>
@@ -296,7 +297,8 @@ namespace OpenMS
     const Param & mrm_mapping_param,
     MobilogramParquetConsumer * mobilogram_consumer,
     int innerBatchSize,
-    int maxConcurrentSwaths)
+    int maxConcurrentSwaths,
+    OpenSwathOSWWriter::OSWData* deferred_osw_output)
   {
     // Suppress repeated resampling-spacing warnings for this workflow call
     // only, so embedded use does not affect later resampling in the process.
@@ -315,7 +317,7 @@ namespace OpenMS
 
       FeatureMap featureFile;
       scoreAllChromatograms_(filtered_chroms, std::vector<MSChromatogram>(), swath_maps, transition_exp,
-                feature_finder_param, trafo, cp.rt_extraction_window, featureFile, osw_writer, ms1_isotopes, false, mobilogram_consumer);
+                feature_finder_param, trafo, cp.rt_extraction_window, featureFile, osw_writer, ms1_isotopes, false, mobilogram_consumer, deferred_osw_output);
 
       std::vector<MSChromatogram> empty_ms1_chromatograms;
 
@@ -356,7 +358,7 @@ namespace OpenMS
       const OpenSwath::LightTargetedExperiment& transition_exp_used = transition_exp;
       scoreAllChromatograms_(std::vector<MSChromatogram>(), ms1_chromatograms, swath_maps, transition_exp_used,
                 feature_finder_param, trafo,
-                cp.rt_extraction_window, featureFile, osw_writer, ms1_isotopes, true, mobilogram_consumer);
+                cp.rt_extraction_window, featureFile, osw_writer, ms1_isotopes, true, mobilogram_consumer, deferred_osw_output);
 
       // write features to output if so desired
       std::vector< OpenMS::MSChromatogram > chromatograms;
@@ -408,40 +410,9 @@ namespace OpenMS
     }
     else if (pasef_)
     {
-      // For PASEF experiments it is possible to have DIA windows with the same m/z however different IM.
-      // Extract from the DIA window in which the precursor is more centered across its IM.
-
-      tr_win_map.resize(transition_exp.transitions.size(), -1);
-      for (SignedSize i = 0; i < boost::numeric_cast<SignedSize>(swath_maps.size()); ++i)
-      {
-        for (Size k = 0; k < transition_exp.transitions.size(); k++)
-        {
-          const OpenSwath::LightTransition& tr = transition_exp.transitions[k];
-
-          // If the transition falls inside the current DIA window (both in IM and m/z axis), check
-          // if the window is potentially a better match for extraction than
-          // the one previously stored in the map:
-          if (
-             swath_maps[i].imLower < tr.getPrecursorIM() && tr.getPrecursorIM() < swath_maps[i].imUpper &&
-             swath_maps[i].lower < tr.getPrecursorMZ() && tr.getPrecursorMZ() < swath_maps[i].upper &&
-             std::fabs(swath_maps[i].upper - tr.getPrecursorMZ()) >= cp.min_upper_edge_dist )
-          {
-            if (tr_win_map[k] == -1) tr_win_map[k] = i;
-
-            // Check if the current window is better than the previously assigned window (across IM)
-            double imOld = std::fabs(((swath_maps[ tr_win_map[k] ].imLower + swath_maps [ tr_win_map[k] ].imUpper) / 2) - tr.getPrecursorIM() );
-            double imNew = std::fabs(((swath_maps[ i ].imLower + swath_maps [ i ].imUpper) / 2) - tr.getPrecursorIM() );
-            if (imOld > imNew)
-            {
-              // current DIA window "i" is a better match
-              OPENMS_LOG_DEBUG << "For Precursor " << tr.getPrecursorIM() << "Replacing Swath Map with IM center of " <<
-                imOld << " with swath map of im center " << imNew << '\n';
-              tr_win_map[k] = i;
-            }
-
-          }
-        }
-      }
+      OpenSwathHelper::selectSwathTransitionsPasef(
+        transition_exp, tr_win_map, cp.min_upper_edge_dist, swath_maps,
+        cp.im_extraction_window);
     }
     else {
     };
@@ -503,6 +474,7 @@ namespace OpenMS
         std::vector<MSChromatogram> ms1_chromatograms;
         PeakMap chrom_exp;
         FeatureMap feature_file;
+        OpenSwathOSWWriter::OSWData osw_output;
       };
 
       std::vector<SwathSchedulerContext> contexts(swath_maps.size());
@@ -776,6 +748,10 @@ namespace OpenMS
         {
           writeOutFeaturesAndChroms_(context.chrom_exp.getChromatograms(), context.ms1_chromatograms,
               context.feature_file, out_featureFile, store_features, chromConsumer);
+          if (deferred_osw_output != nullptr && !context.osw_output.empty())
+          {
+            deferred_osw_output->append(std::move(context.osw_output));
+          }
         }
 
         context.finalized = true;
@@ -815,9 +791,15 @@ namespace OpenMS
             std::vector<OpenSwath::SwathMap> tmp = {swath_maps[context.swath_index]};
             tmp.back().sptr = context.current_swath_map->lightClone();
             OpenSwathOSWWriter::OSWData job_osw_output;
+            // Only pass a deferred OSW-row buffer when this extraction actually produces
+            // OSW/Parquet rows. A non-null buffer activates row-collection mode in
+            // scoreAllChromatograms_(), which intentionally clears FeatureMap output
+            // between assays because OSW and featureXML output are mutually exclusive.
+            OpenSwathOSWWriter::OSWData* job_osw_output_ptr =
+              (osw_writer.isActive() || deferred_osw_output != nullptr) ? &job_osw_output : nullptr;
             scoreAllChromatograms_(context.chrom_exp.getChromatograms(), context.ms1_chromatograms, tmp, transition_exp_used,
               feature_finder_param, trafo, cp.rt_extraction_window, featureFile, osw_writer, ms1_isotopes, false,
-              mobilogram_consumer, &job_osw_output);
+              mobilogram_consumer, job_osw_output_ptr);
 
             if (osw_writer.isActive() && !job_osw_output.empty())
             {
@@ -853,6 +835,10 @@ namespace OpenMS
                 {
                   context.feature_file.getProteinIdentifications().push_back(*protid_it);
                 }
+              }
+              if (deferred_osw_output != nullptr && !job_osw_output.empty())
+              {
+                context.osw_output.append(std::move(job_osw_output));
               }
 
               --context.remaining_score_jobs;
@@ -905,6 +891,7 @@ namespace OpenMS
         context.ms1_chromatograms.shrink_to_fit();
         context.chrom_exp = PeakMap();
         context.feature_file = FeatureMap();
+        context.osw_output = OpenSwathOSWWriter::OSWData();
         context.active = false;
         context.finalized = true;
       }
@@ -1122,9 +1109,10 @@ namespace OpenMS
             FeatureMap featureFile;
             std::vector< OpenSwath::SwathMap > tmp = {swath_maps[i]};
             tmp.back().sptr = current_swath_map_inner;
+            OpenSwathOSWWriter::OSWData local_osw_output;
             scoreAllChromatograms_(chrom_exp.getChromatograms(), ms1_chromatograms, tmp, transition_exp_used,
               feature_finder_param, trafo, cp.rt_extraction_window, featureFile, osw_writer, ms1_isotopes, false,
-              mobilogram_consumer);
+              mobilogram_consumer, deferred_osw_output != nullptr ? &local_osw_output : nullptr);
 
             // Step 4: write all chromatograms and features out into an output object / file
             // (this needs to be done in a critical section since we only have one
@@ -1132,6 +1120,10 @@ namespace OpenMS
             #pragma omp critical (osw_write_out)
             {
               writeOutFeaturesAndChroms_(chrom_exp.getChromatograms(), ms1_chromatograms, featureFile, out_featureFile, store_features, chromConsumer);
+              if (deferred_osw_output != nullptr && !local_osw_output.empty())
+              {
+                deferred_osw_output->append(std::move(local_osw_output));
+              }
             }
           }
 
@@ -1299,8 +1291,9 @@ namespace OpenMS
     {
       assay_map[transition_exp.getTransitions()[i].getPeptideRef()].push_back(&transition_exp.getTransitions()[i]);
     }
+    const bool collect_osw_rows = osw_writer.isActive() || deferred_osw_output != nullptr;
     OpenSwathOSWWriter::OSWData to_osw_output;
-    if (osw_writer.isActive())
+    if (collect_osw_rows)
     {
       const int stop_report_after_feature =
         static_cast<int>(feature_finder_param.getValue("stop_report_after_feature"));
@@ -1381,7 +1374,7 @@ namespace OpenMS
       }
 
       // currently  .osw and .featureXML are mutually exclusive
-      if (osw_writer.isActive()) { output.clear(); }
+      if (collect_osw_rows) { output.clear(); }
 
       // 2. Set the MS1 chromatograms for the different isotopes, if available
       // (note that for 3 isotopes, we include the monoisotopic peak plus three
@@ -1523,7 +1516,7 @@ namespace OpenMS
       }
 
       // 5. Add to the output osw if given
-      if (osw_writer.isActive() && !output.empty()) // implies that detection_assay_it was set
+      if (collect_osw_rows && !output.empty()) // implies that detection_assay_it was set
       {
         // Compound and transition are currently unused by the OSW row writer.
         osw_writer.prepareRowsInto(to_osw_output,
@@ -1536,7 +1529,7 @@ namespace OpenMS
 
     // Only write at the very end since this is a step that needs a barrier.
     // Schedulers can batch these rows and pass them through the bounded writer.
-    if (osw_writer.isActive())
+    if (collect_osw_rows)
     {
       if (deferred_osw_output != nullptr)
       {
@@ -1544,6 +1537,7 @@ namespace OpenMS
         return;
       }
 
+      OPENMS_PRECONDITION(osw_writer.isActive(), "Direct OSW row writing requires an active OSW writer.")
 #ifdef _OPENMP
 #pragma omp critical (osw_write_tsv)
 #endif

@@ -30,6 +30,7 @@ set(sources_list_h
   OpenSwathLibraryIDNormalizer.h
   OpenSwathExportConfig.h
   OpenSwathExportData.h
+  OpenSwathLibraryPreparation.h
   OpenSwathMatrixExporter.h
   OpenSwathParquetExporter.h
   OpenSwathInferenceConfig.h
