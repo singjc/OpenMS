@@ -58,6 +58,9 @@ namespace OpenMS
     double mz_extraction_window;
     /// Extraction window in ion mobility
     double im_extraction_window;
+    /// Strategy used to select one diaPASEF map when multiple maps are eligible.
+    OpenSwathHelper::PasefMapSelectionStrategy pasef_map_selection_strategy{
+      OpenSwathHelper::PasefMapSelectionStrategy::CLOSEST_IM_CENTER};
     /// Whether the extraction window is given in ppm or Da
     bool ppm;
     /// The extraction function in mass space

@@ -12,6 +12,7 @@
 #include <OpenMS/ANALYSIS/OPENSWATH/MRMFeatureFinderScoring.h>
 #include <OpenMS/ANALYSIS/OPENSWATH/OpenSwathExportConfig.h>
 #include <OpenMS/ANALYSIS/OPENSWATH/OpenSwathGeneInference.h>
+#include <OpenMS/ANALYSIS/OPENSWATH/OpenSwathHelper.h>
 #include <OpenMS/ANALYSIS/OPENSWATH/OpenSwathLibraryPreparation.h>
 #include <OpenMS/ANALYSIS/OPENSWATH/OpenSwathMatrixExporter.h>
 #include <OpenMS/ANALYSIS/OPENSWATH/OpenSwathOSWParquetWriter.h>
@@ -46,10 +47,13 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <fstream>
+#include <iomanip>
 #include <limits>
 #include <map>
 #include <memory>
 #include <optional>
+#include <sstream>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -524,9 +528,15 @@ protected:
     setValidFormats_("TargetedDataExtraction:out_chrom", {"mzML", "sqMass", "xic"});
     registerOutputFile_("TargetedDataExtraction:out_mobilogram", "<file>", "", "Optional extracted ion mobilogram output in Parquet (.xim). If multiple runs are analyzed, explicit file names are expanded per run as <basename>_<requested-name>.", false, true);
     setValidFormats_("TargetedDataExtraction:out_mobilogram", {"xim"});
+    registerOutputFile_("TargetedDataExtraction:debug_pasef_map_file", "<file>", "", "Optional diaPASEF SWATH/IM assignment audit TSV. When TargetedDataExtraction:write_debug_files is true and this path is unset, OpenDIA writes <basename>.debug.pasef_map.tsv into out_dir for runs that use PASEF-style window matching. If multiple runs are analyzed, explicit file names are expanded per run as <basename>_<requested-name>.", false);
+    setValidFormats_("TargetedDataExtraction:debug_pasef_map_file", {"tsv"});
 
     registerDoubleOption_("TargetedDataExtraction:min_upper_edge_dist", "<double>", 0.0, "Minimal distance to the upper edge of a SWATH window to still consider a precursor, in Thomson.", false, true);
     registerFlag_("TargetedDataExtraction:pasef", "Treat the input as PASEF / diaPASEF data.");
+    registerStringOption_("TargetedDataExtraction:pasef_map_selection", "<method>", "closest_im_center",
+                          "How to choose one diaPASEF map when multiple maps overlap the target-centered IM extraction interval. 'closest_im_center' preserves the current behavior; 'maximum_im_overlap' chooses the largest usable overlap and breaks ties by IM-center distance.",
+                          false, true);
+    setValidStrings_("TargetedDataExtraction:pasef_map_selection", {"closest_im_center", "maximum_im_overlap"});
     registerStringOption_("TargetedDataExtraction:ion_mobility_mode", "<choice>", "auto", "How to use the ion mobility dimension. 'auto' detects ion mobility SWATH windows and enables PASEF-style extraction/scoring automatically, filling negative IM extraction windows with 0.06 1/K0 defaults. 'enabled' keeps ion mobility enabled whenever such data are present. 'disabled' disables ion mobility extraction, calibration, and scoring even if the input contains ion mobility.", false);
     setValidStrings_("TargetedDataExtraction:ion_mobility_mode", {"auto", "enabled", "disabled"});
 
@@ -1233,6 +1243,277 @@ protected:
     const std::string directory = File::path(requested_output);
     const std::string prefixed_name = run_basename + "_" + File::basename(requested_output);
     return directory.empty() ? prefixed_name : directory + "/" + prefixed_name;
+  }
+
+  struct PasefPrefilterAuditInfo_
+  {
+    bool retained{false};
+    bool supported{false};
+    bool supported_ms1{false};
+    bool supported_ms2{false};
+    Size ms1_hit_count{0};
+    Size ms2_best_fragment_hits{0};
+  };
+
+  static std::string auditBoolString_(const bool value)
+  {
+    return value ? "true" : "false";
+  }
+
+  static std::string auditDoubleString_(const double value)
+  {
+    if (!std::isfinite(value))
+    {
+      return "";
+    }
+    std::ostringstream os;
+    os << std::setprecision(12) << value;
+    return os.str();
+  }
+
+  static std::unordered_map<std::string, const OpenSwath::LightTransition*> representativeTransitionsByCompound_(
+    const OpenSwath::LightTargetedExperiment& transition_exp)
+  {
+    std::unordered_map<std::string, const OpenSwath::LightTransition*> result;
+    result.reserve(transition_exp.transitions.size());
+    for (const auto& transition : transition_exp.transitions)
+    {
+      result.emplace(transition.getPeptideRef(), &transition);
+    }
+    return result;
+  }
+
+  static std::unordered_map<std::string, PasefPrefilterAuditInfo_> buildPasefPrefilterAuditMap_(
+    const TransitionListEvidenceFilter::Result& prefilter_result)
+  {
+    std::unordered_map<std::string, PasefPrefilterAuditInfo_> result;
+    result.reserve(prefilter_result.evidence.size());
+    for (const auto& evidence : prefilter_result.evidence)
+    {
+      PasefPrefilterAuditInfo_ info;
+      info.supported_ms1 = evidence.supported_ms1;
+      info.supported_ms2 = evidence.supported_ms2;
+      info.supported = evidence.supported_ms1 || evidence.supported_ms2;
+      info.ms1_hit_count = evidence.ms1_hit_count;
+      info.ms2_best_fragment_hits = evidence.ms2_best_fragment_hits;
+      result.emplace(evidence.compound_id, info);
+    }
+    for (const auto& compound : prefilter_result.filtered_targets.compounds)
+    {
+      result[compound.id].retained = true;
+    }
+    return result;
+  }
+
+  static void writePasefMapAuditHeader_(std::ostream& out)
+  {
+    out << "run_basename"
+        << '\t' << "stage"
+        << '\t' << "assignment_mode"
+        << '\t' << "map_selection_strategy"
+        << '\t' << "inclusive_upper_bound"
+        << '\t' << "compound_id"
+        << '\t' << "sequence"
+        << '\t' << "charge"
+        << '\t' << "decoy"
+        << '\t' << "precursor_mz"
+        << '\t' << "library_precursor_im"
+        << '\t' << "effective_precursor_im"
+        << '\t' << "im_transform_factor"
+        << '\t' << "im_transform_scale"
+        << '\t' << "im_transform_by_charge"
+        << '\t' << "im_match_tolerance"
+        << '\t' << "candidate_count"
+        << '\t' << "candidate_rank"
+        << '\t' << "swath_map_index"
+        << '\t' << "selected_swath_map_index"
+        << '\t' << "selected_best"
+        << '\t' << "used_by_stage"
+        << '\t' << "mz_lower"
+        << '\t' << "mz_upper"
+        << '\t' << "mz_center"
+        << '\t' << "im_lower"
+        << '\t' << "im_upper"
+        << '\t' << "im_center"
+        << '\t' << "upper_edge_distance"
+        << '\t' << "mz_center_distance"
+        << '\t' << "im_center_distance"
+        << '\t' << "im_overlap_width"
+        << '\t' << "im_overlap_fraction"
+        << '\t' << "prefilter_retained"
+        << '\t' << "prefilter_supported"
+        << '\t' << "prefilter_supported_ms1"
+        << '\t' << "prefilter_supported_ms2"
+        << '\t' << "prefilter_ms1_hit_count"
+        << '\t' << "prefilter_ms2_best_fragment_hits"
+        << '\n';
+  }
+
+  static void appendPasefMapAuditRows_(std::ostream& out,
+                                       const std::string& run_basename,
+                                       const std::string& stage,
+                                       const std::string& assignment_mode,
+                                       const OpenSwath::LightTargetedExperiment& transition_exp,
+                                       const std::vector<OpenSwath::SwathMap>& swath_maps,
+                                       const double min_upper_edge_dist,
+                                       const bool include_upper_bound,
+                                       const bool use_all_matching_maps,
+                                       const double precursor_im_scale,
+                                       const bool precursor_im_scaled_by_charge,
+                                       const double im_match_tolerance,
+                                       const OpenSwathHelper::PasefMapSelectionStrategy selection_strategy,
+                                       const std::unordered_map<std::string, PasefPrefilterAuditInfo_>* prefilter_audit)
+  {
+    if (transition_exp.transitions.empty() || transition_exp.compounds.empty())
+    {
+      return;
+    }
+
+    const auto representative_transitions = representativeTransitionsByCompound_(transition_exp);
+    for (const auto& compound : transition_exp.compounds)
+    {
+      const auto transition_it = representative_transitions.find(compound.id);
+      if (transition_it == representative_transitions.end())
+      {
+        continue;
+      }
+
+      const OpenSwath::LightTransition& transition = *transition_it->second;
+      if (transition.getDecoy())
+      {
+        continue;
+      }
+
+      const double library_precursor_im = transition.getPrecursorIM();
+      double im_transform_factor = precursor_im_scale;
+      if (precursor_im_scaled_by_charge && compound.charge > 0)
+      {
+        im_transform_factor *= compound.charge;
+      }
+      const double effective_precursor_im = library_precursor_im >= 0.0 ?
+        library_precursor_im * im_transform_factor :
+        library_precursor_im;
+      const auto match = OpenSwathHelper::matchPasefSwathMaps(
+        transition.getPrecursorMZ(),
+        effective_precursor_im,
+        min_upper_edge_dist,
+        swath_maps,
+        include_upper_bound,
+        im_match_tolerance,
+        selection_strategy);
+
+      const PasefPrefilterAuditInfo_* prefilter_info = nullptr;
+      if (prefilter_audit != nullptr)
+      {
+        const auto prefilter_it = prefilter_audit->find(compound.id);
+        if (prefilter_it != prefilter_audit->end())
+        {
+          prefilter_info = &prefilter_it->second;
+        }
+      }
+
+      auto write_prefilter_columns = [&](std::ostream& os)
+      {
+        if (prefilter_info == nullptr)
+        {
+          os << '\t' << ""
+             << '\t' << ""
+             << '\t' << ""
+             << '\t' << ""
+             << '\t' << ""
+             << '\t' << "";
+          return;
+        }
+
+        os << '\t' << auditBoolString_(prefilter_info->retained)
+           << '\t' << auditBoolString_(prefilter_info->supported)
+           << '\t' << auditBoolString_(prefilter_info->supported_ms1)
+           << '\t' << auditBoolString_(prefilter_info->supported_ms2)
+           << '\t' << StringUtils::toStr(prefilter_info->ms1_hit_count)
+           << '\t' << StringUtils::toStr(prefilter_info->ms2_best_fragment_hits);
+      };
+
+      if (!match.hasMatch())
+      {
+        out << run_basename
+            << '\t' << stage
+            << '\t' << assignment_mode
+            << '\t' << OpenSwathHelper::pasefMapSelectionStrategyToString(selection_strategy)
+            << '\t' << auditBoolString_(include_upper_bound)
+            << '\t' << compound.id
+            << '\t' << compound.sequence
+            << '\t' << compound.charge
+            << '\t' << auditBoolString_(transition.getDecoy())
+            << '\t' << auditDoubleString_(transition.getPrecursorMZ())
+            << '\t' << auditDoubleString_(library_precursor_im)
+            << '\t' << auditDoubleString_(effective_precursor_im)
+            << '\t' << auditDoubleString_(im_transform_factor)
+            << '\t' << auditDoubleString_(precursor_im_scale)
+            << '\t' << auditBoolString_(precursor_im_scaled_by_charge)
+            << '\t' << auditDoubleString_(im_match_tolerance)
+            << '\t' << 0
+            << '\t' << -1
+            << '\t' << ""
+            << '\t' << ""
+            << '\t' << "false"
+            << '\t' << "false"
+            << '\t' << ""
+            << '\t' << ""
+            << '\t' << ""
+            << '\t' << ""
+            << '\t' << ""
+            << '\t' << ""
+            << '\t' << ""
+            << '\t' << ""
+            << '\t' << ""
+            << '\t' << ""
+            << '\t' << "";
+        write_prefilter_columns(out);
+        out << '\n';
+        continue;
+      }
+
+      for (Size candidate_rank = 0; candidate_rank < match.candidates.size(); ++candidate_rank)
+      {
+        const auto& candidate = match.candidates[candidate_rank];
+        const bool used_by_stage = use_all_matching_maps ? true : candidate.selected_best;
+        out << run_basename
+            << '\t' << stage
+            << '\t' << assignment_mode
+            << '\t' << OpenSwathHelper::pasefMapSelectionStrategyToString(selection_strategy)
+            << '\t' << auditBoolString_(include_upper_bound)
+            << '\t' << compound.id
+            << '\t' << compound.sequence
+            << '\t' << compound.charge
+            << '\t' << auditBoolString_(transition.getDecoy())
+            << '\t' << auditDoubleString_(transition.getPrecursorMZ())
+            << '\t' << auditDoubleString_(library_precursor_im)
+            << '\t' << auditDoubleString_(effective_precursor_im)
+            << '\t' << auditDoubleString_(im_transform_factor)
+            << '\t' << auditDoubleString_(precursor_im_scale)
+            << '\t' << auditBoolString_(precursor_im_scaled_by_charge)
+            << '\t' << auditDoubleString_(im_match_tolerance)
+            << '\t' << match.candidates.size()
+            << '\t' << candidate_rank
+            << '\t' << candidate.swath_map_index
+            << '\t' << match.selected_swath_map_index
+            << '\t' << auditBoolString_(candidate.selected_best)
+            << '\t' << auditBoolString_(used_by_stage)
+            << '\t' << auditDoubleString_(candidate.mz_lower)
+            << '\t' << auditDoubleString_(candidate.mz_upper)
+            << '\t' << auditDoubleString_(candidate.mz_center)
+            << '\t' << auditDoubleString_(candidate.im_lower)
+            << '\t' << auditDoubleString_(candidate.im_upper)
+            << '\t' << auditDoubleString_(candidate.im_center)
+            << '\t' << auditDoubleString_(candidate.upper_edge_distance)
+            << '\t' << auditDoubleString_(candidate.mz_center_distance)
+            << '\t' << auditDoubleString_(candidate.im_center_distance)
+            << '\t' << auditDoubleString_(candidate.im_overlap_width)
+            << '\t' << auditDoubleString_(candidate.im_overlap_fraction);
+        write_prefilter_columns(out);
+        out << '\n';
+      }
+    }
   }
 
   static void logPeptidoformSummary_(const std::vector<IPFResultRow>& results)
@@ -4740,12 +5021,15 @@ protected:
     const std::string swath_windows_file = getStringOption_("TargetedDataExtraction:swath_windows_file");
     const std::string out_chrom = getStringOption_("TargetedDataExtraction:out_chrom");
     const std::string out_mobilogram = getStringOption_("TargetedDataExtraction:out_mobilogram");
+    const std::string debug_pasef_map_file = getStringOption_("TargetedDataExtraction:debug_pasef_map_file");
     const bool write_debug_files = toBool_(getStringOption_("TargetedDataExtraction:write_debug_files"));
     const bool write_chromatograms = toBool_(getStringOption_("TargetedDataExtraction:write_chromatograms"));
     const bool write_mobilograms = toBool_(getStringOption_("TargetedDataExtraction:write_mobilograms"));
     const bool split_file = getFlag_("TargetedDataExtraction:split_file_input");
     const bool use_emg_score = getFlag_("TargetedDataExtraction:use_elution_model_score");
     bool pasef = getFlag_("TargetedDataExtraction:pasef");
+    const auto pasef_map_selection_strategy = OpenSwathHelper::pasefMapSelectionStrategyFromString(
+      getStringOption_("TargetedDataExtraction:pasef_map_selection"));
     const std::string ion_mobility_mode = getStringOption_("TargetedDataExtraction:ion_mobility_mode");
     const bool sort_swath_maps = getFlag_("TargetedDataExtraction:sort_swath_maps");
     const bool use_ms1_traces = getStringOption_("TargetedDataExtraction:enable_ms1") == "true";
@@ -4856,6 +5140,7 @@ protected:
     cp.ppm = getStringOption_("TargetedDataExtraction:mz_extraction_window_unit") == "ppm";
     cp.rt_extraction_window = getDoubleOption_("TargetedDataExtraction:rt_extraction_window");
     cp.im_extraction_window = getDoubleOption_("TargetedDataExtraction:ion_mobility_window");
+    cp.pasef_map_selection_strategy = pasef_map_selection_strategy;
     cp.extraction_function = getStringOption_("TargetedDataExtraction:extraction_function");
     cp.extra_rt_extract = getDoubleOption_("TargetedDataExtraction:extra_rt_extraction_window");
 
@@ -5147,9 +5432,45 @@ protected:
         debug_im_out = makePerRunManualOutputPath_(debug_im_out, run_basename);
       }
       calibration_param.setValue("debug_im_file", debug_im_out);
+      std::string debug_pasef_map_out = debug_pasef_map_file;
+      if (force_disable_ion_mobility)
+      {
+        if (!debug_pasef_map_out.empty() || write_debug_files)
+        {
+          OPENMS_LOG_INFO << "Ion mobility mode is disabled; suppressing diaPASEF SWATH-map audit output for this run." << std::endl;
+        }
+        debug_pasef_map_out.clear();
+      }
+      else if (debug_pasef_map_out.empty() && write_debug_files)
+      {
+        debug_pasef_map_out = makeAutoRunOutputPath_(current_run_files, out_dir, "debug.pasef_map", "tsv");
+        OPENMS_LOG_INFO << "Auto-writing diaPASEF SWATH-map audit output to " << debug_pasef_map_out << std::endl;
+      }
+      else if (!debug_pasef_map_out.empty() && run_groups.size() > 1)
+      {
+        debug_pasef_map_out = makePerRunManualOutputPath_(debug_pasef_map_out, run_basename);
+      }
+      if (!debug_pasef_map_out.empty() && !pasef)
+      {
+        OPENMS_LOG_INFO << "This run does not use PASEF-style window matching; skipping diaPASEF SWATH-map audit output." << std::endl;
+        debug_pasef_map_out.clear();
+      }
       calibration_param.setValue("mz_extraction_window", cp_irt_current.mz_extraction_window);
       calibration_param.setValue("mz_extraction_window_ppm", cp_irt_current.ppm ? "true" : "false");
       calibration_param.setValue("im_extraction_window", cp_irt_current.im_extraction_window);
+      calibration_param.setValue("pasef_map_selection",
+                                 OpenSwathHelper::pasefMapSelectionStrategyToString(cp_current.pasef_map_selection_strategy));
+
+      std::ofstream pasef_audit_stream;
+      if (!debug_pasef_map_out.empty())
+      {
+        pasef_audit_stream.open(debug_pasef_map_out);
+        if (!pasef_audit_stream)
+        {
+          throw Exception::FileNotWritable(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION, debug_pasef_map_out);
+        }
+        writePasefMapAuditHeader_(pasef_audit_stream);
+      }
 
       bool mrm_mode = true;
       for (const auto& sm : swath_maps)
@@ -5186,6 +5507,7 @@ protected:
 
         OpenSwath::LightTargetedExperiment prefiltered_irt_targets;
         const OpenSwath::LightTargetedExperiment* irt_sampling_transition_exp = &transition_exp;
+        std::unordered_map<std::string, PasefPrefilterAuditInfo_> prefilter_audit;
         const bool auto_irt_prefilter_enabled = cal_params.getValue("auto_irt:prefilter:enabled").toBool();
         if (auto_irt && auto_irt_prefilter_enabled &&
             (strategy == IrtStrategy::SAMPLE_ONCE || strategy == IrtStrategy::SAMPLE_PER_RUN))
@@ -5197,6 +5519,17 @@ protected:
           try
           {
             auto prefilter_result = evidence_filter.filter(swath_maps, transition_exp, cp_ms1_current, cp_irt_current, pasef, outer_loop_threads);
+            if (pasef_audit_stream.is_open())
+            {
+              prefilter_audit = buildPasefPrefilterAuditMap_(prefilter_result);
+              appendPasefMapAuditRows_(pasef_audit_stream, run_basename, "prefilter", "all_matching",
+                                       transition_exp, swath_maps, min_upper_edge_dist, false, true,
+                                       prefilter_result.precursor_im_scale,
+                                       prefilter_result.precursor_im_scaled_by_charge,
+                                       OpenSwathHelper::computePasefMapMatchingImTolerance(cp_irt_current.im_extraction_window),
+                                       cp_irt_current.pasef_map_selection_strategy,
+                                       &prefilter_audit);
+            }
             prefiltered_irt_targets = std::move(prefilter_result.filtered_targets);
             irt_sampling_transition_exp = &prefiltered_irt_targets;
             if (strategy == IrtStrategy::SAMPLE_ONCE)
@@ -5213,6 +5546,21 @@ protected:
 
         std::vector<std::string> priority_pep_strings(priority_peptides.begin(), priority_peptides.end());
         auto irt_experiments = calibration_wf.prepareIrtExperiments(strategy, *irt_sampling_transition_exp, priority_pep_strings, run_index);
+        if (pasef_audit_stream.is_open())
+        {
+          appendPasefMapAuditRows_(pasef_audit_stream, run_basename, "calibration_linear", "best_only",
+                                   irt_experiments.linear_irt, swath_maps, min_upper_edge_dist, true, false,
+                                   1.0, false,
+                                   OpenSwathHelper::computePasefMapMatchingImTolerance(cp_irt_current.im_extraction_window),
+                                   cp_irt_current.pasef_map_selection_strategy,
+                                   nullptr);
+          appendPasefMapAuditRows_(pasef_audit_stream, run_basename, "calibration_nonlinear", "best_only",
+                                   irt_experiments.nonlinear_irt, swath_maps, min_upper_edge_dist, true, false,
+                                   1.0, false,
+                                   OpenSwathHelper::computePasefMapMatchingImTolerance(cp_irt_current.im_extraction_window),
+                                   cp_irt_current.pasef_map_selection_strategy,
+                                   nullptr);
+        }
         auto calibration_result = calibration_wf.performCalibration(
           swath_maps, transition_exp, cp_current, cp_ms1_current, irt_experiments,
           feature_finder_param_run, cp_irt_current, irt_detection_param, calibration_param,
@@ -5239,6 +5587,15 @@ protected:
       clamp_auto_pasef_im_window(cp_current.im_extraction_window, "MS2 ion mobility (1/k0)", auto_pasef_ms2_im_window);
       clamp_auto_pasef_im_window(cp_irt_current.im_extraction_window, "iRT ion mobility (1/k0)", auto_pasef_irt_im_window);
       clamp_auto_pasef_im_window(cp_ms1_current.im_extraction_window, "MS1 ion mobility (1/k0)", auto_pasef_ms1_im_window);
+      if (pasef_audit_stream.is_open())
+      {
+        appendPasefMapAuditRows_(pasef_audit_stream, run_basename, "extraction", "best_only",
+                                 transition_exp, swath_maps, min_upper_edge_dist, false, false,
+                                 1.0, false,
+                                 OpenSwathHelper::computePasefMapMatchingImTolerance(cp_current.im_extraction_window),
+                                 cp_current.pasef_map_selection_strategy,
+                                 nullptr);
+      }
 
       const UInt64 cur_run = OpenMS::UniqueIdGenerator::getUniqueId();
 

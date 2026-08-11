@@ -410,9 +410,28 @@ namespace OpenMS
     }
     else if (pasef_)
     {
-      OpenSwathHelper::selectSwathTransitionsPasef(
-        transition_exp, tr_win_map, cp.min_upper_edge_dist, swath_maps,
-        cp.im_extraction_window);
+      // For PASEF experiments it is possible to have DIA windows with the same m/z however different IM.
+      // Extract from the DIA window in which the precursor is more centered across its IM.
+
+      const double im_match_tolerance =
+        OpenSwathHelper::computePasefMapMatchingImTolerance(cp.im_extraction_window);
+      tr_win_map.resize(transition_exp.transitions.size(), -1);
+      for (Size k = 0; k < transition_exp.transitions.size(); k++)
+      {
+        const OpenSwath::LightTransition& tr = transition_exp.transitions[k];
+        const auto match = OpenSwathHelper::matchPasefSwathMaps(
+          tr.getPrecursorMZ(),
+          tr.getPrecursorIM(),
+          cp.min_upper_edge_dist,
+          swath_maps,
+          false,
+          im_match_tolerance,
+          cp.pasef_map_selection_strategy);
+        if (match.hasMatch())
+        {
+          tr_win_map[k] = match.selected_swath_map_index;
+        }
+      }
     }
     else {
     };
