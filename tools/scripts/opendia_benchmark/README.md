@@ -115,6 +115,15 @@ The completed Astral search took 35m18s. Its original raw TSV had blank global s
 
 The Linux monitor saves `logs/host_workload.jsonl` and a summary in `logs/host_workload.json`. Samples contain CPU use, estimated CPU use by other processes, available RAM, swap, load, pressure and free disk space. Host CPU includes the benchmark. Other-process CPU is an estimate. These observations show contention but do not correct elapsed time. The monitor stops only the measured job if free disk falls below `MIN_FREE_DISK_GIB` (default 3 GiB).
 
+The report includes the machine and CPU models, total RAM, host logical CPU threads,
+CPU affinity count and configured benchmark threads for each search. Available RAM
+is Linux `MemAvailable`, recorded at monitor start and as mean/min/max during the
+search. Free CPU is idle time excluding I/O wait, shown as a percentage and as
+idle logical-thread equivalents (idle fraction times host thread count). These
+are observed host resources, not reserved capacity. Missing historical hardware
+or idle samples remain `n/a`, never substituted with the report-rendering host.
+Hardware metadata does not record serial numbers, user names or host names.
+
 Optional `BENCH_MEMORY_MAX` and `BENCH_MEMORY_SWAP_MAX` use a user systemd scope. Limits are recorded in `meta/resource_limits.txt`. A limited or busy run must not be presented as an isolated maximum-speed measurement. Previous runs without the same inference, search space, limits and workload are context only, not a controlled speed comparison.
 
 ## Checks

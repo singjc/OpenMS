@@ -5,10 +5,31 @@ import argparse
 import json
 import math
 import os
+import platform
 import signal
 import statistics
 import time
 from pathlib import Path
+
+
+def system_info():
+    """Record hardware, not serial numbers or host/user names."""
+    def optional_text(path):
+        try:
+            return Path(path).read_text().strip() or None
+        except OSError:
+            return None
+
+    memory = dict(line.split(':', 1) for line in Path('/proc/meminfo').read_text().splitlines())
+    cpu_model = next((line.split(':', 1)[1].strip() for line in Path('/proc/cpuinfo').read_text().splitlines()
+                      if line.startswith('model name')), None)
+    return {'machine': ' '.join(filter(None, [optional_text('/sys/class/dmi/id/sys_vendor'),
+                                             optional_text('/sys/class/dmi/id/product_name')])) or None,
+            'cpu_model': cpu_model, 'os': platform.platform(),
+            'logical_cpus': os.cpu_count(), 'affinity_logical_cpus': len(os.sched_getaffinity(0)),
+            'mem_total_mib': int(memory['MemTotal'].split()[0]) / 1024,
+            'mem_available_mib_at_start': int(memory['MemAvailable'].split()[0]) / 1024,
+            'captured_at': time.time()}
 
 
 def process_tree(pid):
@@ -150,6 +171,7 @@ def main():
     samples = []
     previous_cpu = previous_ticks = previous_time = None
     cores = os.cpu_count() or 1
+    hardware = system_info()
     abort_reason = None
     with (args.output / "host_workload.jsonl").open("w", encoding="utf-8") as handle:
         while Path(f"/proc/{args.pid}").exists():
@@ -160,6 +182,10 @@ def main():
                 total = sum(cpu) - sum(previous_cpu)
                 idle = cpu[3] + cpu[4] - previous_cpu[3] - previous_cpu[4]
                 sample["host_cpu_busy_percent"] = 100 * (1 - idle / total) if total > 0 else None
+                # Idle only, excluding I/O wait. Thread equivalents are not reserved capacity.
+                idle_ticks = cpu[3] - previous_cpu[3]
+                sample['host_cpu_idle_percent'] = 100 * idle_ticks / total if total > 0 else None
+                sample['host_cpu_idle_thread_equivalents'] = cores * idle_ticks / total if total > 0 else None
                 # This is a workload estimate, not a correction to elapsed time.
                 job_cpu = 100 * (ticks - previous_ticks) / os.sysconf("SC_CLK_TCK") / elapsed / cores
                 sample["job_cpu_host_percent"] = job_cpu if job_cpu >= 0 else None
@@ -188,6 +214,9 @@ def main():
     summary = {
         "sample_count": len(samples),
         "logical_cpus": cores,
+        "system": hardware,
+        "started_at": samples[0]['timestamp'] if samples else None,
+        "finished_at": samples[-1]['timestamp'] if samples else None,
         "interval_seconds": args.interval,
         "abort_reason": abort_reason,
         "note": "Host CPU includes the benchmark. Job CPU and other CPU are estimates from process snapshots. Elapsed times are not corrected for workload.",
@@ -198,7 +227,8 @@ def main():
         values = [sample[key] for sample in samples if sample.get(key) is not None]
         summary[key] = {"mean": statistics.fmean(values), "min": min(values), "max": max(values)} if values else None
     # CPU fields are absent in the first sample, so include them explicitly.
-    for key in ("host_cpu_busy_percent", "job_cpu_host_percent", "other_cpu_busy_estimate_percent"):
+    for key in ("host_cpu_busy_percent", "host_cpu_idle_percent", "host_cpu_idle_thread_equivalents",
+                "job_cpu_host_percent", "other_cpu_busy_estimate_percent"):
         values = [sample[key] for sample in samples if sample.get(key) is not None]
         summary[key] = {"mean": statistics.fmean(values), "min": min(values), "max": max(values)} if values else None
     (args.output / "host_workload.json").write_text(json.dumps(summary, indent=2, allow_nan=False) + "\n")

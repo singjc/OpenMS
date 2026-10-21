@@ -1,7 +1,7 @@
 # WP-00: Acceptance baseline and datasets
 
 - **Track:** baseline.
-- **Status:** proposed. **Owner / reviewer:** unassigned.
+- **Status:** proposed, updated 21 October 2026. **Owner / reviewer:** unassigned.
 - **Parent epic:** [#10661](https://github.com/OpenMS/OpenMS/issues/10661). **Issue:** [#10662](https://github.com/OpenMS/OpenMS/issues/10662).
 - **Shared policies:** [architecture](../architecture.md) and [plan](../README.md).
 
@@ -12,10 +12,21 @@ Establish reproducible scientific, runtime and storage comparisons without block
 ## Scope
 
 - Pin an upstream/CI `develop` revision and the applicable #10642 revision/state, commands, dependencies and input checksums.
-- Use ProteoBench Astral plus diaPASEF as representative benchmarks, with known-site data for localization validation.
+- Pin the established TimSim and exploratory Astral inputs below. Select separate known-site data for localization validation, which neither current dataset supplies.
 - Record cold preparation and warm reuse, stage/total runtime, peak memory, actual peak disk and output row cardinalities.
 - Inventory OSW `FEATURE_TRANSITION` fanout and rescoring cost for WP-08, alongside identification, localization and quantitative error.
 - The local 600pt fixture is a regression aid, not the baseline. Repairing local `libnethost` is not a prerequisite.
+
+## Established datasets and scripts
+
+| Dataset | Current search and validation scope |
+|---|---|
+| TimSim fixture `validation_3x3` | Six diaPASEF inputs: three controls and three treatments. Run target-only and target-plus-entrapment transition libraries against packaged realized identification/abundance and entrapment truth. |
+| Astral HeLa 50 ng, 15 min | Three technical replicates, currently searched with a randomly sampled 100k-peptide FASTA. Exploratory identification, within-run entrapment diagnostics and repeatability only, not official full ProteoBench global precursor validation or biological protein performance. No abundance truth is supplied. |
+
+Use [tools/scripts/opendia_benchmark](../../../../tools/scripts/opendia_benchmark/README.md): `build.sh`, `run_timsim.sh`, `run_astral.sh`, `validate_timsim.py`, `metrics_astral.py`, `make_report.py` and `render_report.py`. The runners capture commands, source/binary/input provenance, elapsed time, process peak RSS and sampled output-directory disk use. `monitor_host.py` and optional systemd memory/swap limits add system-resource context, not proof of whole-process/cgroup peaks or stage attribution. System-resource coverage is being added, and a fresh full rerun is pending. No new benchmark results or completed gates are claimed here.
+
+The standard view requires 1% run-level precursor, global peptide and global protein q-values. Astral FDP diagnostics instead use run-level precursor `m_score` without the extra peptide/protein filters. Global precursor q-values and the exact modified-peptide pair mapping are unavailable, so global precursor validation and paired FDP remain blocked. Combined FDP also requires an independently verified effective entrapment:target search-space ratio, which the sampled FASTA does not establish. Neither current dataset closes the known-site localization gate.
 
 ## Dependencies
 

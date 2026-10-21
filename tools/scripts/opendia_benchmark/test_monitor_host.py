@@ -94,6 +94,12 @@ time.sleep(30)
         data = json.loads((output / "host_workload.json").read_text())
         assert data["sample_count"] > 0
         assert data["logical_cpus"] >= 1
+        assert data['system']['logical_cpus'] == data['logical_cpus']
+        assert data['system']['affinity_logical_cpus'] >= 1
+        assert data['system']['mem_total_mib'] > 0
+        assert 0 < data['system']['mem_available_mib_at_start'] <= data['system']['mem_total_mib']
+        assert data['started_at'] <= data['finished_at']
+        assert not {'hostname', 'serial_number', 'username'} & data['system'].keys()
         assert data["mem_available_mib"]["min"] > 0
         assert bool(data["abort_reason"]) == guard
         assert (status != 0) == guard
@@ -103,6 +109,9 @@ time.sleep(30)
         assert "Maximum resident set size" in (output / "resources.txt").read_text()
         if not guard:
             assert 0 <= data["host_cpu_busy_percent"]["mean"] <= 100
+            assert 0 <= data['host_cpu_idle_percent']['mean'] <= 100
+            assert abs(data['host_cpu_idle_thread_equivalents']['mean'] -
+                       data['logical_cpus'] * data['host_cpu_idle_percent']['mean'] / 100) < 1e-9
     finally:
         if sampler is not None and sampler.poll() is None:
             sampler.kill()

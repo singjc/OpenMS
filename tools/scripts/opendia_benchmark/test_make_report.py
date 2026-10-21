@@ -99,6 +99,13 @@ def job(root, complete=True):
     workload = {key: {"mean": 4, "min": 2, "max": 8} for key in (
         "host_cpu_busy_percent", "load1", "io_pressure_some_percent", "mem_available_mib", "swap_used_mib")}
     workload["other_cpu_busy_estimate_percent"] = {"mean": 999, "min": 999, "max": 999}
+    workload['system'] = {'machine': 'Example Laptop', 'cpu_model': 'Example CPU',
+                          'logical_cpus': 12, 'affinity_logical_cpus': 8,
+                          'mem_total_mib': 32768, 'mem_available_mib_at_start': 24576}
+    workload['started_at'] = 0
+    workload['mem_available_mib'] = {'mean': 16384, 'min': 8192, 'max': 24576}
+    workload['host_cpu_idle_percent'] = {'mean': 50, 'min': 25, 'max': 75}
+    workload['host_cpu_idle_thread_equivalents'] = {'mean': 6, 'min': 3, 'max': 9}
     (root / "logs/host_workload.json").write_text(json.dumps(workload))
 
 
@@ -221,6 +228,10 @@ class ReportTests(unittest.TestCase):
             self.assertIn("f" * 12, text)
             self.assertNotIn("f" * 64, text)
             self.assertNotIn("999.00", text)
+            self.assertIn('| Example Laptop / Example CPU | 32.00 | 12 / 8 | 4 |', text)
+            self.assertIn('| 1970-01-01T00:00:00+00:00 | 24.00 | 16.00 [8.00, 24.00] | 50.00 [25.00, 75.00] | 6.00 [3.00, 9.00] |', text)
+            self.assertIn('excluding I/O wait', text)
+            self.assertIn('not reserved threads', text)
             self.assertIn("| TimSim mixed / control |", text)
             self.assertIn("| TimSim mixed | run0 | 1.00% | 100 | 1 | 1.00% |", text)
             self.assertNotIn("| TimSim mixed | run0 | 0.10% |", text)
@@ -250,6 +261,7 @@ class ReportTests(unittest.TestCase):
             legacy_text = (legacy_output / "FINAL_REPORT.md").read_text()
             self.assertIn("Global inference disabled", legacy_text)
             self.assertIn("| not recorded | not recorded | not recorded |", legacy_text)
+            self.assertIn('| n/a / n/a | n/a | n/a / n/a | not recorded |', legacy_text)
             # A first report needs no previous baseline. Null monitoring is n/a.
             (root / "current/target_only/logs/host_workload.json").write_text(json.dumps({"load1": None}))
             first_output = root / "first"

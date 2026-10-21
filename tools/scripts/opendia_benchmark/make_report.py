@@ -12,6 +12,7 @@ import re
 import shlex
 import statistics
 import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -444,7 +445,28 @@ def resource_report(output, timsim, previous, astral_jobs):
             filename = f"{stem}_{suffix}.svg"
             write_chart(output / filename, f"{title}: {suffix.replace('_', ' ')} (n=1)", unit, [label for label, _ in jobs], [("Measured search", "#2b6cb0", [job["resource"][key] / divisor for _, job in jobs])])
             lines.extend(["", f"![{title} {suffix}]({filename})", ""])
-    lines.extend(["### Host workload", "", "Host measurements include the benchmark. We did not adjust times for load. We do not use the old estimate of other-process CPU use. Missing data is n/a.", "", "| Search | CPU % mean [range] | Load mean/max | I/O pressure % mean/max | Min available GiB | Max swap GiB |", "|---|---:|---:|---:|---:|---:|"])
+    lines.extend(["### System and available resources", "",
+                  "Hardware and available RAM at monitor start are recorded separately for each measured search, not inferred from the report-rendering machine. Missing historical measurements are n/a.",
+                  "| Search | Machine / CPU model | Total RAM GiB | Host / affinity CPU threads | Benchmark threads |",
+                  "|---|---|---:|---:|---:|"])
+    for label, job in all_jobs:
+        hardware = job['workload'].get('system') or {}
+        identity = ' / '.join(str(hardware.get(key) or 'n/a').replace('|', '/') for key in ('machine', 'cpu_model'))
+        memory = hardware.get('mem_total_mib')
+        lines.append(f"| {label} | {identity} | {number_text(memory / 1024 if memory is not None else None, 2)} | {hardware.get('logical_cpus', 'n/a')} / {hardware.get('affinity_logical_cpus', 'n/a')} | {job['threads']} |")
+    lines.extend(["", "Available RAM is Linux MemAvailable (includes reclaimable memory), not MemFree. Free CPU is sampled idle time excluding I/O wait. Idle CPU-thread equivalents = idle fraction * host logical threads, not reserved threads or guaranteed capacity for this job. Host measurements include the benchmark and other activity.",
+                  "| Search | Monitor start UTC | Available RAM at start GiB | Available RAM GiB mean [min, max] | Free CPU % mean [min, max] | Idle CPU-thread equivalents mean [min, max] |",
+                  "|---|---|---:|---:|---:|---:|"])
+    for label, job in all_jobs:
+        workload = job['workload']
+        hardware = workload.get('system') or {}
+        started = workload.get('started_at')
+        started_text = datetime.fromtimestamp(started, timezone.utc).isoformat(timespec='seconds') if started is not None else 'n/a'
+        memory = hardware.get('mem_available_mib_at_start')
+        cells = [workload_cell(workload, field, ('mean', 'min', 'max'), divisor) for field, divisor in (
+            ('mem_available_mib', 1024), ('host_cpu_idle_percent', 1), ('host_cpu_idle_thread_equivalents', 1))]
+        lines.append(f"| {label} | {started_text} | {number_text(memory / 1024 if memory is not None else None, 2)} | " + " | ".join(cells) + " |")
+    lines.extend(["", "### Host workload", "", "Host measurements include the benchmark. We did not adjust times for load. We do not use the old estimate of other-process CPU use. Missing data is n/a.", "", "| Search | CPU % mean [range] | Load mean/max | I/O pressure % mean/max | Min available GiB | Max swap GiB |", "|---|---:|---:|---:|---:|---:|"])
     for label, job in all_jobs:
         cells = [workload_cell(job["workload"], field, keys, divisor) for field, keys, divisor in (
             ("host_cpu_busy_percent", ("mean", "min", "max"), 1),
