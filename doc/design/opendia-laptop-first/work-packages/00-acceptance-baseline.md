@@ -30,7 +30,7 @@ The standard view requires 1% run-level precursor, global peptide and global pro
 
 ## Reproducibility package progress (21 October 2026)
 
-Published progress and failure summary: [WP-00 comment](https://github.com/OpenMS/OpenMS/issues/10662#issuecomment-6319611861).
+Published final package and failure summary: [WP-00 comment](https://github.com/OpenMS/OpenMS/issues/10662#issuecomment-6323628145).
 
 `package_reproducibility.py` builds a local bundle with completed-job commands,
 logs, reference TSVs, metrics, optional report/evidence, dataset-relative input
@@ -38,6 +38,15 @@ hashes, a script snapshot, replay instructions and a SHA-256 inventory. Its
 verifier checks file sizes, hashes and the complete inventory. Raw inputs,
 intermediates, binaries and dependencies are not redistributed. Generated bundles
 remain local, not committed to this planning branch.
+
+Final local archive: `opendia-reproducibility-20261021-complete.tar.gz`
+(10,511,211 bytes), SHA-256
+`f31ba2a4e39f9fe255cd47961bcf29e0a5dcad2df2665712869166faf88d1bb0`.
+It includes all three completed independent repeats and their failed comparisons.
+Extraction into another directory, bundled verification and GNU checksum checks
+passed. Replaying all three comparisons from the extracted archive reproduced
+the complete saved file diagnostics and expected failed verdicts. All 43 Python
+regression tests pass. Package acceptance is complete, not scientific acceptance.
 
 `compare_repeats.py` compares scientific row identities and accepted identities,
 aligns matrix rows and run columns by name, and checks scores, quantities and RT
@@ -54,7 +63,17 @@ failure, do not widen tolerances or mark the repeat gate complete. The mixed
 TimSim repeat also completed, but standard-filter accepted identities changed
 from 5,949 to 5,935 (18 missing, 4 added), and raw rows from 6,682 to 6,709.
 Its captured commands, executable/library hashes and limits also match. The
-three-file Astral repeat remains in progress. Default transition-library decoy shuffling is
+three-file Astral repeat completed successfully in 3 h 13 min 10 s, but failed
+strict comparison: raw rows 6,236 to 6,206, standard-filter accepted identities
+4,337 to 4,291 (61 missing, 15 added). These identity totals include entrapment,
+not only the target-only report view. Astral captured command, binary, RAW/FASTA
+hashes and limits match, and 57 dependency/model hashes remained unchanged
+between the pre-Astral and post-repeat captures. This does not recover missing
+historical baseline hashes. All three strict repeat comparisons fail.
+
+Read-only prepared-library inspection proves 998 of 1,000 target-only TimSim
+decoy sequences differ, while all 1,000 target precursor identities match.
+Default transition-library decoy shuffling is
 time-seeded, without a wired general shuffle-seed option, so the Percolator seed
 alone does not establish deterministic inputs to rescoring.
 

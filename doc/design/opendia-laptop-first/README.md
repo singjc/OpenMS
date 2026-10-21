@@ -38,8 +38,11 @@ Neither dataset supplies known-site localization truth. WP-00 must select separa
 
 Reproducibility packaging and strict repeat-comparison tools are now established.
 The first independent TimSim target repeat preserved all 6,000 accepted precursor
-identities but failed frozen score/quantity and raw-identity checks. Remaining
-repeat searches and provenance gaps are tracked in [WP-00](work-packages/00-acceptance-baseline.md).
+identities but failed frozen score/quantity and raw-identity checks. The mixed
+TimSim and three-file Astral repeats also completed successfully as searches,
+but failed strict scientific comparisons. Their standard-filter accepted identity
+totals changed from 5,949 to 5,935 and 4,337 to 4,291 respectively. Final evidence
+and provenance gaps are tracked in [WP-00](work-packages/00-acceptance-baseline.md).
 A verified bundle is not proof that the scientific repeat gate passes.
 
 ## Sequence
