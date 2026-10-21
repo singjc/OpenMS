@@ -30,6 +30,8 @@ The standard view requires 1% run-level precursor, global peptide and global pro
 
 ## Reproducibility package progress (21 October 2026)
 
+Published progress and failure summary: [WP-00 comment](https://github.com/OpenMS/OpenMS/issues/10662#issuecomment-6319611861).
+
 `package_reproducibility.py` builds a local bundle with completed-job commands,
 logs, reference TSVs, metrics, optional report/evidence, dataset-relative input
 hashes, a script snapshot, replay instructions and a SHA-256 inventory. Its
@@ -48,8 +50,11 @@ precursor identities, but failed the frozen numerical/raw-identity checks:
 raw rows changed from 11,485 to 11,458 and 28 of 6,000 precursor abundance cells
 exceeded tolerance. Captured executable/library hashes, resource limits and
 commands match after substituting only the new output-root path. Preserve this
-failure, do not widen tolerances or mark the repeat gate complete. The remaining
-repeat searches are in progress. Default transition-library decoy shuffling is
+failure, do not widen tolerances or mark the repeat gate complete. The mixed
+TimSim repeat also completed, but standard-filter accepted identities changed
+from 5,949 to 5,935 (18 missing, 4 added), and raw rows from 6,682 to 6,709.
+Its captured commands, executable/library hashes and limits also match. The
+three-file Astral repeat remains in progress. Default transition-library decoy shuffling is
 time-seeded, without a wired general shuffle-seed option, so the Percolator seed
 alone does not establish deterministic inputs to rescoring.
 
