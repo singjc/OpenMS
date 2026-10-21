@@ -62,6 +62,51 @@ ID plots show individual runs and mean with sample standard deviation. TimSim ha
 
 Entrapment plots use `m_score` at each precursor q-value limit. They show absent-sequence fractions, not a search-space-adjusted FDR estimate. They do not prove calibration. No accepted IDs means an unavailable fraction, not zero error. Do not substitute a global peptide q-value for `m_score`.
 
+### ProteoBench Astral analysis alignment
+
+The Astral report now replaces its raw-share distribution with per-run FDP bounds
+and target ID counts at each cutoff. The formulas were checked against ProteoBench
+revision `d2f03663f0f606ef300211907ef2f350517edbc1`:
+
+- [Astral entrapment methodology](https://github.com/proteobench/proteobench/blob/d2f03663f0f606ef300211907ef2f350517edbc1/docs/modules/dia/entrapment-dia-astral.md)
+- [Estimator implementation](https://github.com/proteobench/proteobench/blob/d2f03663f0f606ef300211907ef2f350517edbc1/proteobench/score/entrapmentscores.py)
+
+For accepted distinct precursors, `E` is the entrapment count and `T` the target
+count. Lower FDP is `E / (T + E)`. Combined FDP is
+`(1 + 1/r) * E / (T + E)`, where `r` is the effective entrapment:target
+search-space ratio. ProteoBench uses `r=1` for its full matched database. We do
+not assume that ratio for a randomly sampled FASTA or infer it from accepted
+identifications. Combined FDP and its ratio to the cutoff are unavailable unless
+the analyst supplies an independently verified ratio:
+
+```bash
+# Only for an independently verified 1:1 effective search space:
+python3 tools/scripts/opendia_benchmark/metrics_astral.py \
+  ASTRAL_DIR/results/OpenDIA.results.tsv --entrapment-fold 1 \
+  --output ASTRAL_DIR/metrics.json
+```
+
+The default runner deliberately leaves the ratio unknown. A sampled FASTA is not
+automatically the official benchmark. A count ratio alone does not verify that
+sampling, modifications, charge and m/z filters preserve the matched search space.
+
+**Scope matters:** ProteoBench tests **global precursor-ion FDR** and deduplicates
+precursors across runs, keeping the best global precursor q-value. Our exported
+`m_score` is run-level, so this adaptation computes within-run diagnostics only.
+It does not pool run-level scores into a purported global calibration test, apply
+extra peptide/protein filters to FDP counts, or issue ProteoBench valid/invalid
+verdicts. Global peptide/protein scores are not substitutes for global precursor
+scores. Paired FDP is explicitly unavailable: it requires the exact modified-peptide
+pair mapping and appropriate score ordering, not guessed pairs from FASTA names.
+No IDs gives unavailable FDP. Bounds are not clipped to 100%.
+
+The plot compares lower/combined FDP with the nominal 1% cutoff for each run,
+while the table retains all cutoffs and target IDs to show identification yield alongside
+error. CV, completeness and correlations remain secondary repeatability checks,
+not evidence of FDR calibration or biological protein quantification. Historical
+metrics without the new `proteobench_entrapment` block still render as raw-share
+diagnostics. Regenerate metrics and then the report to use the new analysis.
+
 ## Time, memory and host load
 
 Each search saves its command, source revision/status, binary hash and input hashes under `meta/`. `logs/resources.txt` records GNU time elapsed time and peak resident process memory. This does not add the memory of simultaneous child processes. Time covers OpenDIA, including prediction when used. Input checksum checks, archive extraction and metric generation are outside that time. A complete multi-file search is one timing observation, not three or six independent measurements. The two TimSim searches are not timing replicates.

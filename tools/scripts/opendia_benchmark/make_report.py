@@ -368,8 +368,32 @@ def short_run_name(run):
 
 
 def fdr_report(output, datasets):
-    lines = ["## Per-run entrapment diagnostic", "", "Tables use m_score <= 1%. Plots and JSON retain all cutoffs. Full run names remain in JSON.", "Raw share counts absent entrapment sequences among accepted non-decoy precursor IDs. It is not search-space adjusted or calibrated FDR.", "Dots are runs. Mean and sample SD show descriptive spread across the study, not replicate uncertainty. TimSim combines both conditions here.", "No accepted IDs means n/a, not zero share. Zero entrapment does not prove zero error risk. Export limits bound the curves."]
+    lines = ["## Per-run entrapment diagnostic", "", "Tables use m_score <= 1%. Plots and JSON retain all cutoffs. Full run names remain in JSON.", "Raw share counts absent entrapment sequences among accepted non-decoy precursor IDs. It is not search-space adjusted or calibrated FDR.", "Legacy raw-share plots use run dots with mean and sample SD as descriptive spread, not replicate uncertainty. TimSim combines both conditions here.", "No accepted IDs means n/a, not zero share. Zero entrapment does not prove zero error risk. Export limits bound the curves."]
     for dataset_index, (name, metrics) in enumerate(datasets):
+        bounds = metrics.get("proteobench_entrapment")
+        if bounds:
+            lines.extend(["", f"### {name}: ProteoBench-style FDP bounds", "",
+                          "Scope: within-run precursor m_score, not the global precursor q-value required by ProteoBench. No official valid/invalid classification is made.",
+                          "Lower FDP = E/(T+E). Combined FDP = lower FDP * (1 + 1/r), where r is the verified entrapment:target search-space ratio. Counts exclude mixed mappings and decoys.",
+                          f"Entrapment fold r: {bounds['entrapment_fold'] if bounds['entrapment_fold'] is not None else 'unknown, combined FDP unavailable'}. Paired FDP unavailable without exact modified-peptide pair mapping.",
+                          "| Run | m_score cutoff | Target IDs | Entrapment IDs | Lower FDP | Combined FDP | Combined FDP / cutoff |",
+                          "|---|---:|---:|---:|---:|---:|---:|"])
+            curves = bounds["curves_per_run"]
+            for run, points in curves.items():
+                for point in points:
+                    ratio = point['combined_FDP_over_threshold']
+                    lines.append(f"| {short_run_name(run)} | {point['q_threshold']:.2%} | {point['target_ids']} | {point['entrapment_rows']} | {percent_text(point['lower_bound_FDP'])} | {percent_text(point['combined_FDP'])} | {ratio if ratio is not None else 'n/a'} |")
+            # One bar per run, not a cross-run mean of an FDR diagnostic.
+            final = [next(p for p in points if math.isclose(p['q_threshold'], .01)) for points in curves.values()]
+            filename = f"entrapment_{dataset_index}.svg"
+            write_chart(output / filename, f"{name}: within-run FDP bounds at 1% m_score", "Percent",
+                        [short_run_name(run) for run in curves],
+                        [("Lower FDP", "#4477AA", [100 * p['lower_bound_FDP'] if p['lower_bound_FDP'] is not None else None for p in final]),
+                         ("Combined FDP", "#EE6677", [100 * p['combined_FDP'] if p['combined_FDP'] is not None else None for p in final]),
+                         ("Nominal cutoff (not global FDR)", "#999999", [1 for p in final])])
+            lines.extend(["", f"![{name} FDP bounds]({filename})", "",
+                          "Target IDs alongside FDP show identification yield at the same cutoff. CV, completeness and correlations remain secondary repeatability diagnostics, not FDR validation.", ""])
+            continue
         lines.extend(["", f"### {name}", "", "| Search | Run | m_score cutoff | Precursor IDs | Entrapment IDs | Raw share |", "|---|---|---:|---:|---:|---:|"])
         curves = metrics.get("fdr_curve_per_run", {})
         if not curves:

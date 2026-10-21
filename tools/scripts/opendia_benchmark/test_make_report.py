@@ -12,6 +12,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from make_report import (
+    fdr_report,
     identification_report,
     quantification_report,
     quantile,
@@ -25,6 +26,26 @@ from make_report import (
 
 SVG = "{http://www.w3.org/2000/svg}"
 SCRIPT = Path(__file__).with_name("make_report.py")
+
+
+class EntrapmentReportTest(unittest.TestCase):
+    def test_proteobench_bounds_replace_astral_raw_share_plot(self):
+        from metrics_astral import entrapment_bounds
+        rows = [dict(run_name='r1', Sequence='PEPTIDE', FullPeptideName='PEPTIDE', Charge='2',
+                     ProteinName='P_target', Intensity='10', m_score='.001')]
+        for fold in (None, 1):
+            with tempfile.TemporaryDirectory() as directory:
+                output = Path(directory)
+                data = {'proteobench_entrapment': entrapment_bounds(rows, ['r1', 'r2'], fold)}
+                text = '\n'.join(fdr_report(output, [('Astral', data)]))
+                self.assertIn('not the global precursor q-value', text)
+                self.assertIn('Paired FDP unavailable', text)
+                self.assertIn('| r2 | 1.00% | 0 | 0 | n/a | n/a | n/a |', text)
+                svg = ET.parse(output / 'entrapment_0.svg')
+                labels = ' '.join(svg.getroot().itertext())
+                self.assertIn('Lower FDP', labels)
+                self.assertIn('Combined FDP', labels)
+                self.assertIn('Nominal cutoff', labels)
 
 
 def metrics(astral=False):

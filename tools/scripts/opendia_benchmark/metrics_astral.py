@@ -10,18 +10,47 @@ from benchmark_metrics import deduplicate, mapping_kind, number, views
 from validate_timsim import fdr_curve, read_tsv
 
 
+def entrapment_bounds(rows, runs, entrapment_fold=None):
+    """Apply ProteoBench count estimators per run, without claiming global FDR."""
+    if entrapment_fold is not None and (not math.isfinite(entrapment_fold) or entrapment_fold <= 0):
+        raise ValueError('entrapment fold must be finite and positive')
+    selected = list(deduplicate(rows).values())
+    curves = {}
+    for run in runs:
+        classified = [(number(r['m_score']), mapping_kind(r) == 'entrapment')
+                      for r in selected if r['run_name'] == run and mapping_kind(r) != 'ambiguous']
+        points = fdr_curve(classified, .01)
+        for point in points:
+            lower = point['entrapment_share']
+            combined = lower * (1 + 1 / entrapment_fold) if lower is not None and entrapment_fold is not None else None
+            point.update(lower_bound_FDP=lower, combined_FDP=combined,
+                         target_ids=point['rows'] - point['entrapment_rows'],
+                         combined_FDP_over_threshold=combined / point['q_threshold'] if combined is not None else None)
+        curves[run] = points
+    return {'scope': 'within-run precursor, not ProteoBench global precursor FDR',
+            'q_column': 'm_score', 'entrapment_fold': entrapment_fold,
+            'combined_note': 'Requires independently verified effective entrapment:target search-space ratio. Not inferred from accepted IDs.',
+            'paired_FDP': None, 'paired_note': 'Unavailable without exact modified-peptide pair mapping and score ordering.',
+            'source_revision': 'd2f03663f0f606ef300211907ef2f350517edbc1',
+            'curves_per_run': curves}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('results', type=Path)
     parser.add_argument('--q-threshold', type=float, default=.01)
     parser.add_argument('--intensity-column', default='Intensity')
     parser.add_argument('--runs', nargs='+', help='Expected runs, including runs with no exported rows')
+    parser.add_argument('--entrapment-fold', type=float,
+                        help='Verified effective entrapment:target search-space ratio (1 for the full ProteoBench database). Omit if unknown.')
     parser.add_argument('--output', type=Path)
     args = parser.parse_args()
     if not math.isfinite(args.q_threshold) or not 0 <= args.q_threshold <= 1:
         parser.error('--q-threshold must be between 0 and 1')
     if args.q_threshold != .01:
         parser.error('--q-threshold must be 0.01 for the fixed 1% benchmark views')
+    if args.entrapment_fold is not None and (not math.isfinite(args.entrapment_fold) or args.entrapment_fold <= 0):
+        parser.error('--entrapment-fold must be finite and positive')
     raw = read_tsv(args.results)
     if raw and 'm_score' not in raw[0]:
         raise SystemExit('Missing m_score column, no q-value fallback is permitted')
@@ -50,11 +79,12 @@ def main():
     targets = [r for r in rows if mapping_kind(r) == 'target']
     entrapments = [r for r in rows if mapping_kind(r) == 'entrapment']
     classified = [(number(r['m_score']), mapping_kind(r) == 'entrapment') for r in rows if mapping_kind(r) != 'ambiguous']
-    summary = {'schema_version': 2, 'results': str(args.results.resolve()), 'q_threshold': .01,
+    summary = {'schema_version': 3, 'results': str(args.results.resolve()), 'q_threshold': .01,
         'q_column': 'm_score', 'intensity_column': args.intensity_column, 'runs': runs, 'conditions': conditions,
         'protein_label_terminology': 'FASTA groups with peptide pseudo-protein headers, not biological protein identifications or quantification',
         'entrapment_interpretation': 'Raw entrapment share, not calibrated FDR. _p_target marks entrapment. Mixed mappings excluded.',
         'views': views(raw, runs, conditions, args.results, read_tsv, astral=True),
+        'proteobench_entrapment': entrapment_bounds(raw, runs, args.entrapment_fold),
         'fdr_curve': fdr_curve(classified, .01),
         'fdr_curve_per_run': {run: fdr_curve([(number(r['m_score']), mapping_kind(r) == 'entrapment') for r in rows
                                            if r['run_name'] == run and mapping_kind(r) != 'ambiguous'], .01) for run in runs},

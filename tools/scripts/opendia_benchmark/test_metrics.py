@@ -10,6 +10,7 @@ from pathlib import Path
 
 from benchmark_metrics import deduplicate, entity_metrics, mapping_kind, stats, views
 from validate_timsim import best_results, read_tsv
+from metrics_astral import entrapment_bounds
 
 
 class MetricsTest(unittest.TestCase):
@@ -104,6 +105,11 @@ class MetricsTest(unittest.TestCase):
             self.assertEqual(result['views']['standard']['per_run']['r3']['precursor'], 0)
             self.assertEqual(result['identification']['ambiguous_mixed_mapping_rows'], 1)
             self.assertEqual(result['fdr_curve_per_run']['r3'][-1]['rows'], 0)
+            self.assertIsNone(result['proteobench_entrapment']['entrapment_fold'])
+            self.assertIsNone(result['proteobench_entrapment']['curves_per_run']['r3'][-1]['combined_FDP'])
+            completed = subprocess.run([sys.executable, str(Path(__file__).with_name('metrics_astral.py')),
+                                        str(path), '--entrapment-fold', '1'], check=True, capture_output=True, text=True)
+            self.assertEqual(json.loads(completed.stdout)['proteobench_entrapment']['entrapment_fold'], 1)
 
     def test_fixed_cli_thresholds(self):
         for script, paths in [('metrics_astral.py', ['missing.tsv']), ('validate_timsim.py', ['dataset', 'target.tsv', 'entrapment.tsv'])]:
@@ -112,10 +118,46 @@ class MetricsTest(unittest.TestCase):
                 self.assertEqual(completed.returncode, 2)
                 self.assertIn('fixed 1% benchmark', completed.stderr)
 
+    def test_invalid_cli_entrapment_fold(self):
+        for value in ['0', '-1', 'nan', 'inf']:
+            completed = subprocess.run([sys.executable, str(Path(__file__).with_name('metrics_astral.py')),
+                                        'missing.tsv', '--entrapment-fold', value], capture_output=True, text=True)
+            self.assertEqual(completed.returncode, 2)
+            self.assertIn('--entrapment-fold must be finite and positive', completed.stderr)
+
     def test_fasta_mapping_labels(self):
         self.assertEqual(mapping_kind(self.row(ProteinName='KNNHHFK_target')), 'target')
         self.assertEqual(mapping_kind(self.row(ProteinName='LQREELR_p_target')), 'entrapment')
         self.assertEqual(mapping_kind(self.row(ProteinName='KNNHHFK_target;LQREELR_p_target')), 'ambiguous')
+
+    def test_proteobench_bounds_are_per_run_and_require_verified_fold(self):
+        rows = [self.row(), self.row(run_name='r2'),
+                self.row(FullPeptideName='ENTRAP', ProteinName='E_p_target', m_score='.005'),
+                self.row(FullPeptideName='ENTRAP', ProteinName='E_p_target', m_score='.006'),
+                self.row(FullPeptideName='DECOY', decoy='1', ProteinName='D_p_target'),
+                self.row(FullPeptideName='MIXED', ProteinName='T;E_p_target'),
+                self.row(FullPeptideName='OUTSIDE', ProteinName='E_p_target', m_score='.02')]
+        for fold in (None, 1, 2):
+            result = entrapment_bounds(rows, ['r1', 'r2', 'r3'], fold)
+            point = result['curves_per_run']['r1'][-1]
+            self.assertEqual(point['target_ids'], 1)
+            self.assertEqual(point['entrapment_rows'], 1)
+            self.assertEqual(point['lower_bound_FDP'], .5)
+            self.assertEqual(point['combined_FDP'], None if fold is None else .5 * (1 + 1 / fold))
+            self.assertEqual(result['curves_per_run']['r1'][0]['rows'], 0)
+            self.assertEqual(result['curves_per_run']['r2'][-1]['lower_bound_FDP'], 0)
+            self.assertIsNone(result['curves_per_run']['r3'][-1]['lower_bound_FDP'])
+            self.assertIsNone(result['curves_per_run']['r3'][-1]['combined_FDP'])
+            self.assertIsNone(result['paired_FDP'])
+        for fold in (0, -1, float('nan'), float('inf')):
+            with self.assertRaises(ValueError):
+                entrapment_bounds(rows, ['r1'], fold)
+
+    def test_bounds_do_not_clamp_or_apply_protein_filters(self):
+        row = self.row(ProteinName='E_p_target', m_score_peptide_global='.9')
+        point = entrapment_bounds([row], ['r1'], 1)['curves_per_run']['r1'][-1]
+        self.assertEqual(point['combined_FDP'], 2)
+        self.assertEqual(point['combined_FDP_over_threshold'], 200)
 
 
 if __name__ == '__main__':
