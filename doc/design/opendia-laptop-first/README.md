@@ -36,6 +36,12 @@ See [issue map](issue-posting.md) for live tickets and native dependency relatio
 
 Neither dataset supplies known-site localization truth. WP-00 must select separate known-site data before localization acceptance.
 
+Reproducibility packaging and strict repeat-comparison tools are now established.
+The first independent TimSim target repeat preserved all 6,000 accepted precursor
+identities but failed frozen score/quantity and raw-identity checks. Remaining
+repeat searches and provenance gaps are tracked in [WP-00](work-packages/00-acceptance-baseline.md).
+A verified bundle is not proof that the scientific repeat gate passes.
+
 ## Sequence
 
 1. **Baseline and early experiments:** profile the representative current pipeline, establish tool-private v0 contracts, and test the localization null/decoy model against exhaustive and IPF references. Fix shared extractor edge bugs separately on develop.

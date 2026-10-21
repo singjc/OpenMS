@@ -140,3 +140,64 @@ python3 tools/scripts/opendia_benchmark/test_monitor_host.py
 Pass captured `meta/command.sh` files to `test_benchmark.py` to check the shared speed, inference and filter settings. The test always sources the current `lib.sh` arrays to check score annotation with `1.01` raw limits. Captured older commands with both raw score flags disabled are explicitly reported as historical raw-export mode, not claimed to use the current settings. Set `OPEN_DIA` to also check the current sourced settings and captured command modes with the real executable. This parameter check deliberately stops before data processing. It does not replace a full dataset run. Do not use `-write_ini` as a parameter-resolution test: it writes defaults.
 
 Generate `FINAL_REPORT.md`, its plots and `FINAL_REPORT.pdf` in your local `REPORT_DIR`. These outputs are not tracked in Git. Keep the original result folders and JSON files when making a new comparison.
+
+## Local reproducibility bundle and repeat comparison
+
+Package an artifact root containing completed `timsim/target_only`,
+`timsim/entrapment` and `astral` jobs plus `build-manifest.txt`. Keep the bundle,
+archive, datasets, comparison evidence and reference outputs local and outside Git.
+All output paths must be new:
+
+```bash
+python3 tools/scripts/opendia_benchmark/package_reproducibility.py package \
+  --artifact-root ARTIFACT_ROOT --output BUNDLE_DIR \
+  --timsim-dataset TIMSIM_DATASET --astral-dataset ASTRAL_DATASET \
+  --astral-fasta ASTRAL_FASTA --include-report \
+  --evidence EVIDENCE_DIR --archive BUNDLE.tar.gz
+python3 tools/scripts/opendia_benchmark/package_reproducibility.py verify BUNDLE_DIR
+```
+
+Dataset options validate input hashes without copying inputs. TimSim verification
+matches the runner's `raw/`, `libraries/`, `truth/` and `metadata/` scope and retains
+its full `SHA256SUMS` plus fixture manifest. Astral hashes are checked against the
+captured RAW/FASTA hashes. `--include-report`, `--archive` and `--evidence` are
+optional. Evidence is a regular-file directory copied under `evidence/`, suitable
+for frozen tolerances, independent comparisons and explicitly labeled provenance
+supplements. No empty evidence placeholders are generated.
+
+The stdlib-only bundle contains captured commands verbatim as original-host
+evidence, metadata, logs, metrics, final TSV reference outputs, replay guidance,
+`manifest.json`, portable `SHA256SUMS` and a script snapshot including the repeat
+comparator. Raw data and intermediate databases are excluded. Packaging requires
+zero recorded job exits, exactly one successful GNU time exit status and explicit
+non-aborted monitor summaries. It rejects symlinks and unsafe paths, does not
+overwrite destinations and never executes captured shell. Verification checks the
+file inventory, sizes and hashes without running benchmark commands.
+
+The scripts are a **packaging-time snapshot**, not proof of their historical
+run-time versions. Missing CI provenance remains missing. A commit alone cannot
+reconstruct dirty source, submodules, dependencies or model state. Retrospective
+hashes must be labeled as such, not presented as measurement-time evidence.
+TimSim non-library hashes come from the supplied fixture manifest rather than an
+independently captured run-time copy. Checksums detect corruption, not authenticity.
+Review `REPLAY.md` and original settings before using the runners on another host.
+
+Freeze the tolerance policy before inspecting repeat differences. For each
+corresponding completed job, compare final outputs without rerunning the search:
+
+```bash
+python3 tools/scripts/opendia_benchmark/compare_repeats.py \
+  REFERENCE_JOB CANDIDATE_JOB --policy FROZEN_TOLERANCES.json \
+  --output NEW_COMPARISON.json
+python3 tools/scripts/opendia_benchmark/test_package_reproducibility.py
+python3 tools/scripts/opendia_benchmark/test_compare_repeats.py
+```
+
+The comparator checks the same binary hash, successful exits and non-aborted
+monitors, then compares scientific identities, numeric values and accepted sets
+in the raw TSV and three standard matrices. Its scope is **output comparison
+only**. Input, settings, model and dependency equivalence require separate evidence.
+A strict comparison failure returns nonzero and leaves the reproducibility gate
+open. Preserve the failure and frozen policy rather than relaxing tolerances after
+seeing results. Packaging or a self-comparison does not establish that a full
+independent repeat has completed or passed.

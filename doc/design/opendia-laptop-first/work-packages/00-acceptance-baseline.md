@@ -28,6 +28,40 @@ Use [tools/scripts/opendia_benchmark](../../../../tools/scripts/opendia_benchmar
 
 The standard view requires 1% run-level precursor, global peptide and global protein q-values. Astral FDP diagnostics instead use run-level precursor `m_score` without the extra peptide/protein filters. Global precursor q-values and the exact modified-peptide pair mapping are unavailable, so global precursor validation and paired FDP remain blocked. Combined FDP also requires an independently verified effective entrapment:target search-space ratio, which the sampled FASTA does not establish. Neither current dataset closes the known-site localization gate.
 
+## Reproducibility package progress (21 October 2026)
+
+`package_reproducibility.py` builds a local bundle with completed-job commands,
+logs, reference TSVs, metrics, optional report/evidence, dataset-relative input
+hashes, a script snapshot, replay instructions and a SHA-256 inventory. Its
+verifier checks file sizes, hashes and the complete inventory. Raw inputs,
+intermediates, binaries and dependencies are not redistributed. Generated bundles
+remain local, not committed to this planning branch.
+
+`compare_repeats.py` compares scientific row identities and accepted identities,
+aligns matrix rows and run columns by name, and checks scores, quantities and RT
+against a policy declared before the fresh repeat. It ignores volatile database
+IDs, not scientific changes. This is output comparison, not a substitute for
+input/settings/dependency provenance checks.
+
+The first independent target-only TimSim repeat retained the same 6,000 accepted
+precursor identities, but failed the frozen numerical/raw-identity checks:
+raw rows changed from 11,485 to 11,458 and 28 of 6,000 precursor abundance cells
+exceeded tolerance. Captured executable/library hashes, resource limits and
+commands match after substituting only the new output-root path. Preserve this
+failure, do not widen tolerances or mark the repeat gate complete. The remaining
+repeat searches are in progress. Default transition-library decoy shuffling is
+time-seeded, without a wired general shuffle-seed option, so the Percolator seed
+alone does not establish deterministic inputs to rescoring.
+
+The environment supplement pins cached upstream `develop`
+`f9f81826b9bd4c8dcb7166af709f4e39b23108b1` and applicable #10642 revision
+`2d5f4a76d5837e146e124949bc420fba802b90cd`, both ancestors of the measured source.
+There is no captured CI-run attestation. The original dirty-tree changes and
+historical dynamic-library/model hashes cannot be reconstructed from the source
+commit alone. Packaging-time hashes are explicitly labelled, not retrospective
+proof. These provenance gaps and the failed repeat keep the corresponding merge
+criteria open.
+
 ## Dependencies
 
 - **Start / local merge:** none.
