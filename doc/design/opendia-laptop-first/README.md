@@ -32,7 +32,7 @@ See [issue map](issue-posting.md) for live tickets and native dependency relatio
 
 - **TimSim `validation_3x3`:** six diaPASEF inputs, three controls and three treatments, with target-only and target-plus-entrapment transition-library searches and packaged identification/abundance truth.
 - **Astral:** three HeLa 50 ng, 15 min technical replicates. The current FASTA is a randomly sampled 100k-peptide database. This is exploratory, not official full ProteoBench global precursor validation. Current exports lack global precursor q-values and the exact modified-peptide pair mapping needed for paired FDP. Global peptide/protein scores do not fill those gaps.
-- [Benchmark scripts](../../../tools/scripts/opendia_benchmark/README.md) establish build, runners, metrics and report generation. System-resource monitoring is being added to the baseline workflow. A fresh full rerun is pending, so tooling and dataset selection do not establish results or complete acceptance gates.
+- [Benchmark scripts](../../../tools/scripts/opendia_benchmark/README.md) establish build, runners, metrics and report generation. System-resource monitoring records machine, RAM, logical threads and available RAM/idle CPU during each search. Fresh full TimSim and three-file Astral runs completed successfully on 21 October 2026 at source `d3b00d382efc`, with a regenerated report/PDF. See [WP-00 #10662](https://github.com/OpenMS/OpenMS/issues/10662) for results. This is a measured current-pipeline baseline, not completion of acceptance gates.
 
 Neither dataset supplies known-site localization truth. WP-00 must select separate known-site data before localization acceptance.
 

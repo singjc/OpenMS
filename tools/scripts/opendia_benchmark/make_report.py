@@ -376,7 +376,7 @@ def fdr_report(output, datasets):
             lines.extend(["", f"### {name}: ProteoBench-style FDP bounds", "",
                           "Scope: within-run precursor m_score, not the global precursor q-value required by ProteoBench. No official valid/invalid classification is made.",
                           "Lower FDP = E/(T+E). Combined FDP = lower FDP * (1 + 1/r), where r is the verified entrapment:target search-space ratio. Counts exclude mixed mappings and decoys.",
-                          f"Entrapment fold r: {bounds['entrapment_fold'] if bounds['entrapment_fold'] is not None else 'unknown, combined FDP unavailable'}. Paired FDP unavailable without exact modified-peptide pair mapping.",
+                          f"Entrapment fold r: {bounds['entrapment_fold'] if bounds['entrapment_fold'] is not None else 'unknown, combined FDP unavailable'}. Paired FDP unavailable without exact modified-peptide pair mapping.", "",
                           "| Run | m_score cutoff | Target IDs | Entrapment IDs | Lower FDP | Combined FDP | Combined FDP / cutoff |",
                           "|---|---:|---:|---:|---:|---:|---:|"])
             curves = bounds["curves_per_run"]
@@ -446,7 +446,7 @@ def resource_report(output, timsim, previous, astral_jobs):
             write_chart(output / filename, f"{title}: {suffix.replace('_', ' ')} (n=1)", unit, [label for label, _ in jobs], [("Measured search", "#2b6cb0", [job["resource"][key] / divisor for _, job in jobs])])
             lines.extend(["", f"![{title} {suffix}]({filename})", ""])
     lines.extend(["### System and available resources", "",
-                  "Hardware and available RAM at monitor start are recorded separately for each measured search, not inferred from the report-rendering machine. Missing historical measurements are n/a.",
+                  "Hardware and available RAM at monitor start are recorded separately for each measured search, not inferred from the report-rendering machine. Missing historical measurements are n/a.", "",
                   "| Search | Machine / CPU model | Total RAM GiB | Host / affinity CPU threads | Benchmark threads |",
                   "|---|---|---:|---:|---:|"])
     for label, job in all_jobs:
@@ -454,7 +454,7 @@ def resource_report(output, timsim, previous, astral_jobs):
         identity = ' / '.join(str(hardware.get(key) or 'n/a').replace('|', '/') for key in ('machine', 'cpu_model'))
         memory = hardware.get('mem_total_mib')
         lines.append(f"| {label} | {identity} | {number_text(memory / 1024 if memory is not None else None, 2)} | {hardware.get('logical_cpus', 'n/a')} / {hardware.get('affinity_logical_cpus', 'n/a')} | {job['threads']} |")
-    lines.extend(["", "Available RAM is Linux MemAvailable (includes reclaimable memory), not MemFree. Free CPU is sampled idle time excluding I/O wait. Idle CPU-thread equivalents = idle fraction * host logical threads, not reserved threads or guaranteed capacity for this job. Host measurements include the benchmark and other activity.",
+    lines.extend(["", "Available RAM is Linux MemAvailable (includes reclaimable memory), not MemFree. Free CPU is sampled idle time excluding I/O wait. Idle CPU-thread equivalents = idle fraction * host logical threads, not reserved threads or guaranteed capacity for this job. Host measurements include the benchmark and other activity.", "",
                   "| Search | Monitor start UTC | Available RAM at start GiB | Available RAM GiB mean [min, max] | Free CPU % mean [min, max] | Idle CPU-thread equivalents mean [min, max] |",
                   "|---|---|---:|---:|---:|---:|"])
     for label, job in all_jobs:
