@@ -1,6 +1,23 @@
 # OpenDIA: laptop-first implementation plan
 
-**Status:** proposed, updated 21 October 2026. [Epic #10661](https://github.com/OpenMS/OpenMS/issues/10661). Ownership is tracked in GitHub.
+**Status:** proposed, updated 24 October 2026. [Epic #10661](https://github.com/OpenMS/OpenMS/issues/10661). Ownership is tracked in GitHub.
+
+## Current verification status
+
+Workstation verification is in progress at selected clean merged source
+`3e47bc7e7468656d0d53237f11fc4f049d278efe`, including #10698 (merged
+23 October 2026). No successful build, search or acceptance verdict for that
+workstation is asserted here. The earlier 21 October failed repeats remain
+historical evidence; the 22 October same-binary repeat checks passed on a
+premerge build, not on this selected source. The corrected Parquet scores are
+not interchangeable with affected historical scores.
+
+[WP-00](work-packages/00-acceptance-baseline.md) records the frozen existing
+repeat-comparator policy, the exact pending evidence and the owner/reviewer
+decision matrix. Proposed candidate no-regression/runtime/footprint gates are
+not approved thresholds. Scientific accuracy margins and known-site localization
+truth remain open. Freeze reviewed gates before candidate evaluation, complete
+adversarial review before any PR, and keep public GitHub updates pending evidence.
 
 Build a CPU-first DIA engine for large predicted libraries on a 16 GiB laptop. Target 4 GiB process memory and a 2 GiB low-memory mode, with compact output and preserved scientific quality. These are acceptance targets, not demonstrated capabilities.
 
@@ -37,7 +54,7 @@ See [issue map](issue-posting.md) for live tickets and native dependency relatio
 Neither dataset supplies known-site localization truth. WP-00 must select separate known-site data before localization acceptance.
 
 Reproducibility packaging and strict repeat-comparison tools are now established.
-The first independent TimSim target repeat preserved all 6,000 accepted precursor
+Historically, the 21 October independent TimSim target repeat preserved all 6,000 accepted precursor
 identities but failed frozen score/quantity and raw-identity checks. The mixed
 TimSim and three-file Astral repeats also completed successfully as searches,
 but failed strict scientific comparisons. Their standard-filter accepted identity
@@ -47,7 +64,7 @@ A verified bundle is not proof that the scientific repeat gate passes.
 
 ## Sequence
 
-1. **Baseline and early experiments:** profile the representative current pipeline, establish tool-private v0 contracts, and test the localization null/decoy model against exhaustive and IPF references. Fix shared extractor edge bugs separately on develop.
+1. **Baseline and early experiments:** profile the representative current pipeline, establish tool-private v0 contracts, and test the localization null/decoy model against exhaustive and IPF references. Shared extractor edge bugs were fixed separately on develop in #10673; retain their mathematical edge checks.
 2. **Incremental wins:** plug raw tiles, streamed preparation, shared extraction and compact output into the existing engine. Prioritize by measured time/RSS, including rescoring/inference/export. Each component can merge with its own tests and compatibility comparison.
 3. **New science:** review the localization experiment before freezing family/score contracts. Integrate high-recall retrieval and joint family scoring with mobility, ambiguity and calibrated confidence.
 4. **Release decision:** exercise the public raw-to-export path on representative data, then decide whether to change defaults. A runnable early increment is not acceptance of the final scientific slice.

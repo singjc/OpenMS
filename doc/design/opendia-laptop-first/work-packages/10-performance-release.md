@@ -25,6 +25,19 @@ Decide adoption from representative end-to-end quality, runtime, memory and disk
 
 ## Local merge criteria
 
+The [WP-00 owner/reviewer decision matrix](00-acceptance-baseline.md#ownerreviewer-decision-matrix)
+records proposed future-candidate gates: behavior-preserving refactors retain
+exact accepted sets and frozen-policy numeric results without added missing or
+nonfinite cells; matched same-host median wall time, final results plus rescore
+bytes, complete-process/cgroup peak memory and actual peak disk do not exceed
+their matched baseline. These are proposals pending owner/reviewer agreement,
+not accepted numerical gates or measured improvements. Agree repetitions, cold/
+warm configuration, artifact capabilities and retained populations before
+candidate evaluation. No new numerical truth-accuracy/FDP cutoff is specified;
+report observed metrics and keep missing known-site localization truth blocked.
+Selected merged-source workstation verification is in progress, not release
+acceptance. Complete adversarial review before any PR.
+
 - [ ] A machine-readable matrix records exact commands, source/input hashes, hardware, repetitions and pass/fail/blocked results for Astral and diaPASEF.
 - [ ] Cold/warm runtime, memory, swap, final bytes and actual peak disk meet the predeclared WP-00 gates, with rescoring and output costs separately reported.
 - [ ] Known-site/mixture and held-out/entrapment checks meet separate identification, localization and quantitative-error margins at matched search scope.

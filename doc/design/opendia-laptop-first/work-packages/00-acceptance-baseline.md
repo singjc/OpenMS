@@ -1,7 +1,7 @@
 # WP-00: Acceptance baseline and datasets
 
 - **Track:** baseline.
-- **Status:** proposed, updated 21 October 2026. **Owner / reviewer:** unassigned.
+- **Status:** proposed, workstation verification in progress, updated 24 October 2026. **Owner / reviewer:** unassigned.
 - **Parent epic:** [#10661](https://github.com/OpenMS/OpenMS/issues/10661). **Issue:** [#10662](https://github.com/OpenMS/OpenMS/issues/10662).
 - **Shared policies:** [architecture](../architecture.md) and [plan](../README.md).
 
@@ -28,7 +28,7 @@ Use [tools/scripts/opendia_benchmark](../../../../tools/scripts/opendia_benchmar
 
 The standard view requires 1% run-level precursor, global peptide and global protein q-values. Astral FDP diagnostics instead use run-level precursor `m_score` without the extra peptide/protein filters. Global precursor q-values and the exact modified-peptide pair mapping are unavailable, so global precursor validation and paired FDP remain blocked. Combined FDP also requires an independently verified effective entrapment:target search-space ratio, which the sampled FASTA does not establish. Neither current dataset closes the known-site localization gate.
 
-## Reproducibility package progress (21 October 2026)
+## Historical reproducibility package (21 October 2026)
 
 Published final package and failure summary: [WP-00 comment](https://github.com/OpenMS/OpenMS/issues/10662#issuecomment-6323628145).
 
@@ -73,9 +73,10 @@ historical baseline hashes. All three strict repeat comparisons fail.
 
 Read-only prepared-library inspection proves 998 of 1,000 target-only TimSim
 decoy sequences differ, while all 1,000 target precursor identities match.
-Default transition-library decoy shuffling is
+In that historical build, default transition-library decoy shuffling was
 time-seeded, without a wired general shuffle-seed option, so the Percolator seed
-alone does not establish deterministic inputs to rescoring.
+alone did not establish deterministic inputs to rescoring. #10698 subsequently
+addressed the seed and ordering paths; see the current verification section.
 
 The environment supplement pins cached upstream `develop`
 `f9f81826b9bd4c8dcb7166af709f4e39b23108b1` and applicable #10642 revision
@@ -83,8 +84,90 @@ The environment supplement pins cached upstream `develop`
 There is no captured CI-run attestation. The original dirty-tree changes and
 historical dynamic-library/model hashes cannot be reconstructed from the source
 commit alone. Packaging-time hashes are explicitly labelled, not retrospective
-proof. These provenance gaps and the failed repeat keep the corresponding merge
-criteria open.
+proof. These historical provenance gaps cannot be closed by a new successful run.
+The current-source merge criteria require separately captured evidence below.
+
+## Current merged-source verification (24 October 2026)
+
+The selected clean source pin is `3e47bc7e7468656d0d53237f11fc4f049d278efe`.
+It contains #10642 and the repeat-determinism fixes from #10698, merged on
+23 October 2026. Workstation verification is in progress. This source selection
+is not evidence that its build, tests, full searches or acceptance gates passed.
+Capture the actual source-worktree cleanliness, build configuration, executable,
+dependencies, models, input checksums and commands in the new evidence manifest.
+
+The 22 October evidence reported in #10662 passed all 12 output comparisons for
+TimSim target, TimSim mixed and Astral at premerge source `08c200dba981` with zero
+changed numeric cells or scientific identities. This establishes only that tested
+same-binary/host/settings/thread-count repeat check. TimSim used memory-loaded
+cache, Astral disk cache with three concurrent SWATH windows. It does not prove
+cross-cache, cross-thread-count or cross-platform equivalence, or constitute a
+rerun of the selected merged source. Preserve the earlier failed comparisons.
+The Parquet correction changes scientific score values, so affected historical
+scores are not an equivalent corrected-source reference.
+
+### Frozen repeat-comparison policy
+
+Reuse the existing policy without widening limits after observing results:
+
+| Value class | Relative tolerance | Absolute tolerance |
+|---|---:|---:|
+| Scores | `1e-5` | `1e-8` |
+| Quantities | `1e-5` | `1e-6` |
+| Retention time | `1e-6` | `1e-4` |
+
+Require exact scientific row identities and accepted identity sets, matching
+missingness and finite numeric values. Compare raw results and precursor,
+peptide and protein matrices. Normalize commands only for repeat output paths,
+and independently verify frozen input/model/binary/dependency/harness hashes.
+Standard accepted sets use the three 1% filters described above. These filters
+are not proof of calibrated 1% error control or localization accuracy.
+
+### Pending requirement-to-check map
+
+| Merge requirement | Evidence still required for the selected source |
+|---|---|
+| Pinned provenance | Complete clean-source/build/input/environment manifest and explicit CI status. Keep historical dirty-tree/dependency gaps labelled, not retroactively repaired. |
+| Fresh producers and reference artifacts | Successful new TimSim target/mixed and three-file Astral producers, logs and references with no stale reuse, plus a durable evidence location. |
+| Repeat baseline | Fresh independent repeats under the frozen policy, with separate provenance checks. Earlier same-binary success is scoped evidence, not this workstation result. |
+| Complete measurement table | Cold/warm and stage/total runtime, stage memory, process/cgroup peaks including children, swap, rescoring share, table cardinalities, final bytes and observed peak disk including sidecars/staging. Sampled directory sizes and configured limits alone do not close this check. |
+| Predeclared quality/resource/size gates | Numerical identification, retrieval, localization and quantitative-error margins, runtime and matched-population results/rescore size limits require explicit review and freezing before candidate-engine evaluation. No such undecided margin is accepted by this update. |
+
+### Owner/reviewer decision matrix
+
+| Decision | Recorded policy or proposal | Status / decision owner |
+|---|---|---|
+| Repeat comparator | Existing frozen tolerances, exact scientific/accepted identities, matching missingness and finite values | Enforced repeat check; do not widen after results |
+| Behavior-preserving candidate refactors | Exact accepted identity sets, numeric results within the frozen comparator, no added missing/nonfinite cells | Proposed candidate gate; WP-00 owner/reviewer agreement required before evaluation |
+| Runtime | Median wall time no greater than matched same-host baseline, separating cold preparation and warm reuse | Proposed, not accepted or demonstrated; WP-00/WP-10 owners must agree repetitions and matched configuration before evaluation |
+| Output footprint | Final results plus rescore bytes no greater than matched-population baseline | Proposed, not accepted or demonstrated; WP-00/WP-08/WP-10 owners must agree artifact capabilities/population |
+| Peak memory and disk | Observed complete-process/cgroup memory and peak disk no greater than matched same-host/configuration baseline | Proposed, not accepted or demonstrated; WP-00/WP-10 owners must approve measurement scope |
+| Scientific accuracy and FDP | Report observed identification, abundance and entrapment metrics; no new numerical truth-accuracy or FDP cutoff is invented here | Numerical acceptance margins await scientific owner/reviewer agreement; unavailable truth remains blocked |
+| Localization truth | Select and pin separate known-site DIA data and truth mapping, then review exhaustive/IPF and null/decoy experiment | Open decision for WP-00/WP-07 owners; neither existing dataset closes it |
+
+These proposals are recorded before future candidate evaluation, not approved by
+being documented. A behavior-changing scientific candidate needs separately
+reviewed scientific margins, not automatic exact-set acceptance. No observed
+speedup, footprint reduction or scientific calibration is claimed by this matrix.
+
+The existing 4 GiB process and 2 GiB low-memory targets on a 16 GiB laptop remain
+targets, not measured caps. Baseline characterization may proceed using the
+frozen repeat policy, but candidate scientific/performance acceptance remains
+blocked until its additional thresholds are approved and recorded before runs.
+Proposals must remain labelled as proposals, with no retrospective relaxation.
+
+Known-site localization remains blocked until a separate DIA dataset and truth
+mapping are selected and pinned. Coordinate the exhaustive/IPF and localization
+null/decoy experiment with WP-07 (#10669) before freezing scientific contracts.
+TimSim supplies realized identification/abundance truth, not known-site truth.
+Astral supplies repeatability and exploratory within-run entrapment diagnostics,
+not abundance truth or biological-protein validation. Missing global precursor
+q-values, exact modified-peptide pairing and independently verified effective
+entrapment:target search-space ratio keep the respective Astral checks blocked.
+
+Keep all five merge checkboxes below open until their exact evidence is reviewed.
+Complete evidence checks and adversarial review before opening a PR. No GitHub publication is
+authorized by this workstation-verification update.
 
 ## Dependencies
 

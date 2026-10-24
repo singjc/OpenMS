@@ -2,7 +2,23 @@
 
 [Plan index](README.md) | [Architecture](architecture.md)
 
-## Project baseline for WP-00
+## Current verification status (24 October 2026)
+
+The selected clean merged source is `3e47bc7e7468656d0d53237f11fc4f049d278efe`,
+including #10642 and #10698. Workstation verification is in progress. No completed
+build, test or benchmark result for that source is asserted by this documentation
+update. See [WP-00](work-packages/00-acceptance-baseline.md) for frozen comparison
+tolerances, pending evidence and proposed gates awaiting owner/reviewer agreement.
+
+The 21 October dirty-source searches and failed repeats remain historical. The
+22 October premerge same-binary comparisons reported in #10662 passed all 12
+output comparisons, without proving cross-thread/platform/cache invariance or
+rerunning merged develop. #10698 merged on 23 October 2026 and corrects Parquet
+scientific score values, so affected earlier scores are not an equivalent
+corrected-source baseline. Preserve original logs and failures rather than
+retrospectively replacing them with successful corrected results.
+
+## Historical project baseline selection for WP-00
 
 Use pinned upstream/CI builds of develop with [#10642](https://github.com/OpenMS/OpenMS/pull/10642), the ProteoBench Astral entrapment run and one diaPASEF dataset. Timo's [plan review](https://github.com/OpenMS/OpenMS/issues/10661) reports approximately 33 min wall time and 8.0 GB peak RSS for 600k precursors, 300 windows and four threads: 15 min extraction/scoring, 13.5 min rescoring/inference/export, and 5 min loading/calibration. The working OSW contains 2.9M features and 17.3M `FEATURE_TRANSITION` rows. These rounded review figures motivate early WP-08 work, not a new measurement by this documentation update. WP-00 must reproduce stage time/RSS with pinned inputs and build provenance.
 
@@ -92,9 +108,9 @@ Full-evidence IPF used copies of `src/tests/class_tests/openms/data/PyProphet_in
 
 An initial cross-engine comparison produced only zeros and was rejected as accuracy evidence. A widened, matched-policy comparison produced 294 nonzero points. Existing OpenSWATH wave versus legacy batching agreed exactly on all 600 values/times; prototype thread configurations also agreed.
 
-The two extractors did **not** agree with one another: the largest difference was approximately 20.042 intensity units. A raw-spectrum sum of 120.0000002682 became about 119.2002182 in existing OpenSWATH output, consistent with omitting the first centroid of intensity 0.8000000119 plus output encoding effects. Source inspection confirmed a left-walk first-centroid edge case. No fix was made. Test first/last centroids, one-element spectra and targets beyond the final centroid against explicit mathematical semantics, not only legacy output.
+The two extractors did **not** agree with one another: the largest difference was approximately 20.042 intensity units. A raw-spectrum sum of 120.0000002682 became about 119.2002182 in existing OpenSWATH output, consistent with omitting the first centroid of intensity 0.8000000119 plus output encoding effects. Source inspection confirmed a left-walk first-centroid edge case. No fix was made during that investigation. Test first/last centroids, one-element spectra and targets beyond the final centroid against explicit mathematical semantics, not only legacy output.
 
-Timo additionally reports beyond-last-centroid double counting in both tophat overloads. Track the first-centroid and beyond-last fixes as a standalone core PR on develop, with hand-computed IM/non-IM tests, rather than adding a legacy-bug compatibility mode. These reports are not marked fixed by this plan update.
+Timo additionally reported beyond-last-centroid double counting in both tophat overloads. These historical bugs were subsequently fixed in standalone core PR #10673, included in the selected source, with hand-computed IM/non-IM edge tests. Do not add a legacy-bug compatibility mode. This merge status does not retroactively validate the historical measurements above.
 
 ## Historical local build limitations
 
