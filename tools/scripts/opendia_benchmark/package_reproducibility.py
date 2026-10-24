@@ -13,7 +13,7 @@ JOBS = ('timsim/target_only', 'timsim/entrapment', 'astral')
 SCRIPTS = ('lib.sh', 'build.sh', 'run_timsim.sh', 'run_astral.sh',
            'monitor_host.py', 'benchmark_metrics.py', 'validate_timsim.py',
            'metrics_astral.py', 'make_report.py', 'render_report.py',
-           'package_reproducibility.py', 'compare_repeats.py')
+           'package_reproducibility.py', 'compare_repeats.py', 'measure_outputs.py')
 
 
 def safe_path(path):

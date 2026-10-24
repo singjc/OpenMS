@@ -4,6 +4,7 @@
 import json
 from pathlib import Path
 import shutil
+import sqlite3
 import subprocess
 import sys
 import tarfile
@@ -98,6 +99,33 @@ class PackageTest(unittest.TestCase):
                                  str(moved / 'scripts/package_reproducibility.py'),
                                  'verify', str(moved)], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_bundled_measurement_cli(self):
+        self.package()
+        moved = self.base / 'moved'
+        shutil.move(self.output, moved)
+        script = moved / 'scripts/measure_outputs.py'
+        manifest = bundle.read_json(moved / 'manifest.json')
+        self.assertIn('scripts/measure_outputs.py', manifest['files'])
+        database = self.base / 'measurement.osw'
+        with sqlite3.connect(database) as db:
+            db.execute('CREATE TABLE FEATURE(ID INTEGER PRIMARY KEY)')
+            db.execute('INSERT INTO FEATURE VALUES (1)')
+        before = bundle.digest(database)
+        output = self.base / 'measurement.json'
+        result = subprocess.run(
+            [sys.executable, '-I', str(script), str(database),
+             '--dataset', 'synthetic', '--job', str(moved / 'astral'),
+             '--temp-dir', str(self.base), '--output-json', str(output)],
+            cwd=self.base, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        measurement = bundle.read_json(output)
+        self.assertEqual(measurement['artifacts'][0]['tables']['FEATURE'],
+                         {'status': 'ok', 'rows': 1})
+        self.assertEqual(measurement['provenance'],
+                         {'dataset': 'synthetic', 'job': str(moved / 'astral')})
+        self.assertEqual(bundle.digest(database), before)
+        bundle.verify(moved)
 
     def test_nonzero_missing_and_aborted_jobs(self):
         for path, text in (
