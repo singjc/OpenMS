@@ -2,9 +2,11 @@
 """Small regression check. Optional arguments are captured meta/command.sh files."""
 
 import csv
+import hashlib
 import json
 import os
 import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -26,6 +28,7 @@ def main():
         environment.pop('BENCH_MEMORY_MAX', None)
         environment.pop('BENCH_MEMORY_SWAP_MAX', None)
         environment.pop('THREADS', None)
+        environment.pop('BENCH_FROZEN_HASHES', None)
         ran = subprocess.run(['bash', '-c',
             'source "$1"; prepare_output "$2"; printf "%s %s" "$THREADS" "$PERCOLATOR_THREADS" > "$2/meta/threads.txt"; '
             'run_measured "$2" env LD_LIBRARY_PATH=/test/runtime sh -c \'printf "%s" "$TMPDIR"; sleep 0.2\'',
@@ -44,9 +47,43 @@ def main():
                      'harness_status.txt', 'source_locations.txt'):
             assert (out / 'meta' / name).is_file()
         assert (out / 'meta/exit_code.txt').read_text().strip() == '0'
+        copied = root / 'relocated/tools/scripts/opendia_benchmark'
+        copied.mkdir(parents=True)
+        for name in ('lib.sh', 'monitor_host.py'):
+            shutil.copyfile(script.with_name(name), copied / name)
+        relocated_out = root / 'relocated_job'
+        relocated_env = dict(environment, HARNESS_SOURCE_DIR=str(script.parents[3]))
+        relocated = subprocess.run(['bash', '-c',
+            'source "$1"; prepare_output "$2"; run_measured "$2" true',
+            'bash', str(copied / 'lib.sh'), str(relocated_out)], env=relocated_env,
+            capture_output=True, text=True, timeout=10)
+        assert relocated.returncode == 0, relocated.stderr
+        assert (relocated_out / 'meta/harness_revision.txt').read_text() == (out / 'meta/harness_revision.txt').read_text()
+        locations = (relocated_out / 'meta/source_locations.txt').read_text()
+        assert f'harness_source_dir={script.parents[3]}\n' in locations
+        assert f'engine_source_dir={script.parents[3]}\n' in locations
+        fixture = root / 'frozen_input'
+        fixture.write_text('original')
+        frozen_hashes = root / 'frozen.sha256'
+        frozen_hashes.write_text(f'{hashlib.sha256(fixture.read_bytes()).hexdigest()}  {fixture}\n')
+        frozen_env = dict(environment, BENCH_FROZEN_HASHES=str(frozen_hashes))
+        fixture.write_text('changed')
+        for mode in ('before', 'during'):
+            checked_out = root / f'frozen_{mode}'
+            if mode == 'during':
+                fixture.write_text('original')
+            checked = subprocess.run(['bash', '-c',
+                'source "$1"; prepare_output "$2"; run_measured "$2" sh -c '
+                "'printf changed > \"$1\"; touch \"$2/meta/executed\"' sh \"$3\" \"$2\"",
+                'bash', str(script), str(checked_out), str(fixture)], env=frozen_env,
+                capture_output=True, text=True, timeout=10)
+            assert checked.returncode == 2, checked.stderr
+            assert (checked_out / 'meta/executed').exists() == (mode == 'during')
+            failed_log = checked_out / 'logs' / f'frozen-{"before" if mode == "before" else "after"}.log'
+            assert 'FAILED' in failed_log.read_text()
         # Explicit opt-in keeps the public regression portable to non-systemd hosts.
         if os.environ.get('BENCH_TEST_CGROUP') == '1':
-            for mode in ('cgroup', 'swap_only', 'nonzero', 'low_disk'):
+            for mode in ('cgroup', 'swap_only', 'nonzero', 'low_disk', 'orphan'):
                 scoped = root / mode
                 scoped_env = dict(environment)
                 scoped_env.update({'BENCH_MEMORY_SWAP_MAX': '0'} if mode == 'swap_only'
@@ -57,15 +94,28 @@ def main():
                            "import time; time.sleep(0.15); a=bytearray(8*1024*1024)")
                 if mode == 'nonzero':
                     program += '; raise SystemExit(3)'
+                if mode == 'orphan':
+                    program = ("import subprocess; from pathlib import Path; "
+                               "child=subprocess.Popen(['sleep','10']); "
+                               f"Path({str(scoped / 'meta/orphan_pid.txt')!r}).write_text(str(child.pid))")
                 checked = subprocess.run(['bash', '-c',
                     'source "$1"; prepare_output "$2"; run_measured "$2" python3 -c '
                     + shlex.quote(program),
                     'bash', str(script), str(scoped)], env=scoped_env,
                     capture_output=True, text=True, timeout=10)
-                assert checked.returncode == (2 if mode == 'low_disk' else 3 if mode == 'nonzero' else 0), checked.stderr
+                assert checked.returncode == (2 if mode in ('low_disk', 'orphan') else 3 if mode == 'nonzero' else 0), checked.stderr
                 summary = json.loads((scoped / 'logs/host_workload.json').read_text())
                 if mode == 'low_disk':
                     assert summary['abort_reason']
+                    continue
+                if mode == 'orphan':
+                    assert 'survived' in summary['abort_reason']
+                    orphan_pid = int((scoped / 'meta/orphan_pid.txt').read_text())
+                    try:
+                        state = Path(f'/proc/{orphan_pid}/stat').read_text().rsplit(')', 1)[1].split()[0]
+                        assert state == 'Z'
+                    except FileNotFoundError:
+                        pass
                     continue
                 assert summary['cgroup_final']['cgroup_memory_peak_bytes'] >= 8 * 1024**2
                 assert summary['abort_reason'] is None

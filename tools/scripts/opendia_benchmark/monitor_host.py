@@ -9,6 +9,7 @@ import platform
 import signal
 import stat
 import statistics
+import subprocess
 import time
 from pathlib import Path
 
@@ -293,10 +294,20 @@ def main():
             handle.write(json.dumps(sample, allow_nan=False) + "\n")
             handle.flush()
             if args.cgroup and args.cgroup_done.exists() and cgroup_final is None:
-                cgroup_final = (cgroup_memory(args.cgroup, args.pid)
-                                if scope_workload_finished(args.cgroup, args.cgroup_done) else {})
+                verified = cgroup_memory(args.cgroup, args.pid)
+                finished = scope_workload_finished(args.cgroup, args.cgroup_done)
+                cgroup_final = verified if finished else {}
                 if cgroup_final.get('cgroup_memory_peak_bytes') is None:
                     abort_reason = 'Requested cgroup final memory peak could not be verified'
+                if verified and not finished:
+                    abort_reason = 'Workload processes survived in the verified dedicated scope'
+                    try:
+                        stopped = subprocess.run(['systemctl', '--user', 'kill', '--kill-whom=all',
+                                                  args.cgroup.name], capture_output=True, timeout=5)
+                        if stopped.returncode:
+                            abort_reason += '; scope cleanup failed'
+                    except (OSError, subprocess.TimeoutExpired):
+                        abort_reason += '; scope cleanup failed'
                 # Release even on failure, so the workload exit and GNU time survive.
                 args.cgroup_release.write_text('captured\n' if not abort_reason else 'failed\n')
             if sample["disk_free_gib"] < args.min_free_disk_gib:

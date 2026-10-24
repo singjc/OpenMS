@@ -6,6 +6,7 @@ SOURCE_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 BUILD_DIR="${BUILD_DIR:-$SOURCE_DIR/../OpenMS-build}"
 OPEN_DIA="${OPEN_DIA:-$BUILD_DIR/bin/OpenDIA}"
 ENGINE_SOURCE_DIR="${ENGINE_SOURCE_DIR:-$SOURCE_DIR}"
+HARNESS_SOURCE_DIR="${HARNESS_SOURCE_DIR:-$SOURCE_DIR}"
 THREADS="${THREADS:-$(python3 -c 'import os; print(max(1, len(os.sched_getaffinity(0)) - 3))')}"
 # Percolator is intentionally capped at three threads, independent of extraction.
 PERCOLATOR_THREADS="${PERCOLATOR_THREADS:-$THREADS}"
@@ -71,6 +72,13 @@ run_measured()
 {
   local out="$1"
   shift
+  if [[ -n "${BENCH_FROZEN_HASHES:-}" ]]; then
+    require_file "$BENCH_FROZEN_HASHES"
+    if ! sha256sum --check "$BENCH_FROZEN_HASHES" > "$out/logs/frozen-before.log" 2>&1; then
+      echo "ERROR: frozen benchmark inputs changed before measured job" >&2
+      return 2
+    fi
+  fi
   mkdir -p "$out/tmp"
   local -a command=(env "TMPDIR=$(realpath "$out/tmp")" "$@")
 
@@ -96,9 +104,9 @@ PY
   sha256sum "$OPEN_DIA" > "$out/meta/OpenDIA.sha256"
   git -C "$ENGINE_SOURCE_DIR" rev-parse HEAD > "$out/meta/source_revision.txt"
   git -C "$ENGINE_SOURCE_DIR" status --short > "$out/meta/source_status.txt"
-  git -C "$SOURCE_DIR" rev-parse HEAD > "$out/meta/harness_revision.txt"
-  git -C "$SOURCE_DIR" status --short > "$out/meta/harness_status.txt"
-  printf 'engine_source_dir=%s\nharness_source_dir=%s\n' "$ENGINE_SOURCE_DIR" "$SOURCE_DIR" > "$out/meta/source_locations.txt"
+  git -C "$HARNESS_SOURCE_DIR" rev-parse HEAD > "$out/meta/harness_revision.txt"
+  git -C "$HARNESS_SOURCE_DIR" status --short > "$out/meta/harness_status.txt"
+  printf 'engine_source_dir=%s\nharness_source_dir=%s\n' "$ENGINE_SOURCE_DIR" "$HARNESS_SOURCE_DIR" > "$out/meta/source_locations.txt"
   printf 'memory_max=%s\nmemory_swap_max=%s\n' "${BENCH_MEMORY_MAX:-unlimited}" "${BENCH_MEMORY_SWAP_MAX:-unlimited}" \
     > "$out/meta/resource_limits.txt"
   local -a limits=() monitor_args=()
@@ -161,6 +169,12 @@ PY
   local host_status=$?
   set -e
 
+  if [[ -n "${BENCH_FROZEN_HASHES:-}" ]]; then
+    if ! sha256sum --check "$BENCH_FROZEN_HASHES" > "$out/logs/frozen-after.log" 2>&1; then
+      echo "ERROR: frozen benchmark inputs changed during measured job" >&2
+      status=2
+    fi
+  fi
   printf '%s\n' "$status" > "$out/meta/exit_code.txt"
   awk 'BEGIN { max=0 } $2 > max { max=$2 } END { print max }' \
     "$out/logs/disk_bytes.tsv" > "$out/meta/peak_output_bytes.txt"
