@@ -11,7 +11,7 @@ import tempfile
 import threading
 from pathlib import Path
 
-from monitor_host import process_ticks, process_tree
+from monitor_host import cgroup_memory, disk_bytes, job_memory, process_ticks, process_tree
 
 
 def running(pid):
@@ -93,6 +93,13 @@ time.sleep(30)
         assert not running(child), (mode, child)
         data = json.loads((output / "host_workload.json").read_text())
         assert data["sample_count"] > 0
+        assert data['resource_schema_version'] == 1
+        assert data['job_tree_rss_bytes_sampled']['max'] > 0
+        assert data['job_largest_process_hwm_bytes_observed']['max'] > 0
+        assert data['output_apparent_bytes_sampled']['max'] >= 0
+        assert data['temp_apparent_bytes_sampled']['max'] >= 0
+        assert data['cgroup_path_requested'] is None
+        assert 'cgroup_memory_peak_bytes' not in data
         assert data["logical_cpus"] >= 1
         assert data['system']['logical_cpus'] == data['logical_cpus']
         assert data['system']['affinity_logical_cpus'] >= 1
@@ -131,7 +138,20 @@ time.sleep(30)
 
 def main():
     test_cpu_accounting()
+    memory = job_memory(os.getpid())
+    assert memory['job_tree_rss_bytes_sampled'] > 0
+    assert memory['job_largest_process_hwm_bytes_observed'] > 0
+    assert cgroup_memory(None, os.getpid()) == {}
+    assert cgroup_memory(Path('/sys/fs/cgroup'), os.getpid()) == {}
     with tempfile.TemporaryDirectory(dir=os.environ.get("JCODE_SCRATCH_DIR")) as temporary:
+        files = Path(temporary) / 'files'
+        files.mkdir()
+        original = files / 'original'
+        original.write_bytes(b'x' * 123)
+        os.link(original, files / 'hardlink')
+        (files / 'symlink').symlink_to(original)
+        assert disk_bytes(files) == 123
+        assert disk_bytes(files / 'missing') == 0
         # An unrelated process must remain alive through every guard test.
         unrelated = subprocess.Popen(["sleep", "30"])
         try:

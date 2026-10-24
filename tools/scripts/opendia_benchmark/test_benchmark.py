@@ -16,6 +16,27 @@ from validate_timsim import best_results, fdr_curve
 
 
 def main():
+    script = Path(__file__).with_name('lib.sh').resolve()
+    with tempfile.TemporaryDirectory(dir=os.environ.get('JCODE_SCRATCH_DIR')) as temporary:
+        root = Path(temporary)
+        out = root / 'job'
+        environment = dict(os.environ, OPEN_DIA='/usr/bin/true', MIN_FREE_DISK_GIB='0',
+                           BENCH_CGROUP='0', ENGINE_SOURCE_DIR=str(script.parents[3]))
+        environment.pop('BENCH_MEMORY_MAX', None)
+        environment.pop('BENCH_MEMORY_SWAP_MAX', None)
+        environment.pop('THREADS', None)
+        ran = subprocess.run(['bash', '-c',
+            'source "$1"; prepare_output "$2"; printf "%s %s" "$THREADS" "$PERCOLATOR_THREADS" > "$2/meta/threads.txt"; '
+            'run_measured "$2" sh -c \'printf "%s" "$TMPDIR"; sleep 0.2\'',
+            'bash', str(script), str(out)], env=environment, capture_output=True, text=True, timeout=10)
+        assert ran.returncode == 0, ran.stderr
+        assert (out / 'logs/stdout.log').read_text() == str(out / 'tmp')
+        threads = max(1, len(os.sched_getaffinity(0)) - 3)
+        assert (out / 'meta/threads.txt').read_text() == f'{threads} {min(3, threads)}'
+        for name in ('source_revision.txt', 'source_status.txt', 'harness_revision.txt',
+                     'harness_status.txt', 'source_locations.txt'):
+            assert (out / 'meta' / name).is_file()
+        assert (out / 'meta/exit_code.txt').read_text().strip() == '0'
     assert parse_seconds("1:27:54") == 5274
     assert parse_seconds("1:14.09") == 74.09
     points = fdr_curve([(0.0005, False), (0.001, True), (0.02, True)], 0.01)
@@ -137,7 +158,9 @@ def main():
             # Run the real parser, then stop at a missing library before costly I/O.
             # -write_ini is not a dry run: it writes defaults, not resolved values.
             with tempfile.TemporaryDirectory() as temporary:
-                command[2] = str(Path(os.environ["OPEN_DIA"]).resolve())
+                # Captures may start with env TMPDIR=... before the original env.
+                executable_index = command.index('-in') - 1
+                command[executable_index] = str(Path(os.environ["OPEN_DIA"]).resolve())
                 library = Path(command[command.index("-tr") + 1])
                 command[command.index("-tr") + 1] = str(Path(temporary) / ("missing" + library.suffix))
                 command.extend(["-debug", "2"])

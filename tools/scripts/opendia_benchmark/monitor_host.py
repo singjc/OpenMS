@@ -7,6 +7,7 @@ import math
 import os
 import platform
 import signal
+import stat
 import statistics
 import time
 from pathlib import Path
@@ -139,6 +140,62 @@ def pressure(kind):
         return None
 
 
+def job_memory(pid):
+    """Sample simultaneous RSS and largest observed individual VmHWM, not their sum."""
+    rss, high_water = [], []
+    for child in process_tree(pid):
+        try:
+            fields = dict(line.split(':', 1) for line in Path(f'/proc/{child}/status').read_text().splitlines())
+            if 'VmRSS' in fields:
+                rss.append(int(fields['VmRSS'].split()[0]) * 1024)
+            if 'VmHWM' in fields:
+                high_water.append(int(fields['VmHWM'].split()[0]) * 1024)
+        except (OSError, ValueError):
+            continue
+    return {'job_tree_rss_bytes_sampled': sum(rss) if rss else None,
+            'job_largest_process_hwm_bytes_observed': max(high_water) if high_water else None}
+
+
+def disk_bytes(path):
+    """Apparent regular-file bytes, excluding symlinks and deduplicating hardlinks."""
+    total = 0
+    seen = set()
+    for directory, _, files in os.walk(path):
+        for name in files:
+            try:
+                item = (Path(directory) / name).lstat()
+                identity = (item.st_dev, item.st_ino)
+                if stat.S_ISREG(item.st_mode) and identity not in seen:
+                    total += item.st_size
+                    seen.add(identity)
+            except OSError:
+                continue
+    return total
+
+
+def cgroup_memory(path, pid):
+    """Read only a requested dedicated scope containing a measured descendant."""
+    if path is None:
+        return {}
+    try:
+        relative = '/' + str(path.resolve().relative_to('/sys/fs/cgroup'))
+        if not path.name.startswith('opendia-bench-') or path.suffix != '.scope':
+            return {}
+        if not any(f'0::{relative}' in Path(f'/proc/{child}/cgroup').read_text().splitlines()
+                   for child in process_tree(pid)):
+            return {}
+        values = {}
+        for filename in ('memory.current', 'memory.peak', 'memory.swap.current'):
+            key = 'cgroup_' + filename.replace('.', '_') + '_bytes'
+            try:
+                values[key] = int((path / filename).read_text())
+            except (OSError, ValueError):
+                values[key] = None
+        return values
+    except (OSError, ValueError):
+        return {}
+
+
 def host_sample(pid, output):
     cpu = [int(value) for value in Path("/proc/stat").read_text().splitlines()[0].split()[1:9]]
     memory = {}
@@ -164,6 +221,7 @@ def main():
     parser.add_argument("pid", type=int)
     parser.add_argument("output", type=Path)
     parser.add_argument("--interval", type=float, default=1)
+    parser.add_argument("--cgroup", type=Path, help="Explicit dedicated opendia-bench-*.scope only")
     parser.add_argument("--min-free-disk-gib", type=float, default=3)
     args = parser.parse_args()
     if args.pid <= 0 or not math.isfinite(args.interval) or not math.isfinite(args.min_free_disk_gib) or args.interval <= 0 or args.min_free_disk_gib < 0:
@@ -176,6 +234,10 @@ def main():
     with (args.output / "host_workload.jsonl").open("w", encoding="utf-8") as handle:
         while Path(f"/proc/{args.pid}").exists():
             sample, cpu, ticks, descendants = host_sample(args.pid, args.output)
+            sample.update(job_memory(args.pid))
+            sample.update(cgroup_memory(args.cgroup, args.pid))
+            sample['output_apparent_bytes_sampled'] = disk_bytes(args.output.parent)
+            sample['temp_apparent_bytes_sampled'] = disk_bytes(args.output.parent / 'tmp')
             now = time.monotonic()
             if previous_cpu is not None:
                 elapsed = now - previous_time
@@ -219,9 +281,17 @@ def main():
         "finished_at": samples[-1]['timestamp'] if samples else None,
         "interval_seconds": args.interval,
         "abort_reason": abort_reason,
+        "resource_schema_version": 1,
+        "cgroup_path_requested": str(args.cgroup) if args.cgroup else None,
+        "measurement_notes": {
+            "job_tree_rss_bytes_sampled": "Sum of resident process RSS at each sample, shared pages may be counted more than once. Short-lived children may be missed.",
+            "job_largest_process_hwm_bytes_observed": "Largest individual VmHWM observed, never a sum of process peaks.",
+            "cgroup_memory_peak_bytes": "Kernel memory.peak last observed while dedicated scope exists, includes file cache, may miss final peak before scope removal. Not process RSS.",
+            "disk": "Sampled apparent regular-file bytes, not allocated blocks. Temp is a subset of output. Open unlinked files and external temp paths are not counted.",
+        },
         "note": "Host CPU includes the benchmark. Job CPU and other CPU are estimates from process snapshots. Elapsed times are not corrected for workload.",
     }
-    for key in samples[0] if samples else ():
+    for key in set().union(*(sample.keys() for sample in samples)):
         if key == "timestamp":
             continue
         values = [sample[key] for sample in samples if sample.get(key) is not None]

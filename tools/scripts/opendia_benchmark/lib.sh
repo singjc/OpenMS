@@ -5,7 +5,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 BUILD_DIR="${BUILD_DIR:-$SOURCE_DIR/../OpenMS-build}"
 OPEN_DIA="${OPEN_DIA:-$BUILD_DIR/bin/OpenDIA}"
-THREADS="${THREADS:-4}"
+ENGINE_SOURCE_DIR="${ENGINE_SOURCE_DIR:-$SOURCE_DIR}"
+THREADS="${THREADS:-$(python3 -c 'import os; print(max(1, len(os.sched_getaffinity(0)) - 3))')}"
+# Percolator is intentionally capped at three threads, independent of extraction.
 PERCOLATOR_THREADS="${PERCOLATOR_THREADS:-$THREADS}"
 (( PERCOLATOR_THREADS > 3 )) && PERCOLATOR_THREADS=3
 OPEN_DIA_SPEED_ARGS=(
@@ -69,18 +71,29 @@ run_measured()
 {
   local out="$1"
   shift
-  local -a command=("$@")
+  mkdir -p "$out/tmp"
+  local -a command=(env "TMPDIR=$(realpath "$out/tmp")" "$@")
 
   printf '%q ' "${command[@]}" > "$out/meta/command.sh"
   printf '\n' >> "$out/meta/command.sh"
   sha256sum "$OPEN_DIA" > "$out/meta/OpenDIA.sha256"
-  git -C "$SOURCE_DIR" rev-parse HEAD > "$out/meta/source_revision.txt"
-  git -C "$SOURCE_DIR" status --short > "$out/meta/source_status.txt"
+  git -C "$ENGINE_SOURCE_DIR" rev-parse HEAD > "$out/meta/source_revision.txt"
+  git -C "$ENGINE_SOURCE_DIR" status --short > "$out/meta/source_status.txt"
+  git -C "$SOURCE_DIR" rev-parse HEAD > "$out/meta/harness_revision.txt"
+  git -C "$SOURCE_DIR" status --short > "$out/meta/harness_status.txt"
+  printf 'engine_source_dir=%s\nharness_source_dir=%s\n' "$ENGINE_SOURCE_DIR" "$SOURCE_DIR" > "$out/meta/source_locations.txt"
   printf 'memory_max=%s\nmemory_swap_max=%s\n' "${BENCH_MEMORY_MAX:-unlimited}" "${BENCH_MEMORY_SWAP_MAX:-unlimited}" \
     > "$out/meta/resource_limits.txt"
-  local -a limits=()
-  if [[ -n "${BENCH_MEMORY_MAX:-}" ]]; then
-    limits=(systemd-run --user --scope --quiet -p "MemoryMax=$BENCH_MEMORY_MAX")
+  local -a limits=() monitor_args=()
+  if [[ -n "${BENCH_MEMORY_MAX:-}" || "${BENCH_CGROUP:-0}" == "1" ]]; then
+    local scope="opendia-bench-$$-${RANDOM}.scope"
+    local user_group
+    user_group="$(systemctl --user show -p ControlGroup --value)"
+    monitor_args=(--cgroup "/sys/fs/cgroup$user_group/app.slice/$scope")
+    limits=(systemd-run --user --scope --quiet --unit "$scope" -p MemoryAccounting=yes)
+    if [[ -n "${BENCH_MEMORY_MAX:-}" ]]; then
+      limits+=(-p "MemoryMax=$BENCH_MEMORY_MAX")
+    fi
     if [[ -n "${BENCH_MEMORY_SWAP_MAX:-}" ]]; then
       limits+=(-p "MemorySwapMax=$BENCH_MEMORY_SWAP_MAX")
     fi
@@ -92,7 +105,7 @@ run_measured()
     "${limits[@]}" "${command[@]}" > "$out/logs/stdout.log" 2> "$out/logs/stderr.log" &
   local pid=$!
   python3 "$SCRIPT_DIR/monitor_host.py" "$pid" "$out/logs" \
-    --min-free-disk-gib "${MIN_FREE_DISK_GIB:-3}" &
+    --min-free-disk-gib "${MIN_FREE_DISK_GIB:-3}" "${monitor_args[@]}" &
   local host_monitor=$!
 
   (
