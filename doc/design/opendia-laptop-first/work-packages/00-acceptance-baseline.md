@@ -117,8 +117,9 @@ dependency equivalence. Independent frozen provenance checks and the report
 worker's evidence package remain separate and pending review. Do not infer them
 from output equality or modify frozen harness/provenance artifacts.
 
-The separate profiling branch's native build is ongoing, not passed. Its eventual
-instrumented stage measurements must not be attributed to this clean engine pin.
+The separate profiling branch's native build and OpenDIA integration tests passed: the requested native target set built successfully, the profiling fixture passed, and all 29 OpenDIA TOPP checks passed. Four compile-time accesses to a private parameter helper were caught and corrected to use resolved parameters before the successful build. The instrumented binary is separate from the clean merged-source baseline. Four full instrumented runs (TimSim target-only cold/warm and Astral predicted cold/warm) exited successfully, produced valid stage summaries, and matched each frozen baseline output under the unchanged comparator across results and three matrices. These are different-binary output-equivalence checks, not same-binary repeats or candidate acceptance.
+
+Instrumented stage/resource alignment is valid at recorded boundaries. Stage resource maxima are sampled observations, not exact peaks. Standalone TimSim `ms1ms2` rescoring completed on a copied workflow and processed 16,441 rows (8,429 target, 8,012 decoy), writing 13,421,129 apparent bytes. A checksummed baseline bundle and a followup-supplement bundle both passed verification after clean extraction. The followup archive SHA-256 is `0ae95842b063ff37003ba7d4a9a100591deb0fa97bf4ea75080ad24f8142381e`; the baseline archive SHA-256 is `4d45c0177bbcdc76124fe4821579137e9e703dc136b125dfb908220f791257ca`. These local artifacts are not yet attached to durable public storage. Astral standalone rescoring is blocked because the frozen SQLite source has persistent WAL/SHM sidecars; the harness correctly refused to treat it as quiescent. No baseline sidecar was removed or altered. Durable publication remains pending.
 
 The declared workstation protocol uses `THREADS=17`; historical four-thread
 laptop timings are context, not matched performance evidence. Record actual
@@ -173,9 +174,9 @@ are not proof of calibrated 1% error control or localization accuracy.
 | Merge requirement | Evidence still required for the selected source |
 |---|---|
 | Pinned provenance | Complete clean-source/build/input/environment manifest and explicit CI status. Keep historical dirty-tree/dependency gaps labelled, not retroactively repaired. |
-| Fresh producers and reference artifacts | Full fresh A/B target/mixed TimSim and all-three Astral producers completed and all 12 output comparisons passed. Final report/package, attachment and durable evidence location still need verification and review. |
+| Fresh producers and reference artifacts | Full fresh A/B target/mixed TimSim and all-three Astral producers completed and all 12 output comparisons passed. Final report/package, attachment and durable evidence location still need verification and review. Four separate instrumented cold/warm followups also passed output-equivalence against their frozen outputs; they do not replace same-binary repeats. |
 | Repeat baseline | Output reproduction is demonstrated under the unchanged frozen policy with zero differences. Independent input/settings/model/dependency/harness provenance review remains separate before full requirement sign-off. |
-| Complete measurement table | Cold/warm and stage/total runtime, stage memory, process/cgroup peaks including children, swap, rescoring share, table cardinalities, final bytes and observed peak disk including sidecars/staging. Sampled directory sizes and configured limits alone do not close this check. |
+| Complete measurement table | Cold/warm and stage/total runtime, stage memory, process/cgroup peaks including children, swap, rescoring share, table cardinalities, final bytes and observed peak disk including sidecars/staging. Sampled directory sizes and configured limits alone do not close this check. Instrumented TimSim/Astral cold/warm stage records exist; standalone TimSim rescoring exists. A compact followup evidence bundle passed clean-extraction verification. Astral standalone rescore remains blocked by guarded SQLite sidecars; comprehensive peak-disk and resource acceptance remain open. |
 | Predeclared quality/resource/size gates | Numerical identification, retrieval, localization and quantitative-error margins, runtime and matched-population results/rescore size limits require explicit review and freezing before candidate-engine evaluation. No such undecided margin is accepted by this update. |
 
 ### Owner/reviewer decision matrix

@@ -8,11 +8,17 @@ The selected clean merged source is `3e47bc7e7468656d0d53237f11fc4f049d278efe`,
 including #10642 and #10698, with harness `5a804f5e7c92f5c7e541050123a66f2978d23368`
 pinned separately. Full fresh A/B TimSim target-only/mixed and all-three Astral
 output comparisons passed all 12 files with zero numeric or scientific-identity
-differences. Results rows per repeat are 11,484 / 6,783 / 6,274 and standard
-accepted counts 6,000 / 5,919 / 4,343. Independent provenance checks and final
-report/package review remain separate from output equality. The separate profiler
-native build is ongoing, not passed. See [WP-00](work-packages/00-acceptance-baseline.md) for exact matrix counts, frozen comparison
-tolerances, pending evidence and proposed gates awaiting owner/reviewer agreement.
+differences. Results rows per repeat are 11,484 / 6,783 / 6,274 and standard accepted
+counts are 6,000 / 5,919 / 4,343. Independent provenance checks and final report/package
+review remain separate from output equality. The separate profiler branch
+now builds and passes its profiling fixture plus all 29 OpenDIA TOPP checks. Four
+instrumented cold/warm followups produced valid stage summaries and passed frozen
+output-equivalence comparisons across results and all three matrices. Standalone
+TimSim rescoring completed; Astral rescoring was refused by the source-WAL guard
+because persistent SQLite sidecars remain. These are descriptive, separate-binary
+measurements, not same-binary repeats, exact resource peaks, or candidate acceptance.
+See [WP-00](work-packages/00-acceptance-baseline.md) for exact matrix counts, frozen
+comparison tolerances, remaining evidence and proposed gates awaiting owner/reviewer agreement.
 
 The declared workstation protocol uses 17 OpenDIA threads rather than the
 historical four. Engine and harness provenance must be independently captured.

@@ -10,23 +10,23 @@ Full fresh workstation A/B output comparisons passed at selected clean merged so
 TimSim target-only, mixed and all-three Astral comparisons passed all 12 files
 with zero changed numeric cells or scientific identities. Raw rows per repeat
 are 11,484 / 6,783 / 6,274 and standard accepted counts 6,000 / 5,919 / 4,343.
-Independent provenance review, final report/package and durable publication,
-complete resource/stage measurements and owner-approved candidate gates remain
-outstanding. Profiling is separate, with native build ongoing, not passed.
+Independent provenance review, comprehensive resource/stage acceptance, and owner-approved candidate gates remain open. The separate profiling branch builds and passes its profile fixture plus all 29 OpenDIA TOPP checks. Four instrumented cold/warm followups passed frozen-output equivalence and produced stage summaries. Standalone TimSim rescoring processed 16,441 rows and wrote 13,421,129 apparent bytes; Astral rescoring was refused because the frozen SQLite source retains WAL/SHM sidecars. A local evidence archive passed clean-extraction verification, but durable public publication remains open. These separate-binary results are not same-binary repeat or candidate-acceptance evidence.
+
 PXD004573's 579 published strings are authenticated, but raw retrieval, site
 mapping, purity and blank interpretation remain unresolved. See WP-00 for the
-requirement-specific map. No candidate acceptance is asserted. Earlier failed repeats remain
-historical evidence; the 22 October same-binary repeat checks passed on a
-premerge build, not on this selected source. The corrected Parquet scores are
-not interchangeable with affected historical scores.
+requirement-specific map. Earlier failed repeats remain historical evidence; the
+22 October same-binary repeat checks passed on a premerge build, not on this
+selected source. The corrected Parquet scores are not interchangeable with
+affected historical scores.
 
 The declared workstation protocol uses 17 OpenDIA threads, with independently
 captured engine/harness provenance and actual subprocess/affinity settings.
 Historical four-thread laptop timings are not a matched baseline. The
 [resource measurement contract](../../../tools/scripts/opendia_benchmark/README.md#dedicated-workload-accounting-and-limitations)
 distinguishes verified final dedicated-scope kernel peaks, diagnostic samples,
-inner/outer timing and sampled disk lower bounds. This is a protocol declaration,
-not fresh successful verification evidence.
+inner/outer timing and sampled disk lower bounds. Four successful instrumented
+followups additionally provide stage timing and aligned sampled-resource summaries,
+but these are descriptive observations, not exact peaks or acceptance evidence.
 
 [WP-00](work-packages/00-acceptance-baseline.md) records the frozen existing
 repeat-comparator policy, the exact pending evidence and the owner/reviewer
