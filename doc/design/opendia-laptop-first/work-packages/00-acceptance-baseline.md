@@ -1,7 +1,7 @@
 # WP-00: Acceptance baseline and datasets
 
 - **Track:** baseline.
-- **Status:** proposed, workstation verification in progress, updated 24 October 2026. **Owner / reviewer:** unassigned.
+- **Status:** proposed, full workstation A/B output comparisons passed, evidence review outstanding, updated 24 October 2026. **Owner / reviewer:** unassigned.
 - **Parent epic:** [#10661](https://github.com/OpenMS/OpenMS/issues/10661). **Issue:** [#10662](https://github.com/OpenMS/OpenMS/issues/10662).
 - **Shared policies:** [architecture](../architecture.md) and [plan](../README.md).
 
@@ -91,17 +91,41 @@ The current-source merge criteria require separately captured evidence below.
 
 The selected clean source pin is `3e47bc7e7468656d0d53237f11fc4f049d278efe`.
 It contains #10642 and the repeat-determinism fixes from #10698, merged on
-23 October 2026. Workstation verification is in progress. This source selection
-is not evidence that its build, tests, full searches or acceptance gates passed.
-Capture the actual source-worktree cleanliness, build configuration, executable,
-dependencies, models, input checksums and commands in the new evidence manifest.
+23 October 2026. The independently frozen harness pin is
+`5a804f5e7c92f5c7e541050123a66f2978d23368`. Full fresh A/B TimSim target-only,
+mixed/entrapment and three-replicate Astral output comparisons have now passed.
+The final baseline task `5858088rjg` exited 0. This is baseline output evidence,
+not candidate-engine acceptance or completed provenance review.
+
+The local evidence root is `/home/singjc/.jcode/scratch/opendia-wp00-workstation-20261024`.
+Its `timsim-target_only-comparison.json`, `timsim-entrapment-comparison.json` and
+`astral-comparison.json` each report four passing files: results plus precursor,
+peptide and protein matrices. Counts below are identical in A and B.
+
+| Pair | Results rows | Precursor-only 1% accepted | Standard three-filter 1% accepted | Matrix rows: precursor / peptide / protein | Numeric cells checked across four files |
+|---|---:|---:|---:|---:|---:|
+| TimSim target-only | 11,484 | 6,000 | 6,000 | 1,000 / 1,000 / 250 | 426,924 |
+| TimSim mixed/entrapment | 6,783 | 5,958 | 5,919 | 993 / 993 / 250 | 257,604 |
+| Astral, all three replicates | 6,274 | 4,590 | 4,343 | 1,747 / 1,624 / 1,595 | 240,762 |
+
+All 12 files have zero changed numeric cells, zero missing/added scientific
+identities and zero maximum numeric differences. Both accepted sets are unchanged.
+These counts include entrapment where present, not only a target-only report view.
+The comparator checks binary SHA-256, successful exits and explicit non-aborted
+monitor summaries. It explicitly does not establish complete input/settings/model/
+dependency equivalence. Independent frozen provenance checks and the report
+worker's evidence package remain separate and pending review. Do not infer them
+from output equality or modify frozen harness/provenance artifacts.
+
+The separate profiling branch's native build is ongoing, not passed. Its eventual
+instrumented stage measurements must not be attributed to this clean engine pin.
 
 The declared workstation protocol uses `THREADS=17`; historical four-thread
 laptop timings are context, not matched performance evidence. Record actual
 affinity, prediction and Percolator worker settings separately. Pin engine source
 and harness revision/status independently, including frozen harness hashes:
 a clean engine does not establish harness identity or cleanliness. No fresh
-workstation build/test/search success is asserted by this declaration.
+workstation performance-target compliance is asserted by this protocol declaration.
 
 ### Resource evidence semantics
 
@@ -144,13 +168,13 @@ and independently verify frozen input/model/binary/dependency/harness hashes.
 Standard accepted sets use the three 1% filters described above. These filters
 are not proof of calibrated 1% error control or localization accuracy.
 
-### Pending requirement-to-check map
+### Requirement-to-check map after full A/B output comparison
 
 | Merge requirement | Evidence still required for the selected source |
 |---|---|
 | Pinned provenance | Complete clean-source/build/input/environment manifest and explicit CI status. Keep historical dirty-tree/dependency gaps labelled, not retroactively repaired. |
-| Fresh producers and reference artifacts | Successful new TimSim target/mixed and three-file Astral producers, logs and references with no stale reuse, plus a durable evidence location. |
-| Repeat baseline | Fresh independent repeats under the frozen policy, with separate provenance checks. Earlier same-binary success is scoped evidence, not this workstation result. |
+| Fresh producers and reference artifacts | Full fresh A/B target/mixed TimSim and all-three Astral producers completed and all 12 output comparisons passed. Final report/package, attachment and durable evidence location still need verification and review. |
+| Repeat baseline | Output reproduction is demonstrated under the unchanged frozen policy with zero differences. Independent input/settings/model/dependency/harness provenance review remains separate before full requirement sign-off. |
 | Complete measurement table | Cold/warm and stage/total runtime, stage memory, process/cgroup peaks including children, swap, rescoring share, table cardinalities, final bytes and observed peak disk including sidecars/staging. Sampled directory sizes and configured limits alone do not close this check. |
 | Predeclared quality/resource/size gates | Numerical identification, retrieval, localization and quantitative-error margins, runtime and matched-population results/rescore size limits require explicit review and freezing before candidate-engine evaluation. No such undecided margin is accepted by this update. |
 
@@ -177,8 +201,12 @@ frozen repeat policy, but candidate scientific/performance acceptance remains
 blocked until its additional thresholds are approved and recorded before runs.
 Proposals must remain labelled as proposals, with no retrospective relaxation.
 
-Known-site localization remains blocked until a separate DIA dataset and truth
-mapping are selected and pinned. Coordinate the exhaustive/IPF and localization
+Known-site localization remains blocked. PXD004573 is the proposed follow-up:
+all 579 exact published modified-peptide strings have been authenticated, so
+published-list authentication is no longer a blocker. Proposed raw data have not
+been downloaded or locally checksum-verified. Site/S3-S4 mapping, synthetic purity,
+modification/isotope/charge/transition joins and nominal-zero/blank interpretation
+remain unresolved, not approved per-run truth. Coordinate the exhaustive/IPF and localization
 null/decoy experiment with WP-07 (#10669) before freezing scientific contracts.
 TimSim supplies realized identification/abundance truth, not known-site truth.
 Astral supplies repeatability and exploratory within-run entrapment diagnostics,
@@ -186,7 +214,9 @@ not abundance truth or biological-protein validation. Missing global precursor
 q-values, exact modified-peptide pairing and independently verified effective
 entrapment:target search-space ratio keep the respective Astral checks blocked.
 
-Keep all five merge checkboxes below open until their exact evidence is reviewed.
+The comparison subcheck is passed, not pending. Full merge sign-off still awaits
+the requirement-specific evidence and approvals above, rather than a claim that
+all five requirements remain wholly untested.
 Complete evidence checks and adversarial review before opening a PR. No GitHub publication is
 authorized by this workstation-verification update.
 

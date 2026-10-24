@@ -5,9 +5,13 @@
 ## Current verification status (24 October 2026)
 
 The selected clean merged source is `3e47bc7e7468656d0d53237f11fc4f049d278efe`,
-including #10642 and #10698. Workstation verification is in progress. No completed
-build, test or benchmark result for that source is asserted by this documentation
-update. See [WP-00](work-packages/00-acceptance-baseline.md) for frozen comparison
+including #10642 and #10698, with harness `5a804f5e7c92f5c7e541050123a66f2978d23368`
+pinned separately. Full fresh A/B TimSim target-only/mixed and all-three Astral
+output comparisons passed all 12 files with zero numeric or scientific-identity
+differences. Results rows per repeat are 11,484 / 6,783 / 6,274 and standard
+accepted counts 6,000 / 5,919 / 4,343. Independent provenance checks and final
+report/package review remain separate from output equality. The separate profiler
+native build is ongoing, not passed. See [WP-00](work-packages/00-acceptance-baseline.md) for exact matrix counts, frozen comparison
 tolerances, pending evidence and proposed gates awaiting owner/reviewer agreement.
 
 The declared workstation protocol uses 17 OpenDIA threads rather than the
@@ -16,7 +20,7 @@ Dedicated verified scope `cgroup_final` kernel peaks include file cache and keep
 overhead; sampled RSS/cgroup counters are diagnostics. Inner workload timing is
 separate from outer scope/keeper timing. Sampled apparent output/temp sizes are
 lower bounds, not exact filesystem peaks. See the [measurement contract](../../../tools/scripts/opendia_benchmark/README.md#dedicated-workload-accounting-and-limitations).
-No new successful measurement is asserted by documenting these semantics.
+These semantics do not establish resource-target compliance or exact peak disk.
 
 The 21 October dirty-source searches and failed repeats remain historical. The
 22 October premerge same-binary comparisons reported in #10662 passed all 12

@@ -4,10 +4,18 @@
 
 ## Current verification status
 
-Workstation verification is in progress at selected clean merged source
+Full fresh workstation A/B output comparisons passed at selected clean merged source
 `3e47bc7e7468656d0d53237f11fc4f049d278efe`, including #10698 (merged
-23 October 2026). No successful build, search or acceptance verdict for that
-workstation is asserted here. The earlier 21 October failed repeats remain
+23 October 2026), with independently pinned harness `5a804f5e7c92f5c7e541050123a66f2978d23368`.
+TimSim target-only, mixed and all-three Astral comparisons passed all 12 files
+with zero changed numeric cells or scientific identities. Raw rows per repeat
+are 11,484 / 6,783 / 6,274 and standard accepted counts 6,000 / 5,919 / 4,343.
+Independent provenance review, final report/package and durable publication,
+complete resource/stage measurements and owner-approved candidate gates remain
+outstanding. Profiling is separate, with native build ongoing, not passed.
+PXD004573's 579 published strings are authenticated, but raw retrieval, site
+mapping, purity and blank interpretation remain unresolved. See WP-00 for the
+requirement-specific map. No candidate acceptance is asserted. Earlier failed repeats remain
 historical evidence; the 22 October same-binary repeat checks passed on a
 premerge build, not on this selected source. The corrected Parquet scores are
 not interchangeable with affected historical scores.
