@@ -152,6 +152,21 @@ def main():
         (files / 'symlink').symlink_to(original)
         assert disk_bytes(files) == 123
         assert disk_bytes(files / 'missing') == 0
+        output = Path(temporary) / 'failed_cgroup'
+        output.mkdir()
+        done = output / 'done'
+        release = output / 'release'
+        done.write_text('0\n')
+        with subprocess.Popen(['sleep', '0.3']) as job:
+            checked = subprocess.run([sys.executable, Path(__file__).with_name('monitor_host.py'),
+                str(job.pid), output, '--interval', '0.05', '--min-free-disk-gib', '0',
+                '--cgroup', '/sys/fs/cgroup/opendia-bench-nonexistent.scope',
+                '--cgroup-done', done, '--cgroup-release', release], timeout=5)
+            # Reap the child independently, since a zombie also has a /proc entry.
+            job.wait(timeout=5)
+        assert checked.returncode == 2
+        assert release.read_text() == 'failed\n'
+        assert json.loads((output / 'host_workload.json').read_text())['abort_reason']
         # An unrelated process must remain alive through every guard test.
         unrelated = subprocess.Popen(["sleep", "30"])
         try:

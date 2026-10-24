@@ -21,22 +21,60 @@ def main():
         root = Path(temporary)
         out = root / 'job'
         environment = dict(os.environ, OPEN_DIA='/usr/bin/true', MIN_FREE_DISK_GIB='0',
-                           BENCH_CGROUP='0', ENGINE_SOURCE_DIR=str(script.parents[3]))
+                           BENCH_CGROUP='0', ENGINE_SOURCE_DIR=str(script.parents[3]),
+                           DOTNET_ROOT='/test/dotnet', BENCH_TEST_SECRET='must-not-be-captured')
         environment.pop('BENCH_MEMORY_MAX', None)
         environment.pop('BENCH_MEMORY_SWAP_MAX', None)
         environment.pop('THREADS', None)
         ran = subprocess.run(['bash', '-c',
             'source "$1"; prepare_output "$2"; printf "%s %s" "$THREADS" "$PERCOLATOR_THREADS" > "$2/meta/threads.txt"; '
-            'run_measured "$2" sh -c \'printf "%s" "$TMPDIR"; sleep 0.2\'',
+            'run_measured "$2" env LD_LIBRARY_PATH=/test/runtime sh -c \'printf "%s" "$TMPDIR"; sleep 0.2\'',
             'bash', str(script), str(out)], env=environment, capture_output=True, text=True, timeout=10)
         assert ran.returncode == 0, ran.stderr
         assert (out / 'logs/stdout.log').read_text() == str(out / 'tmp')
+        runtime = json.loads((out / 'meta/runtime_environment.json').read_text())
+        assert set(runtime) == {'DOTNET_ROOT', 'DOTNET_ROOT_X64', 'OPENMS_DATA_PATH',
+                                'PATH', 'LD_LIBRARY_PATH', 'TMPDIR'}
+        assert runtime['DOTNET_ROOT'] == '/test/dotnet'
+        assert runtime['LD_LIBRARY_PATH'] == '/test/runtime'
+        assert runtime['TMPDIR'] == str(out / 'tmp')
         threads = max(1, len(os.sched_getaffinity(0)) - 3)
         assert (out / 'meta/threads.txt').read_text() == f'{threads} {min(3, threads)}'
         for name in ('source_revision.txt', 'source_status.txt', 'harness_revision.txt',
                      'harness_status.txt', 'source_locations.txt'):
             assert (out / 'meta' / name).is_file()
         assert (out / 'meta/exit_code.txt').read_text().strip() == '0'
+        # Explicit opt-in keeps the public regression portable to non-systemd hosts.
+        if os.environ.get('BENCH_TEST_CGROUP') == '1':
+            for mode in ('cgroup', 'swap_only', 'nonzero', 'low_disk'):
+                scoped = root / mode
+                scoped_env = dict(environment)
+                scoped_env.update({'BENCH_MEMORY_SWAP_MAX': '0'} if mode == 'swap_only'
+                                  else {'BENCH_CGROUP': '1'})
+                if mode == 'low_disk':
+                    scoped_env['MIN_FREE_DISK_GIB'] = '1000000000'
+                program = ("import time; time.sleep(10)" if mode == 'low_disk' else
+                           "import time; time.sleep(0.15); a=bytearray(8*1024*1024)")
+                if mode == 'nonzero':
+                    program += '; raise SystemExit(3)'
+                checked = subprocess.run(['bash', '-c',
+                    'source "$1"; prepare_output "$2"; run_measured "$2" python3 -c '
+                    + shlex.quote(program),
+                    'bash', str(script), str(scoped)], env=scoped_env,
+                    capture_output=True, text=True, timeout=10)
+                assert checked.returncode == (2 if mode == 'low_disk' else 3 if mode == 'nonzero' else 0), checked.stderr
+                summary = json.loads((scoped / 'logs/host_workload.json').read_text())
+                if mode == 'low_disk':
+                    assert summary['abort_reason']
+                    continue
+                assert summary['cgroup_final']['cgroup_memory_peak_bytes'] >= 8 * 1024**2
+                assert summary['abort_reason'] is None
+                assert (scoped / 'meta/cgroup_release.txt').read_text() == 'captured\n'
+                if mode == 'nonzero':
+                    assert (scoped / 'meta/exit_code.txt').read_text().strip() == '3'
+                else:
+                    assert read_resources(scoped / 'logs/resources.txt')['seconds'] < 0.8
+                assert (scoped / 'logs/scope_resources.txt').is_file()
     assert parse_seconds("1:27:54") == 5274
     assert parse_seconds("1:14.09") == 74.09
     points = fdr_curve([(0.0005, False), (0.001, True), (0.02, True)], 0.01)

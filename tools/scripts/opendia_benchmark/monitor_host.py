@@ -216,14 +216,40 @@ def host_sample(pid, output):
     return sample, cpu, ticks, descendants
 
 
+def scope_workload_finished(path, done):
+    """Only the keeper and its direct polling sleep may remain in the scope."""
+    try:
+        keeper = int(done.read_text().split()[1])
+        for process in (path / 'cgroup.procs').read_text().split():
+            child = int(process)
+            if child == keeper:
+                continue
+            try:
+                fields = Path(f'/proc/{child}/stat').read_text().rsplit(')', 1)[1].split()
+                if fields[0] == 'Z':
+                    continue
+                if int(fields[1]) == keeper and Path(f'/proc/{child}/comm').read_text().strip() == 'sleep':
+                    continue
+                return False
+            except FileNotFoundError:
+                continue
+        return True
+    except (OSError, ValueError, IndexError):
+        return False
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("pid", type=int)
     parser.add_argument("output", type=Path)
     parser.add_argument("--interval", type=float, default=1)
     parser.add_argument("--cgroup", type=Path, help="Explicit dedicated opendia-bench-*.scope only")
+    parser.add_argument("--cgroup-done", type=Path)
+    parser.add_argument("--cgroup-release", type=Path)
     parser.add_argument("--min-free-disk-gib", type=float, default=3)
     args = parser.parse_args()
+    if bool(args.cgroup) != bool(args.cgroup_done and args.cgroup_release):
+        parser.error('cgroup measurement requires both done and release paths')
     if args.pid <= 0 or not math.isfinite(args.interval) or not math.isfinite(args.min_free_disk_gib) or args.interval <= 0 or args.min_free_disk_gib < 0:
         parser.error("interval must be positive and disk reserve must not be negative")
     samples = []
@@ -231,8 +257,12 @@ def main():
     cores = os.cpu_count() or 1
     hardware = system_info()
     abort_reason = None
+    cgroup_final = None
     with (args.output / "host_workload.jsonl").open("w", encoding="utf-8") as handle:
         while Path(f"/proc/{args.pid}").exists():
+            root = process_tree(args.pid).get(args.pid)
+            if root is None or root[0] == 'Z':
+                break
             sample, cpu, ticks, descendants = host_sample(args.pid, args.output)
             sample.update(job_memory(args.pid))
             sample.update(cgroup_memory(args.cgroup, args.pid))
@@ -262,6 +292,13 @@ def main():
                 }), flush=True)
             handle.write(json.dumps(sample, allow_nan=False) + "\n")
             handle.flush()
+            if args.cgroup and args.cgroup_done.exists() and cgroup_final is None:
+                cgroup_final = (cgroup_memory(args.cgroup, args.pid)
+                                if scope_workload_finished(args.cgroup, args.cgroup_done) else {})
+                if cgroup_final.get('cgroup_memory_peak_bytes') is None:
+                    abort_reason = 'Requested cgroup final memory peak could not be verified'
+                # Release even on failure, so the workload exit and GNU time survive.
+                args.cgroup_release.write_text('captured\n' if not abort_reason else 'failed\n')
             if sample["disk_free_gib"] < args.min_free_disk_gib:
                 abort_reason = f"Free disk space fell below {args.min_free_disk_gib:g} GiB"
                 if not descendants:
@@ -273,6 +310,8 @@ def main():
                 break
             previous_cpu, previous_ticks, previous_time = cpu, ticks, now
             time.sleep(args.interval)
+    if args.cgroup and not cgroup_final:
+        abort_reason = abort_reason or 'Requested cgroup measurement never reached a verified final read'
     summary = {
         "sample_count": len(samples),
         "logical_cpus": cores,
@@ -283,10 +322,11 @@ def main():
         "abort_reason": abort_reason,
         "resource_schema_version": 1,
         "cgroup_path_requested": str(args.cgroup) if args.cgroup else None,
+        "cgroup_final": cgroup_final,
         "measurement_notes": {
             "job_tree_rss_bytes_sampled": "Sum of resident process RSS at each sample, shared pages may be counted more than once. Short-lived children may be missed.",
             "job_largest_process_hwm_bytes_observed": "Largest individual VmHWM observed, never a sum of process peaks.",
-            "cgroup_memory_peak_bytes": "Kernel memory.peak last observed while dedicated scope exists, includes file cache, may miss final peak before scope removal. Not process RSS.",
+            "cgroup_memory_peak_bytes": "Kernel memory.peak samples include file cache and keeper overhead, not process RSS. cgroup_final is read after workload completion while dedicated scope keeper remains alive, before release.",
             "disk": "Sampled apparent regular-file bytes, not allocated blocks. Temp is a subset of output. Open unlinked files and external temp paths are not counted.",
         },
         "note": "Host CPU includes the benchmark. Job CPU and other CPU are estimates from process snapshots. Elapsed times are not corrected for workload.",

@@ -76,6 +76,23 @@ run_measured()
 
   printf '%q ' "${command[@]}" > "$out/meta/command.sh"
   printf '\n' >> "$out/meta/command.sh"
+  python3 - "$out/meta/runtime_environment.json" "${command[@]}" <<'PY'
+import json
+import os
+import sys
+from pathlib import Path
+
+allowed = ('DOTNET_ROOT', 'DOTNET_ROOT_X64', 'OPENMS_DATA_PATH', 'PATH', 'LD_LIBRARY_PATH', 'TMPDIR')
+values = {key: os.environ.get(key) for key in allowed}
+arguments = sys.argv[2:]
+while arguments and arguments[0] == 'env':
+    arguments = arguments[1:]
+    while arguments and '=' in arguments[0]:
+        key, value = arguments.pop(0).split('=', 1)
+        if key in values:
+            values[key] = value
+Path(sys.argv[1]).write_text(json.dumps(values, indent=2) + '\n')
+PY
   sha256sum "$OPEN_DIA" > "$out/meta/OpenDIA.sha256"
   git -C "$ENGINE_SOURCE_DIR" rev-parse HEAD > "$out/meta/source_revision.txt"
   git -C "$ENGINE_SOURCE_DIR" status --short > "$out/meta/source_status.txt"
@@ -85,11 +102,14 @@ run_measured()
   printf 'memory_max=%s\nmemory_swap_max=%s\n' "${BENCH_MEMORY_MAX:-unlimited}" "${BENCH_MEMORY_SWAP_MAX:-unlimited}" \
     > "$out/meta/resource_limits.txt"
   local -a limits=() monitor_args=()
-  if [[ -n "${BENCH_MEMORY_MAX:-}" || "${BENCH_CGROUP:-0}" == "1" ]]; then
+  local timing_output="$out/logs/resources.txt"
+  if [[ -n "${BENCH_MEMORY_MAX:-}" || -n "${BENCH_MEMORY_SWAP_MAX:-}" || "${BENCH_CGROUP:-0}" == "1" ]]; then
     local scope="opendia-bench-$$-${RANDOM}.scope"
     local user_group
     user_group="$(systemctl --user show -p ControlGroup --value)"
-    monitor_args=(--cgroup "/sys/fs/cgroup$user_group/app.slice/$scope")
+    monitor_args=(--cgroup "/sys/fs/cgroup$user_group/app.slice/$scope"
+      --cgroup-done "$(realpath "$out/meta")/cgroup_command_done.txt"
+      --cgroup-release "$(realpath "$out/meta")/cgroup_release.txt")
     limits=(systemd-run --user --scope --quiet --unit "$scope" -p MemoryAccounting=yes)
     if [[ -n "${BENCH_MEMORY_MAX:-}" ]]; then
       limits+=(-p "MemoryMax=$BENCH_MEMORY_MAX")
@@ -98,10 +118,26 @@ run_measured()
       limits+=(-p "MemorySwapMax=$BENCH_MEMORY_SWAP_MAX")
     fi
     limits+=(--)
+    # Keep the dedicated cgroup alive after the workload for a final kernel peak read.
+    # A bounded wait avoids orphaning the keeper if the monitor crashes.
+    timing_output="$out/logs/scope_resources.txt"
+    command=(sh -c '
+      done_file="$1"; release_file="$2"; shift 2
+      "$@"; status=$?
+      printf "%s\t%s\n" "$status" "$$" > "$done_file"
+      attempts=0
+      while [ ! -f "$release_file" ]; do
+        attempts=$((attempts + 1))
+        [ "$attempts" -lt 600 ] || exit 125
+        sleep 0.05
+      done
+      exit "$status"
+    ' sh "$(realpath "$out/meta")/cgroup_command_done.txt" "$(realpath "$out/meta")/cgroup_release.txt"
+      /usr/bin/time -v -o "$(realpath "$out/logs")/resources.txt" "${command[@]}")
   fi
   printf 'Starting measured OpenDIA job: %s at %s\n' "$out" "$(date -Iseconds)"
 
-  /usr/bin/time -v -o "$out/logs/resources.txt" \
+  /usr/bin/time -v -o "$timing_output" \
     "${limits[@]}" "${command[@]}" > "$out/logs/stdout.log" 2> "$out/logs/stderr.log" &
   local pid=$!
   python3 "$SCRIPT_DIR/monitor_host.py" "$pid" "$out/logs" \
