@@ -12,6 +12,14 @@ historical evidence; the 22 October same-binary repeat checks passed on a
 premerge build, not on this selected source. The corrected Parquet scores are
 not interchangeable with affected historical scores.
 
+The declared workstation protocol uses 17 OpenDIA threads, with independently
+captured engine/harness provenance and actual subprocess/affinity settings.
+Historical four-thread laptop timings are not a matched baseline. The
+[resource measurement contract](../../../tools/scripts/opendia_benchmark/README.md#dedicated-workload-accounting-and-limitations)
+distinguishes verified final dedicated-scope kernel peaks, diagnostic samples,
+inner/outer timing and sampled disk lower bounds. This is a protocol declaration,
+not fresh successful verification evidence.
+
 [WP-00](work-packages/00-acceptance-baseline.md) records the frozen existing
 repeat-comparator policy, the exact pending evidence and the owner/reviewer
 decision matrix. Proposed candidate no-regression/runtime/footprint gates are

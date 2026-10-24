@@ -96,6 +96,27 @@ is not evidence that its build, tests, full searches or acceptance gates passed.
 Capture the actual source-worktree cleanliness, build configuration, executable,
 dependencies, models, input checksums and commands in the new evidence manifest.
 
+The declared workstation protocol uses `THREADS=17`; historical four-thread
+laptop timings are context, not matched performance evidence. Record actual
+affinity, prediction and Percolator worker settings separately. Pin engine source
+and harness revision/status independently, including frozen harness hashes:
+a clean engine does not establish harness identity or cleanliness. No fresh
+workstation build/test/search success is asserted by this declaration.
+
+### Resource evidence semantics
+
+See the [benchmark measurement contract](../../../../tools/scripts/opendia_benchmark/README.md#dedicated-workload-accounting-and-limitations).
+`BENCH_CGROUP=1` or either memory/swap limit requests a dedicated verified user
+scope. `host_workload.cgroup_final` is the completed-workload kernel peak read,
+including file cache and keeper overhead, not process RSS. Sampled counters are
+diagnostic. `resources.txt` measures the inner workload; `scope_resources.txt`
+also includes outer scope-launcher/keeper handshake overhead. Sampled process-tree
+RSS may double-count shared pages and miss children/peaks; individual observed
+`VmHWM` values must not be summed. Sampled apparent output/temp bytes are a lower
+bound, not an exact filesystem peak, and temp is a subset of output. These
+semantics improve the evidence contract, but do not close the actual-peak-disk
+or other pending measurements without new reviewed evidence.
+
 The 22 October evidence reported in #10662 passed all 12 output comparisons for
 TimSim target, TimSim mixed and Astral at premerge source `08c200dba981` with zero
 changed numeric cells or scientific identities. This establishes only that tested

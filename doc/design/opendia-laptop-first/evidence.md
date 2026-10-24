@@ -10,6 +10,14 @@ build, test or benchmark result for that source is asserted by this documentatio
 update. See [WP-00](work-packages/00-acceptance-baseline.md) for frozen comparison
 tolerances, pending evidence and proposed gates awaiting owner/reviewer agreement.
 
+The declared workstation protocol uses 17 OpenDIA threads rather than the
+historical four. Engine and harness provenance must be independently captured.
+Dedicated verified scope `cgroup_final` kernel peaks include file cache and keeper
+overhead; sampled RSS/cgroup counters are diagnostics. Inner workload timing is
+separate from outer scope/keeper timing. Sampled apparent output/temp sizes are
+lower bounds, not exact filesystem peaks. See the [measurement contract](../../../tools/scripts/opendia_benchmark/README.md#dedicated-workload-accounting-and-limitations).
+No new successful measurement is asserted by documenting these semantics.
+
 The 21 October dirty-source searches and failed repeats remain historical. The
 22 October premerge same-binary comparisons reported in #10662 passed all 12
 output comparisons, without proving cross-thread/platform/cache invariance or

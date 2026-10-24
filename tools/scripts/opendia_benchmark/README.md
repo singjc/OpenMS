@@ -9,7 +9,10 @@ The `plan/opendia_rewrite` branch is for planning and exploration, not for mergi
 ```bash
 tools/scripts/opendia_benchmark/build.sh ../openms-build
 
-export BUILD_DIR="$PWD/../openms-build" THREADS=4
+export BUILD_DIR="$PWD/../openms-build" THREADS=17
+# Declared workstation protocol, not evidence of a completed or accepted run.
+# Historical laptop measurements used THREADS=4 and are not matched timings.
+export BENCH_CGROUP=1
 # Optional Linux job limits. These limits affect the measured run.
 export BENCH_MEMORY_MAX=20G BENCH_MEMORY_SWAP_MAX=6G
 
@@ -109,7 +112,9 @@ diagnostics. Regenerate metrics and then the report to use the new analysis.
 
 ## Time, memory and host load
 
-Each search saves its command, source revision/status, binary hash and input hashes under `meta/`. `logs/resources.txt` records GNU time elapsed time and peak resident process memory. This does not add the memory of simultaneous child processes. Time covers OpenDIA, including prediction when used. Input checksum checks, archive extraction and metric generation are outside that time. A complete multi-file search is one timing observation, not three or six independent measurements. The two TimSim searches are not timing replicates.
+Each search saves its command, source revision/status, binary hash and input hashes under `meta/`. Engine and harness provenance are separate: `ENGINE_SOURCE_DIR` supplies `source_revision.txt` and `source_status.txt`, while `HARNESS_SOURCE_DIR` supplies `harness_revision.txt` and `harness_status.txt`. `source_locations.txt` records both. A clean engine source does not imply a clean or identical harness. Freeze the harness scripts and model/dependency/input/binary hashes as well as the engine revision before comparison.
+
+`logs/resources.txt` records GNU time elapsed time and peak resident process memory for the inner workload. It does not add the memory of simultaneous child processes. Time covers OpenDIA, including prediction when used. Input checksum checks, archive extraction and metric generation are outside that time. A complete multi-file search is one timing observation, not three or six independent measurements. The two TimSim searches are not timing replicates.
 
 The completed Astral search took 35m18s. Its original raw TSV had blank global scores because the earlier raw export configuration disabled score annotation, although inference and native standard matrices completed successfully. Native `OpenSwathExport` re-export from the retained `workflow.osw` supplies those scores without repeating the search. That recovery is outside the original search timing. Preserve the original TSV, capture the re-export command and verify the exported row identities before using the score-annotated replacement.
 
@@ -124,7 +129,49 @@ are observed host resources, not reserved capacity. Missing historical hardware
 or idle samples remain `n/a`, never substituted with the report-rendering host.
 Hardware metadata does not record serial numbers, user names or host names.
 
-Optional `BENCH_MEMORY_MAX` and `BENCH_MEMORY_SWAP_MAX` use a user systemd scope. Limits are recorded in `meta/resource_limits.txt`. A limited or busy run must not be presented as an isolated maximum-speed measurement. Previous runs without the same inference, search space, limits and workload are context only, not a controlled speed comparison.
+### Dedicated workload accounting and limitations
+
+`BENCH_CGROUP=1`, or either `BENCH_MEMORY_MAX` or `BENCH_MEMORY_SWAP_MAX`,
+creates a dedicated user systemd scope with memory accounting. The monitor
+verifies that the measured workload belongs to that scope, waits for workload
+completion, then reads the kernel counters while a bounded keeper keeps the
+scope alive. Requested accounting without a verified final read fails monitoring,
+rather than silently using a session-wide cgroup. Limits are recorded in
+`meta/resource_limits.txt`. `BENCH_CGROUP=1` by itself requests accounting, not a
+memory or swap cap.
+
+- `logs/host_workload.json` field `cgroup_final` contains the completed-workload
+  kernel peak read. In particular, `cgroup_memory_peak_bytes` is `memory.peak`,
+  including scope file cache and small keeper overhead, not process RSS. Sampled
+  cgroup counters and their min/mean/max are diagnostics, not substitutes for
+  this verified final read. Report unavailable counters explicitly as unavailable.
+- `logs/resources.txt` remains the inner workload timing. In scope mode,
+  `logs/scope_resources.txt` is the outer systemd/scope-launcher and keeper
+  measurement, including final-counter handshake overhead. Do not substitute
+  that outer wall time for engine runtime or interpret its RSS as whole-job RAM.
+- Sampled process-tree RSS adds simultaneous resident process values, which may
+  double-count shared pages and miss short-lived children or intervening peaks.
+  `job_largest_process_hwm_bytes_observed` is the largest individual observed
+  `VmHWM`, never a sum of individual historical process peaks.
+- Sampled output/temp sizes are apparent regular-file bytes. Temp is a subset
+  of output, not an independent quantity to add to output. These samples are a
+  lower bound on actual peak disk demand, not an exact filesystem peak. They
+  can miss between-sample overlap, open unlinked files and external temporary
+  paths, and do not measure allocated blocks. Host free-space samples do not
+  isolate benchmark disk use. Preserve final artifact sizes separately.
+
+The declared 24 October workstation protocol uses `THREADS=17`, not the
+historical four-thread laptop setting. Capture actual commands and affinity:
+configured OpenDIA threads, prediction threads and Percolator workers are distinct
+settings. The current Astral runner caps prediction threads at eight and shared
+settings cap Percolator workers at three. Declaring 17 OpenDIA threads does not
+mean every subprocess uses 17 threads or reserve host capacity. This protocol
+declaration does not assert fresh successful builds, searches or acceptance.
+
+A limited or busy run must not be presented as an isolated maximum-speed
+measurement. Previous runs without the same host, inference, search space,
+limits, thread settings and workload are context only, not a controlled speed
+comparison.
 
 ## Checks
 
