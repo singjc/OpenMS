@@ -14,6 +14,7 @@ from pathlib import Path
 from make_report import (
     fdr_report,
     identification_report,
+    measured_resource_appendix,
     quantification_report,
     quantile,
     read_job,
@@ -111,6 +112,64 @@ def job(root, complete=True):
 
 
 class ReportTests(unittest.TestCase):
+    def test_measured_appendix_and_per_job_discovery(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / 'job'
+            job(root)
+            measured = {'schema_version': 1, 'provenance': {'dataset': 'TimSim', 'job': str(root)},
+                        'resources': {'resource_schema_version': 1,
+                                      'job_tree_rss_bytes_sampled': {'max': 10},
+                                      'cgroup_memory_peak_bytes': {'max': 20},
+                                      'cgroup_final': {'cgroup_memory_peak_bytes': 30},
+                                      'output_apparent_bytes_sampled': {'max': 40},
+                                      'temp_apparent_bytes_sampled': {'max': 0}},
+                        'artifacts': [{'path': 'result.osw', 'final_bytes': 512,
+                                       'tables': {'FEATURE_TRANSITION': {'status': 'ok', 'rows': 0},
+                                                  'FEATURE_MS1': {'status': 'absent', 'rows': None}},
+                                       'sidecars': [{'path': 'result.osw-wal', 'status': 'absent', 'final_bytes': None}]}],
+                        'standalone_rescore': {'seconds': 0}}
+            (root / 'logs/measure_outputs.json').write_text(json.dumps(measured))
+            (root / 'logs/host_workload.json').write_text(json.dumps(measured['resources']))
+            loaded = read_job(root)
+            self.assertEqual(loaded['output_measurement'], measured)
+            text = '\n'.join(measured_resource_appendix([('Measured', loaded), ('Historical', {})]))
+            self.assertIn('| 10 | 20 | 30 | 40 | 0 |', text)
+            self.assertIn('| Historical | n/a / n/a | n/a | n/a | n/a | n/a | n/a |', text)
+            self.assertIn('FEATURE_TRANSITION: 0, FEATURE_MS1: absent', text)
+            self.assertIn('result.osw-wal: absent', text)
+            self.assertIn('not process RSS', text)
+            self.assertIn('not biological performance', text)
+            self.assertIn('standalone rescore (supplied measurement', text)
+            self.assertIn('Stage profiling is unavailable', text)
+            self.assertIn('retained evidence for extracted checksum/comparison replay', text)
+            self.assertIn('explicit remeasurement and rebinding', text)
+            measured['resources']['cgroup_final'] = None
+            text = '\n'.join(measured_resource_appendix([('Measured', {'output_measurement': measured})]))
+            self.assertIn('| 10 | 20 | n/a | 40 | 0 |', text)
+            measured['schema_version'] = 2
+            with self.assertRaisesRegex(SystemExit, 'Unsupported'):
+                measured_resource_appendix([('Bad', {'output_measurement': measured})])
+
+    def test_reject_foreign_job_or_resources_measurement(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / 'job'
+            job(root)
+            workload = json.loads((root / 'logs/host_workload.json').read_text())
+            measured = {'schema_version': 1, 'provenance': {'dataset': 'TimSim', 'job': str(root.parent)},
+                        'resources': workload}
+            path = root / 'logs/measure_outputs.json'
+            path.write_text(json.dumps(measured))
+            with self.assertRaisesRegex(SystemExit, 'provenance does not match'):
+                read_job(root)
+            measured['provenance']['job'] = str(root)
+            measured['resources'] = {'resource_schema_version': 1, 'cgroup_final': {'cgroup_memory_peak_bytes': 999}}
+            path.write_text(json.dumps(measured))
+            with self.assertRaisesRegex(SystemExit, 'resources do not match'):
+                read_job(root)
+            measured['resources'] = None
+            path.write_text(json.dumps(measured))
+            self.assertIsNone(read_job(root)['output_measurement']['resources'])
+
     def test_sample_sd_and_individual_dots(self):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory)

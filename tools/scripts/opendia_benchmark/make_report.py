@@ -2,6 +2,10 @@
 """Make a research report from completed OpenDIA benchmark measurements.
 
 This command writes Markdown and native SVG only. It does not run a benchmark.
+Packaged reports and their resource appendix are retained evidence for extracted
+checksum/comparison replay, not relocated report rerendering. Absolute job
+provenance is deliberately strict: relocation requires explicit remeasurement
+and rebinding to the relocated job, never automatic trust of foreign resources.
 """
 
 import argparse
@@ -237,10 +241,19 @@ def read_job(root):
     workload = (load_json(workload_path) or {}) if workload_path.exists() else {}
     if workload.get("abort_reason"):
         raise SystemExit(f"Benchmark aborted in {root}: {workload['abort_reason']}")
+    measurement_path = next((path for path in (root / "logs/measure_outputs.json", root / "measure_outputs.json") if path.exists()), None)
+    measurement = load_json(measurement_path) if measurement_path else None
+    if measurement is not None:
+        measured_job = (measurement.get("provenance") or {}).get("job")
+        if not measured_job or not Path(measured_job).is_absolute() or Path(measured_job).resolve() != root.resolve():
+            raise SystemExit(f"Output measurement provenance does not match job {root}")
+        if measurement.get("resources") is not None and measurement["resources"] != workload:
+            raise SystemExit(f"Output measurement resources do not match captured workload for {root}")
     return {
         "root": root,
         "resource": read_resources(root / "logs/resources.txt"),
         "workload": workload,
+        "output_measurement": measurement,
         "revision": optional_text(meta / "source_revision.txt"),
         "binary": optional_text(meta / "OpenDIA.sha256"),
         "source_status": optional_text(meta / "source_status.txt"),
@@ -424,6 +437,53 @@ def workload_cell(workload, field, keys, divisor=1):
     return f"{values[0]} [{values[1]}, {values[2]}]" if len(values) == 3 else " / ".join(values)
 
 
+def measured_resource_appendix(jobs):
+    """Keep storage, sampled RSS and kernel cgroup peaks semantically separate."""
+    lines = ["### Measured output and resource appendix", "",
+             "Per-job measure_outputs.json supplies these measurements. Missing measurements are n/a, never zero. Bytes are apparent file bytes, not allocated blocks. Sampled disk peaks miss between-sample spikes and unlinked files. Temp is a subset of output.",
+             "Process-tree RSS samples can double-count shared pages and miss short-lived children. Cgroup memory includes file cache and scope overhead, not process RSS. The final post-workload kernel counter is the authoritative whole-workload cgroup peak. Sampled maxima are diagnostic only and never substitute for a missing final counter. Stage profiling is unavailable on the clean merged engine, pending a separate optional profiler branch.",
+             "Storage rows and peptide pseudo-protein groups are not biological performance measurements.", "",
+             "Packaged reports and this appendix are retained evidence for extracted checksum/comparison replay, not relocated rerendering. Absolute job provenance remains strict after relocation: rerendering requires explicit remeasurement and rebinding, never automatic trust of foreign resources.", "",
+             "| Search | Dataset / job provenance | Sampled tree RSS max bytes | Sampled cgroup peak bytes | Final cgroup peak bytes | Sampled output max bytes | Sampled temp max bytes |",
+             "|---|---|---:|---:|---:|---:|---:|"]
+    def cell(value):
+        return str(value).replace("|", "/").replace("\n", " ") if value is not None else "n/a"
+    for label, job in jobs:
+        measured = job.get("output_measurement") or {}
+        if measured and measured.get("schema_version") != 1:
+            raise SystemExit(f"Unsupported output measurement schema for {label}")
+        provenance = measured.get("provenance") or {}
+        resources = measured.get("resources") or {}
+        if resources.get("resource_schema_version") != 1:
+            resources = {}
+        fields = [((resources.get(key) or {}).get("max")) for key in (
+            "job_tree_rss_bytes_sampled", "cgroup_memory_peak_bytes",
+            "output_apparent_bytes_sampled", "temp_apparent_bytes_sampled")]
+        final = (resources.get("cgroup_final") or {}).get("cgroup_memory_peak_bytes")
+        values = [fields[0], fields[1], final, fields[2], fields[3]]
+        identity = f"{cell(provenance.get('dataset'))} / {cell(provenance.get('job'))}"
+        lines.append(f"| {cell(label)} | {identity} | " + " | ".join(cell(value) for value in values) + " |")
+    lines.extend(["", "| Search / artifact | Final bytes | Sidecars (bytes or absent) | Table / member row counts | FEATURE_TRANSITION per FEATURE (min / mean / max, zero features) |",
+                  "|---|---:|---|---|---|"])
+    for label, job in jobs:
+        measured = job.get("output_measurement") or {}
+        artifacts = measured.get("artifacts") or []
+        if not artifacts:
+            lines.append(f"| {cell(label)} | n/a | n/a | n/a | n/a |")
+        for artifact in artifacts:
+            counts = [f"{name}: {cell(data.get('rows')) if data.get('status') == 'ok' else data.get('status', 'n/a')}" for name, data in artifact.get("tables", {}).items()]
+            counts.extend(f"{data['member']}: {cell(data.get('rows')) if data.get('status') == 'ok' else data.get('status', 'n/a')}" for data in artifact.get("parquet_members", []))
+            sidecars = [f"{Path(data['path']).name}: {cell(data.get('final_bytes')) if data.get('status') == 'present' else data.get('status', 'n/a')}" for data in artifact.get("sidecars", [])]
+            fanout = artifact.get("feature_transition_fanout") or {}
+            fanout_text = " / ".join(cell(fanout.get(key)) for key in ("min", "mean", "max", "zero_transition_features")) if fanout.get("status") == "ok" else "n/a"
+            lines.append(f"| {cell(label)} / {cell(artifact.get('path'))} | {cell(artifact.get('final_bytes'))} | {cell(', '.join(sidecars) or 'n/a')} | {cell(', '.join(counts) or 'n/a')} | {fanout_text} |")
+        rescore = measured.get("standalone_rescore")
+        if rescore is not None:
+            lines.extend(["", f"{cell(label)} standalone rescore (supplied measurement, not included in search timing):", "```json", json.dumps(rescore, indent=2, allow_nan=False), "```", ""])
+    lines.append("")
+    return lines
+
+
 def resource_report(output, timsim, previous, astral_jobs):
     lines = ["## Runtime and peak memory", "", "Each search uses all input files. We measured each search once, so time and memory have no error bars. The two TimSim searches are not repeats.", "Peak RSS is peak process RAM from GNU time. It does not add RAM from simultaneous child processes or file caches.", "Old filters, memory limits and host load can differ. These times do not measure an isolated code speed gain.", ""]
     timsim_jobs = []
@@ -445,6 +505,7 @@ def resource_report(output, timsim, previous, astral_jobs):
             filename = f"{stem}_{suffix}.svg"
             write_chart(output / filename, f"{title}: {suffix.replace('_', ' ')} (n=1)", unit, [label for label, _ in jobs], [("Measured search", "#2b6cb0", [job["resource"][key] / divisor for _, job in jobs])])
             lines.extend(["", f"![{title} {suffix}]({filename})", ""])
+    lines.extend(measured_resource_appendix(all_jobs))
     lines.extend(["### System and available resources", "",
                   "Hardware and available RAM at monitor start are recorded separately for each measured search, not inferred from the report-rendering machine. Missing historical measurements are n/a.", "",
                   "| Search | Machine / CPU model | Total RAM GiB | Host / affinity CPU threads | Benchmark threads |",
