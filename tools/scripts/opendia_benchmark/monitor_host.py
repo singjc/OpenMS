@@ -296,7 +296,8 @@ def main():
             if args.cgroup and args.cgroup_done.exists() and cgroup_final is None:
                 verified = cgroup_memory(args.cgroup, args.pid)
                 finished = scope_workload_finished(args.cgroup, args.cgroup_done)
-                cgroup_final = verified if finished else {}
+                # Read the authoritative peak after confirming all workload children exited.
+                cgroup_final = cgroup_memory(args.cgroup, args.pid) if finished else {}
                 if cgroup_final.get('cgroup_memory_peak_bytes') is None:
                     abort_reason = 'Requested cgroup final memory peak could not be verified'
                 if verified and not finished:
