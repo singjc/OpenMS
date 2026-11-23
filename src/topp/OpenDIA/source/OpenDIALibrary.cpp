@@ -269,7 +269,23 @@ namespace OpenMS::OpenDIA
       }
       lib.transitions.push_back(std::move(t));
     }
+    Statement ids(d, "SELECT ID, TRAML_ID FROM PRECURSOR;");
+    while (ids.step())
+    {
+      std::string id, traml;
+      ids.get(0, id);
+      ids.get(1, traml);
+      lib.traml_ids.emplace_back(std::move(id), std::move(traml));
+    }
     return lib;
+  }
+
+  std::unordered_map<std::string, std::string> traMLIDMap(const std::vector<std::pair<std::string, std::string>>& traml_ids)
+  {
+    // No reserve: the same inserts as readPrecursorTraMLIDs give the same bucket layout and iteration order.
+    std::unordered_map<std::string, std::string> out;
+    for (const auto& [id, traml] : traml_ids) out.emplace(id, traml);
+    return out;
   }
 
   std::unordered_map<std::string, std::string> readPrecursorTraMLIDs(const std::string& pqp)

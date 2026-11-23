@@ -205,11 +205,13 @@ namespace OpenMS::OpenDIA
 
   // ------------------------------------------------------------------------------------------------ library
 
-  AnalysisLibrary AnalysisLibrary::read(const std::string& search_pqp, const std::string& scoring_pqp)
+  AnalysisLibrary AnalysisLibrary::read(const std::string& search_pqp, const std::string& scoring_pqp,
+                                        const std::function<void(const std::string&)>& log)
   {
     AnalysisLibrary lib;
-    lib.search = readLibrary(search_pqp);
-    const auto traml = readPrecursorTraMLIDs(search_pqp);
+    lib.search = readAnyLibrary(search_pqp, log);
+    const auto traml = traMLIDMap(lib.search.traml_ids);
+    lib.search.traml_ids = {};
     lib.traml_ids.assign(traml.begin(), traml.end());
     std::unordered_map<std::string, std::string> traml_to_id;
     for (const auto& [id, name] : traml) traml_to_id.emplace(name, id);
@@ -301,7 +303,7 @@ namespace OpenMS::OpenDIA
     }
     else
     {
-      const OpenDIA::Library scoring = readLibrary(scoring_pqp);
+      const OpenDIA::Library scoring = readAnyLibrary(scoring_pqp, log);
       std::vector<std::vector<std::pair<long, const OpenDIA::LibraryTransition*>>> lists(lib.precursors.size());
       for (const auto& t : scoring.getTransitions())
       {

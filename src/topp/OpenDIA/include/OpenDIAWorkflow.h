@@ -64,9 +64,13 @@ namespace OpenMS::OpenDIA
     /**
       @brief Read the search library and, if given, the scoring library (same precursor IDs; up to 12 fragments each,
       in transition ID order). Without a scoring library the search fragments are the scoring fragments.
+
+      Either may be a PQP or an OpenDIA Parquet library; a PQP is converted to Parquet once (readAnyLibrary), and
+      @p log receives what was read or written.
       @throws Exception::InvalidValue On a decoy without its target or a precursor missing from the scoring library.
     */
-    static AnalysisLibrary read(const std::string& search_pqp, const std::string& scoring_pqp = "");
+    static AnalysisLibrary read(const std::string& search_pqp, const std::string& scoring_pqp = "",
+                                const std::function<void(const std::string&)>& log = {});
   };
 
   /// Settings of one run.

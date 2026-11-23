@@ -46,6 +46,13 @@ add_test(NAME OpenDIAMzIndex_test COMMAND OpenDIAMzIndex_test)
 add_executable(OpenDIARTRefine_test OpenDIARTRefine_test.cpp)
 target_link_libraries(OpenDIARTRefine_test PRIVATE OpenDIA_impl)
 add_test(NAME OpenDIARTRefine_test COMMAND OpenDIARTRefine_test)
+if(EXISTS "${CMAKE_SOURCE_DIR}/src/tests/topp/TargetedFileConverter_10_input.pqp")
+  # Copies the PQP fixture into the build tree first, so no Parquet copy is ever written into src/tests.
+  add_executable(OpenDIALibraryParquet_test OpenDIALibraryParquet_test.cpp)
+  target_link_libraries(OpenDIALibraryParquet_test PRIVATE OpenDIA_impl)
+  add_test(NAME OpenDIALibraryParquet_test COMMAND OpenDIALibraryParquet_test ${CMAKE_CURRENT_BINARY_DIR}
+    ${CMAKE_SOURCE_DIR}/src/tests/topp/TargetedFileConverter_10_input.pqp)
+endif()
 # Design rule: no OpenSWATH code in the OpenDIA core library.
 add_test(NAME OpenDIA_no_openswath
   COMMAND ${CMAKE_COMMAND} -DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/.. -P ${CMAKE_CURRENT_SOURCE_DIR}/OpenDIA_no_openswath.cmake)

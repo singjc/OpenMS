@@ -51,11 +51,12 @@ protected:
   void registerOptionsAndFlags_() override
   {
     registerInputFileList_("in", "<files>", {}, "DIA runs (Thermo raw, mzML, ...)");
-    registerInputFile_("lib", "<file>", "", "PQP library with decoys named DECOY_<target TRAML_ID> (search fragments, up to 6 per precursor)");
-    setValidFormats_("lib", {"pqp"});
-    registerInputFile_("scoring_lib", "<file>", "", "Optional PQP with up to 12 scoring fragments per precursor (same precursor IDs); "
-                       "default: the search fragments", false);
-    setValidFormats_("scoring_lib", {"pqp"});
+    registerInputFile_("lib", "<file>", "", "Library (PQP or OpenDIA .parquet) with decoys named DECOY_<target TRAML_ID> (search fragments, "
+                       "up to 6 per precursor). A PQP is converted once to <stem>.opendia.parquet next to it, which later runs read instead");
+    setValidFormats_("lib", {"pqp", "parquet"});
+    registerInputFile_("scoring_lib", "<file>", "", "Optional library (PQP or OpenDIA .parquet) with up to 12 scoring fragments per precursor "
+                       "(same precursor IDs); default: the search fragments", false);
+    setValidFormats_("scoring_lib", {"pqp", "parquet"});
     registerOutputDir_("out_dir", "<dir>", "", "Output directory");
     registerDoubleOption_("q", "<q>", 0.01, "q-value cut of the combined precursor table", false);
     setMinFloat_("q", 0.0);
@@ -228,11 +229,17 @@ protected:
         writeLogError_("-decoys predict does not support -scoring_lib (its decoys would not match the predicted ones).");
         return ILLEGAL_PARAMETERS;
       }
+      if (OpenDIA::isParquetLibrary(lib_path))
+      {
+        writeLogError_("-decoys predict needs a PQP -lib (decoy prediction still runs through the OpenSWATH PQP code).");
+        return ILLEGAL_PARAMETERS;
+      }
       const std::string cache = getStringOption_("decoy_cache");
       lib_path = predictDecoys_(lib_path, cache.empty() ? out_dir : cache);
     }
     writeLogInfo_("Reading library " + lib_path);
-    OpenDIA::AnalysisLibrary library = OpenDIA::AnalysisLibrary::read(lib_path, getStringOption_("scoring_lib"));
+    OpenDIA::AnalysisLibrary library =
+      OpenDIA::AnalysisLibrary::read(lib_path, getStringOption_("scoring_lib"), [this](const std::string& line) { writeLogInfo_(line); });
     std::size_t library_rss = 0;
     SysInfo::getProcessMemoryConsumption(library_rss);
     writeLogInfo_("Library: precursors=" + std::to_string(library.precursors.size()) + " pairs=" + std::to_string(library.pairs) +

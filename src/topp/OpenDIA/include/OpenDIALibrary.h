@@ -8,10 +8,13 @@
 
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <limits>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace OpenMS::OpenDIA
@@ -48,15 +51,18 @@ namespace OpenMS::OpenDIA
   };
 
   /**
-    @brief An OpenDIA spectral library: precursors and fragments as read from a PQP file.
+    @brief An OpenDIA spectral library: precursors and fragments as read from a PQP or OpenDIA Parquet file.
 
     Only what OpenDIA uses is kept. Fragments are in the order of the file's transition query (explicitly sorted by
     precursor m/z, product m/z, RT, transition and precursor ID for libraries of at most 100,000 transitions).
+    @p traml_ids holds (PRECURSOR.ID, PRECURSOR.TRAML_ID) for every precursor of the file, including precursors
+    without fragments, in the file's PRECURSOR order (the insertion order readPrecursorTraMLIDs uses).
   */
   struct Library
   {
     std::vector<LibraryCompound> compounds;
     std::vector<LibraryTransition> transitions;
+    std::vector<std::pair<std::string, std::string>> traml_ids;
 
     const std::vector<LibraryCompound>& getCompounds() const { return compounds; }
     const std::vector<LibraryTransition>& getTransitions() const { return transitions; }
@@ -74,4 +80,49 @@ namespace OpenMS::OpenDIA
 
   /// PRECURSOR.ID to PRECURSOR.TRAML_ID of a PQP file.
   std::unordered_map<std::string, std::string> readPrecursorTraMLIDs(const std::string& pqp);
+
+  /// The map readPrecursorTraMLIDs returns, built from Library::traml_ids (same insertion order, so the same iteration order).
+  std::unordered_map<std::string, std::string> traMLIDMap(const std::vector<std::pair<std::string, std::string>>& traml_ids);
+
+  /**
+    @brief Write @p library as an OpenDIA Parquet library (schema version 1, zstd, row groups of at most 2^20 rows).
+
+    One self-contained row per fragment in library order (precursor fields repeated, which zstd compresses away), so
+    readParquetLibrary rebuilds the same Library and a later reader can stream row groups. Each row carries its
+    precursor's position in Library::traml_ids. Entries of Library::traml_ids without fragments (and repeated
+    precursor IDs) are one row each without a fragment (null transition_id), so they survive the round trip.
+    @p metadata goes into the file footer (key, value). Writes to a temporary name next to @p path and renames, so an
+    interrupted or concurrent write never leaves a partial file under @p path.
+    @throws Exception::FileNotWritable If the file cannot be written.
+    @throws Exception::InvalidValue If a fragment's precursor is not in Library::traml_ids.
+  */
+  void writeParquetLibrary(const Library& library, const std::string& path,
+                           const std::vector<std::pair<std::string, std::string>>& metadata = {});
+
+  /**
+    @brief Read an OpenDIA Parquet library written by writeParquetLibrary.
+    @throws Exception::FileNotReadable If the file cannot be opened.
+    @throws Exception::InvalidValue If it is not an OpenDIA library or its schema version is not supported.
+  */
+  Library readParquetLibrary(const std::string& path);
+
+  /// Footer metadata of an OpenDIA Parquet library; empty if @p path is missing or not a Parquet file.
+  std::unordered_map<std::string, std::string> readParquetLibraryMetadata(const std::string& path);
+
+  /// True if @p path names an OpenDIA Parquet library by its extension (.parquet).
+  bool isParquetLibrary(const std::string& path);
+
+  /**
+    @brief Read the library at @p path, PQP or Parquet.
+
+    A PQP is read and, without any option, converted once: its Parquet copy parquetCachePath(@p path) is written next
+    to it and read instead on later calls while the PQP keeps its size and modification time. Libraries with fewer
+    than @p cache_min_transitions fragments are not converted (they load in well under a second). If the copy cannot
+    be written (read-only directory, full disk), the PQP is used as is. @p log receives one line per decision.
+  */
+  Library readAnyLibrary(const std::string& path, const std::function<void(const std::string&)>& log = {},
+                         std::size_t cache_min_transitions = 100000);
+
+  /// The Parquet copy readAnyLibrary uses for the PQP @p pqp: <directory>/<stem>.opendia.parquet.
+  std::string parquetCachePath(const std::string& pqp);
 }

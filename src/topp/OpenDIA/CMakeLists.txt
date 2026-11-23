@@ -28,6 +28,7 @@ add_library(OpenDIA_impl STATIC
   source/OpenDIAWorkflow.cpp
   source/OpenDIARTRefine.cpp
   source/OpenDIALibrary.cpp
+  source/OpenDIALibraryParquet.cpp
   include/OpenDIALibrary.h
   include/OpenDIAMzIndex.h
   include/OpenDIASearch.h
@@ -58,6 +59,23 @@ if(NOT TARGET nlohmann_json::nlohmann_json)
   find_package(nlohmann_json CONFIG REQUIRED)
 endif()
 target_link_libraries(OpenDIA_impl PRIVATE nlohmann_json::nlohmann_json)
+# OpenDIALibraryParquet reads and writes Parquet with the Arrow/Parquet libOpenMS is built with. Inside the OpenMS
+# build, Arrow is part of libOpenMS (statically linked and exported), so only its headers are added: linking the
+# static archives again would put a second Arrow, with its own registries, into OpenDIA.
+if(DEFINED OPENMS_ARROW_TARGET AND TARGET ${OPENMS_ARROW_TARGET} AND DEFINED OPENMS_PARQUET_TARGET AND TARGET ${OPENMS_PARQUET_TARGET})
+  foreach(_opendia_arrow IN ITEMS ${OPENMS_ARROW_TARGET} ${OPENMS_PARQUET_TARGET})
+    if(_opendia_arrow MATCHES "_static$")
+      target_include_directories(OpenDIA_impl SYSTEM PRIVATE $<TARGET_PROPERTY:${_opendia_arrow},INTERFACE_INCLUDE_DIRECTORIES>)
+      target_compile_definitions(OpenDIA_impl PRIVATE $<TARGET_PROPERTY:${_opendia_arrow},INTERFACE_COMPILE_DEFINITIONS>)
+    else()
+      target_link_libraries(OpenDIA_impl PRIVATE ${_opendia_arrow})
+    endif()
+  endforeach()
+else()
+  find_package(Arrow CONFIG REQUIRED)
+  find_package(Parquet CONFIG REQUIRED)
+  target_link_libraries(OpenDIA_impl PRIVATE Arrow::arrow_shared Parquet::parquet_shared)
+endif()
 if(COMMAND openms_add_library_compiler_flags)
   openms_add_library_compiler_flags(OpenDIA_impl)
 endif()

@@ -39,6 +39,15 @@ Per run:
 Decoys come from the library, or with `-decoys predict` (`-decoy_model_dir`, `-decoy_cache`) pseudo-reversed decoys are
 predicted like the targets.
 
+**Library format.** `-lib` and `-scoring_lib` take a PQP or an OpenDIA Parquet library (`.parquet`). A PQP of at least
+100,000 fragments is converted once, without any option: `<stem>.opendia.parquet` is written next to it (temporary name,
+then rename) and later runs read it instead while the PQP keeps its size and modification time. If the directory is
+not writable the PQP is read each run. Both formats give the same in-memory library, so results are byte-identical.
+The Parquet file (schema version 1, zstd) has one row per fragment in library order: precursor index, ID, TRAML_ID,
+decoy, m/z, charge, library RT and 1/K0, sequence, proteins, transition ID, product m/z, intensity, ion type, ordinal,
+charge and intensity rank within the precursor; precursors without fragments are one row without a fragment.
+`-decoys predict` still needs a PQP.
+
 Across runs, a precursor's global q-value comes from its best run score, by paired target-decoy competition.
 
 **Outputs** (in `-out_dir`):
