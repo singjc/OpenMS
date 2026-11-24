@@ -348,7 +348,7 @@ namespace OpenMS::OpenDIA
     }
   }
 
-  Library readParquetLibrary(const std::string& path)
+  std::vector<std::pair<std::string, std::string>> visitParquetLibrary(const std::string& path, LibraryVisitor& visitor)
   {
     const auto reader = openReader(path);
     // Single-threaded decode: on the 600k-precursor Astral libraries threaded decoding saved 1.7 s but left 0.62 GB
@@ -374,16 +374,10 @@ namespace OpenMS::OpenDIA
         throw Exception::InvalidValue(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION, path + ": unexpected column", schema->field(c)->ToString());
     }
 
-    Library lib;
-    if (const auto n = metadata.find(FRAGMENTS_KEY); n != metadata.end())
-    {
-      const std::size_t fragments = std::stoull(n->second);
-      lib.transitions.reserve(fragments);
-      lib.compounds.reserve(fragments / 6 + 1);
-    }
-    std::unordered_set<std::string> seen;
+    if (const auto n = metadata.find(FRAGMENTS_KEY); n != metadata.end()) visitor.expect(std::stoull(n->second));
     std::vector<std::pair<std::string, std::string>> traml_ids;
     std::vector<bool> has_traml;
+    std::vector<std::string_view> protein_views;
     for (int g = 0; g < reader->num_row_groups(); ++g)
     {
       auto read = reader->ReadRowGroup(g);
@@ -414,6 +408,8 @@ namespace OpenMS::OpenDIA
         const auto& type = static_cast<const arrow::StringArray&>(*column(FRAGMENT_TYPE));
         const auto& ordinal = static_cast<const arrow::Int16Array&>(*column(FRAGMENT_ORDINAL));
         const auto& fragment_charge = static_cast<const arrow::Int8Array&>(*column(FRAGMENT_CHARGE));
+        // Every row of a precursor carries the same precursor fields, so its protein list is decoded once per run of rows.
+        std::int32_t proteins_of = -1;
         for (std::int64_t r = 0; r < batch->num_rows(); ++r)
         {
           const std::int32_t p = index.Value(r);
@@ -429,47 +425,59 @@ namespace OpenMS::OpenDIA
             has_traml[p] = true;
           }
           if (transition.IsNull(r)) continue;
-          LibraryTransition t;
-          t.transition_name = view(transition, r);
-          t.peptide_ref = view(id, r);
-          t.library_intensity = get(intensity, r, 0.0);
-          t.product_mz = get(product_mz, r, 0.0);
-          t.precursor_mz = get(precursor_mz, r, 0.0);
-          t.precursor_im = get(im, r, -1.0);
-          t.fragment_charge = get(fragment_charge, r, std::int8_t{0});
-          t.fragment_nr = get(ordinal, r, std::int16_t{-1});
-          t.fragment_type = view(type, r);
-          t.decoy = get(decoy, r, false);
-          if (seen.insert(t.peptide_ref).second)
+          FragmentView f;
+          f.precursor_id = id.IsNull(r) ? std::string_view() : id.GetView(r);
+          f.transition_id = transition.GetView(r);
+          f.fragment_type = type.IsNull(r) ? std::string_view() : type.GetView(r);
+          f.library_intensity = get(intensity, r, 0.0);
+          f.product_mz = get(product_mz, r, 0.0);
+          f.precursor_mz = get(precursor_mz, r, 0.0);
+          f.precursor_im = get(im, r, -1.0);
+          f.fragment_charge = get(fragment_charge, r, std::int8_t{0});
+          f.fragment_nr = get(ordinal, r, std::int16_t{-1});
+          f.decoy = get(decoy, r, false);
+          if (p != proteins_of)
           {
-            LibraryCompound c;
-            c.id = t.peptide_ref;
-            c.rt = get(rt, r, 0.0);
-            c.drift_time = t.precursor_im;
-            c.charge = get(charge, r, 0);
-            c.sequence = view(sequence, r);
+            protein_views.clear();
             if (!proteins.IsNull(r))
             {
-              for (std::int64_t k = proteins.value_offset(r); k < proteins.value_offset(r + 1); ++k) c.protein_refs.push_back(view(protein, k));
+              for (std::int64_t k = proteins.value_offset(r); k < proteins.value_offset(r + 1); ++k)
+                protein_views.push_back(protein.IsNull(k) ? std::string_view() : protein.GetView(k));
             }
-            lib.compounds.push_back(std::move(c));
+            proteins_of = p;
           }
-          lib.transitions.push_back(std::move(t));
+          PrecursorView c;
+          c.id = f.precursor_id;
+          c.sequence = sequence.IsNull(r) ? std::string_view() : sequence.GetView(r);
+          c.rt = get(rt, r, 0.0);
+          c.drift_time = f.precursor_im;
+          c.charge = get(charge, r, 0);
+          c.proteins = &protein_views;
+          visitor.fragment(f, c);
         }
       }
     }
     if (std::find(has_traml.begin(), has_traml.end(), false) != has_traml.end())
       throw Exception::InvalidValue(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION, path + ": precursor_index has gaps", "");
-    lib.traml_ids = std::move(traml_ids);
     // Hand the decoded row-group buffers back to the system; the pool otherwise keeps them resident.
     arrow::default_memory_pool()->ReleaseUnused();
-    return lib;
+    return traml_ids;
   }
 
-  Library readAnyLibrary(const std::string& path, const std::function<void(const std::string&)>& log, std::size_t cache_min_transitions)
+  Library readParquetLibrary(const std::string& path)
+  {
+    LibraryBuilder builder;
+    auto traml_ids = visitParquetLibrary(path, builder);
+    builder.library.traml_ids = std::move(traml_ids);
+    return std::move(builder.library);
+  }
+
+  std::vector<std::pair<std::string, std::string>> visitAnyLibrary(const std::string& path, LibraryVisitor& visitor,
+                                                                   const std::function<void(const std::string&)>& log,
+                                                                   std::size_t cache_min_transitions)
   {
     const auto say = [&](const std::string& line) { if (log) log(line); };
-    if (isParquetLibrary(path)) return readParquetLibrary(path);
+    if (isParquetLibrary(path)) return visitParquetLibrary(path, visitor);
 
     const std::string cache = parquetCachePath(path);
     const auto [size, mtime] = sourceKey(path);
@@ -484,31 +492,76 @@ namespace OpenMS::OpenDIA
     {
       try
       {
-        Library lib = readParquetLibrary(cache);
+        auto traml_ids = visitParquetLibrary(cache, visitor);
         say("Library: reading " + cache + " (Parquet copy of " + path + ")");
-        return lib;
+        return traml_ids;
       }
       catch (const std::exception& e)
       {
+        visitor.reset();
         say("Library: cannot read " + cache + " (" + e.what() + "); reading the PQP");
       }
     }
 
     Library lib = readLibrary(path);
-    if (lib.transitions.size() < cache_min_transitions) return lib;
-    const auto start = std::chrono::steady_clock::now();
-    try
+    if (lib.transitions.size() >= cache_min_transitions)
     {
-      writeParquetLibrary(lib, cache, {{SOURCE_SIZE_KEY, size}, {SOURCE_MTIME_KEY, mtime}, {READER_KEY, READER_VALUE},
-                                       {"opendia.source.path", std::filesystem::absolute(path).string()}});
-      const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
-      say("Library: wrote Parquet copy " + cache + " (" + std::to_string(std::filesystem::file_size(cache) >> 20) + " MiB in " +
-          std::to_string(static_cast<long>(seconds + 0.5)) + " s); later runs read it instead of the PQP");
+      const auto start = std::chrono::steady_clock::now();
+      try
+      {
+        writeParquetLibrary(lib, cache, {{SOURCE_SIZE_KEY, size}, {SOURCE_MTIME_KEY, mtime}, {READER_KEY, READER_VALUE},
+                                         {"opendia.source.path", std::filesystem::absolute(path).string()}});
+        const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+        say("Library: wrote Parquet copy " + cache + " (" + std::to_string(std::filesystem::file_size(cache) >> 20) + " MiB in " +
+            std::to_string(static_cast<long>(seconds + 0.5)) + " s); later runs read it instead of the PQP");
+      }
+      catch (const std::exception& e)
+      {
+        say(std::string("Library: no Parquet copy written (") + e.what() + "); reading the PQP each run");
+      }
     }
-    catch (const std::exception& e)
+    visitLibrary(lib, visitor);
+    return std::move(lib.traml_ids);
+  }
+
+  Library readAnyLibrary(const std::string& path, const std::function<void(const std::string&)>& log, std::size_t cache_min_transitions)
+  {
+    if (!isParquetLibrary(path))
     {
-      say(std::string("Library: no Parquet copy written (") + e.what() + "); reading the PQP each run");
+      // Without a usable Parquet copy the PQP is read into a Library anyway: return it instead of rebuilding it.
+      const std::string cache = parquetCachePath(path);
+      const auto [size, mtime] = sourceKey(path);
+      const auto metadata = readParquetLibraryMetadata(cache);
+      const auto has = [&](const char* key, const std::string& value)
+      {
+        const auto it = metadata.find(key);
+        return it != metadata.end() && it->second == value;
+      };
+      if (!(has(FORMAT_KEY, FORMAT_VALUE) && has(SCHEMA_KEY, SCHEMA_VALUE) && has(READER_KEY, READER_VALUE) && has(SOURCE_SIZE_KEY, size) &&
+            has(SOURCE_MTIME_KEY, mtime)))
+      {
+        const auto say = [&](const std::string& line) { if (log) log(line); };
+        Library lib = readLibrary(path);
+        if (lib.transitions.size() < cache_min_transitions) return lib;
+        const auto start = std::chrono::steady_clock::now();
+        try
+        {
+          writeParquetLibrary(lib, cache, {{SOURCE_SIZE_KEY, size}, {SOURCE_MTIME_KEY, mtime}, {READER_KEY, READER_VALUE},
+                                           {"opendia.source.path", std::filesystem::absolute(path).string()}});
+          const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+          say("Library: wrote Parquet copy " + cache + " (" + std::to_string(std::filesystem::file_size(cache) >> 20) + " MiB in " +
+              std::to_string(static_cast<long>(seconds + 0.5)) + " s); later runs read it instead of the PQP");
+        }
+        catch (const std::exception& e)
+        {
+          say(std::string("Library: no Parquet copy written (") + e.what() + "); reading the PQP each run");
+        }
+        return lib;
+      }
     }
-    return lib;
+    LibraryBuilder builder;
+    auto traml_ids = visitAnyLibrary(path, builder, log, cache_min_transitions);
+    builder.library.traml_ids = std::move(traml_ids);
+    return std::move(builder.library);
   }
 }

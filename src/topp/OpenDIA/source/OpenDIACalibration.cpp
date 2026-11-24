@@ -266,10 +266,7 @@ namespace OpenMS::OpenDIA
     }
   }
 
-  CalibrationCollector::CalibrationCollector(const OpenDIA::Library& library,
-                                             const std::vector<std::pair<std::string, std::string>>& traml_ids,
-                                             CalibrationOptions options, std::optional<CalibrationWindow> window) :
-    options_(options), window_(std::move(window))
+  void CalibrationCollector::validate_() const
   {
     if (options_.panel_targets < 50 || !(options_.search_ppm > 0.0) || !(options_.search_im > 0.0) ||
         options_.candidates == 0 || options_.seed_half_window == 0 || options_.em_knots < 3 ||
@@ -277,6 +274,14 @@ namespace OpenMS::OpenDIA
     {
       throw std::invalid_argument("Invalid calibration options");
     }
+  }
+
+  CalibrationCollector::CalibrationCollector(const OpenDIA::Library& library,
+                                             const std::vector<std::pair<std::string, std::string>>& traml_ids,
+                                             CalibrationOptions options, std::optional<CalibrationWindow> window) :
+    options_(options), window_(std::move(window))
+  {
+    validate_();
     // Pair DECOY_<X> with <X> by TRAML_ID.
     std::unordered_map<std::string, std::string> name_of(traml_ids.begin(), traml_ids.end());
     std::unordered_map<std::string, std::string> id_of_name;
@@ -289,54 +294,87 @@ namespace OpenMS::OpenDIA
     {
       transitions[transition.peptide_ref].push_back(&transition);
     }
-    std::unordered_map<std::string, const OpenDIA::LibraryCompound*> compounds;
-    for (const auto& compound : library.getCompounds())
+    std::unordered_map<std::string, std::uint32_t> compound_index;
+    for (std::size_t i = 0; i < library.getCompounds().size(); ++i)
     {
-      compounds.emplace(compound.id, &compound);
+      compound_index.emplace(library.getCompounds()[i].id, static_cast<std::uint32_t>(i));
     }
-    const auto make = [&](const std::string& id, Member& member)
+    std::vector<std::pair<std::uint32_t, std::uint32_t>> pairs;
+    for (std::size_t i = 0; i < library.getCompounds().size(); ++i)
     {
-      const auto found = transitions.find(id);
-      const auto compound = compounds.find(id);
-      if (found == transitions.end() || compound == compounds.end() || !std::isfinite(compound->second->rt))
-      {
-        return false;
-      }
+      const auto& compound = library.getCompounds()[i];
+      const auto name = name_of.find(compound.id);
+      if (name == name_of.end() || name->second.rfind("DECOY_", 0) == 0) continue;
+      const auto decoy = id_of_name.find("DECOY_" + name->second);
+      if (decoy == id_of_name.end()) continue;
+      const auto d = compound_index.find(decoy->second);
+      // A decoy name without compound (no fragments) is never eligible; UINT32_MAX makes describe() fail.
+      pairs.emplace_back(static_cast<std::uint32_t>(i), d == compound_index.end() ? UINT32_MAX : d->second);
+    }
+    select_(pairs, [&](std::uint32_t c, CalibrationPrecursor& out)
+    {
+      if (c == UINT32_MAX) return false;
+      const auto& compound = library.getCompounds()[c];
+      const auto found = transitions.find(compound.id);
+      if (found == transitions.end()) return false;
       auto fragments = found->second;
       std::stable_sort(fragments.begin(), fragments.end(), [](const auto* a, const auto* b)
       {
         return a->library_intensity != b->library_intensity ? a->library_intensity > b->library_intensity : a->product_mz < b->product_mz;
       });
-      if (fragments.size() < options_.strict_min_fragments)
+      out.id = compound.id;
+      out.precursor_mz = fragments.front()->precursor_mz;
+      out.library_rt = compound.rt;
+      out.library_im = compound.drift_time;
+      out.is_decoy = fragments.front()->getDecoy();
+      out.fragments = fragments.size();
+      for (std::size_t f = 0; f < std::min(FRAGMENTS, fragments.size()); ++f)
+      {
+        out.fragment_mz[f] = fragments[f]->product_mz;
+        out.library_intensity[f] = fragments[f]->library_intensity;
+      }
+      return true;
+    });
+  }
+
+  CalibrationCollector::CalibrationCollector(const std::vector<std::pair<std::uint32_t, std::uint32_t>>& pairs,
+                                             const std::function<bool(std::uint32_t, CalibrationPrecursor&)>& describe,
+                                             CalibrationOptions options, std::optional<CalibrationWindow> window) :
+    options_(options), window_(std::move(window))
+  {
+    validate_();
+    select_(pairs, describe);
+  }
+
+  void CalibrationCollector::select_(const std::vector<std::pair<std::uint32_t, std::uint32_t>>& pairs,
+                                     const std::function<bool(std::uint32_t, CalibrationPrecursor&)>& describe)
+  {
+    const auto make = [&](std::uint32_t index, Member& member)
+    {
+      CalibrationPrecursor p;
+      if (!describe(index, p) || !std::isfinite(p.library_rt) || p.fragments < options_.strict_min_fragments)
       {
         return false;
       }
-      member.id = id;
-      member.precursor_mz = fragments.front()->precursor_mz;
-      member.library_rt = compound->second->rt;
-      member.library_im = std::isfinite(compound->second->drift_time) && compound->second->drift_time > 0.0 ? compound->second->drift_time : 0.0;
-      member.is_decoy = fragments.front()->getDecoy();
-      member.fragment_count = std::min(FRAGMENTS, fragments.size());
+      member.id = std::string(p.id);
+      member.precursor_mz = p.precursor_mz;
+      member.library_rt = p.library_rt;
+      member.library_im = std::isfinite(p.library_im) && p.library_im > 0.0 ? p.library_im : 0.0;
+      member.is_decoy = p.is_decoy;
+      member.fragment_count = std::min(FRAGMENTS, p.fragments);
       for (std::size_t f = 0; f < member.fragment_count; ++f)
       {
-        member.fragment_mz[f] = fragments[f]->product_mz;
-        member.library_intensity[f] = fragments[f]->library_intensity;
+        member.fragment_mz[f] = p.fragment_mz[f];
+        member.library_intensity[f] = p.library_intensity[f];
       }
       return true;
     };
     // Eligible pairs, sorted by target library RT (ties: target ID).
     std::vector<std::pair<Member, Member>> eligible;
-    for (const auto& compound : library.getCompounds())
+    for (const auto& [t, d] : pairs)
     {
-      const auto name = name_of.find(compound.id);
-      if (name == name_of.end() || name->second.rfind("DECOY_", 0) == 0)
-      {
-        continue;
-      }
-      const auto decoy = id_of_name.find("DECOY_" + name->second);
       Member target, decoy_member;
-      if (decoy == id_of_name.end() || !make(compound.id, target) || target.is_decoy || !make(decoy->second, decoy_member) ||
-          !decoy_member.is_decoy)
+      if (!make(t, target) || target.is_decoy || !make(d, decoy_member) || !decoy_member.is_decoy)
       {
         continue;
       }

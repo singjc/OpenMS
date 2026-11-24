@@ -10,6 +10,7 @@
 #include <OpenMS/KERNEL/MSSpectrum.h>
 #include <OpenMS/METADATA/Precursor.h>
 
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <random>
@@ -88,8 +89,53 @@ int main()
     truth.push_back(std::move(t));
   }
 
+  // More than six, deliberately unsorted fragments exercise top-six selection and m/z tie breaking.
+  for (std::size_t c = 0; c < library.compounds.size(); ++c)
+  {
+    auto extra = library.transitions[6 * c];
+    extra.product_mz = 1900.0;
+    extra.library_intensity = 100.0;
+    library.transitions.push_back(extra);
+    extra.product_mz = 1950.0;
+    extra.library_intensity = 1.0;
+    library.transitions.push_back(extra);
+  }
+  std::reverse(library.transitions.begin(), library.transitions.end());
+  std::vector<std::pair<std::uint32_t, std::uint32_t>> indexed_pairs;
+  for (std::uint32_t p = 0; p < pairs; ++p)
+  {
+    indexed_pairs.emplace_back(2 * p, 2 * p + 1);
+  }
+  const auto describe = [&](std::uint32_t index, OpenDIA::CalibrationPrecursor& out)
+  {
+    if (index >= library.compounds.size()) { return false; }
+    const auto& compound = library.compounds[index];
+    std::vector<const OpenDIA::LibraryTransition*> fragments;
+    for (const auto& transition : library.transitions)
+    {
+      if (transition.peptide_ref == compound.id) { fragments.push_back(&transition); }
+    }
+    std::stable_sort(fragments.begin(), fragments.end(), [](const auto* a, const auto* b)
+    {
+      return a->library_intensity != b->library_intensity ? a->library_intensity > b->library_intensity : a->product_mz < b->product_mz;
+    });
+    if (fragments.empty()) { return false; }
+    out.id = compound.id;
+    out.precursor_mz = fragments.front()->precursor_mz;
+    out.library_rt = compound.rt;
+    out.library_im = compound.drift_time;
+    out.is_decoy = fragments.front()->getDecoy();
+    out.fragments = fragments.size();
+    for (std::size_t f = 0; f < std::min<std::size_t>(6, fragments.size()); ++f)
+    {
+      out.fragment_mz[f] = fragments[f]->product_mz;
+      out.library_intensity[f] = fragments[f]->library_intensity;
+    }
+    return true;
+  };
   OpenDIA::CalibrationOptions options;
   options.panel_targets = pairs;
+  OpenDIA::CalibrationCollector indexed(indexed_pairs, describe, options);
   OpenDIA::CalibrationCollector collector(library, traml_ids, options);
   require(collector.panelSize() == 2 * pairs, "panel size");
 
@@ -132,10 +178,29 @@ int main()
       mobility.push_back(static_cast<float>(0.8 + 0.5 * uniform(rng)));
     }
     spectrum.getFloatDataArrays().push_back(std::move(mobility));
+    auto indexed_spectrum = spectrum;
+    indexed.consumeSpectrum(indexed_spectrum);
     collector.consumeSpectrum(spectrum);
   }
 
   const auto result = collector.calibrate();
+  const auto indexed_result = indexed.calibrate();
+  require(indexed.panelSize() == collector.panelSize(), "indexed panel size");
+  std::ostringstream legacy_json, indexed_json;
+  OpenDIA::writeCalibrationJSON(result, options, legacy_json);
+  OpenDIA::writeCalibrationJSON(indexed_result, options, indexed_json);
+  require(legacy_json.str() == indexed_json.str(), "indexed calibration differs from Library constructor");
+  require(result.anchors.size() == indexed_result.anchors.size(), "indexed anchor count");
+  for (std::size_t i = 0; i < result.anchors.size(); ++i)
+  {
+    const auto& a = result.anchors[i];
+    const auto& b = indexed_result.anchors[i];
+    require(a.precursor_id == b.precursor_id && a.library_rt == b.library_rt && a.run_rt == b.run_rt &&
+            a.library_im == b.library_im && a.observed_im == b.observed_im && a.correlation == b.correlation &&
+            a.cosine == b.cosine && a.q_value == b.q_value && a.fragments == b.fragments && a.used == b.used &&
+            a.anchor_scan == b.anchor_scan && a.trace_rt == b.trace_rt && a.trace == b.trace,
+            "indexed anchor identity, order or fragment trace differs");
+  }
   require(result.em_converged, "EM converged");
   require(result.anchor_targets >= 150, "anchor count " + std::to_string(result.anchor_targets));
   require(result.anchor_decoys <= 3, "decoy anchors " + std::to_string(result.anchor_decoys));

@@ -19,6 +19,7 @@
 #include <map>
 #include <numeric>
 #include <set>
+#include <unordered_map>
 
 namespace OpenMS::OpenDIA
 {
@@ -106,6 +107,39 @@ namespace OpenMS::OpenDIA
       samples_.push_back(std::move(sample));
     }
     windows_ = std::move(windows);
+    setup_(max_samples, max_tensor_bytes);
+  }
+
+  TraceCollector::TraceCollector(const std::vector<double>& apex_rt, const std::vector<std::uint32_t>& precursor_of,
+                                 const std::vector<TracePrecursor>& precursors, double mz_tolerance, double rt_half_width,
+                                 double im_half_width, std::size_t max_samples, std::size_t max_tensor_bytes, CloseCallback on_close) :
+    mz_tolerance_(mz_tolerance), rt_half_width_(rt_half_width), im_half_width_(im_half_width), on_close_(std::move(on_close))
+  {
+    require(std::isfinite(mz_tolerance_) && mz_tolerance_ > 0.0 &&
+            std::isfinite(rt_half_width_) && rt_half_width_ > 0.0 &&
+            std::isfinite(im_half_width_) && im_half_width_ > 0.0, "Trace tolerances must be finite and positive.");
+    require(!apex_rt.empty() && apex_rt.size() <= max_samples && apex_rt.size() == precursor_of.size(),
+            "Trace sample count is empty or exceeds max_samples.");
+    samples_.reserve(apex_rt.size());
+    for (std::size_t w = 0; w < apex_rt.size(); ++w)
+    {
+      require(std::isfinite(apex_rt[w]) && apex_rt[w] >= 0.0 && precursor_of[w] < precursors.size(), "Invalid candidate RT or precursor.");
+      const auto& p = precursors[precursor_of[w]];
+      Sample sample;
+      sample.apex_rt = apex_rt[w];
+      sample.precursor_mz = p.precursor_mz;
+      sample.is_decoy = p.is_decoy;
+      if (std::isfinite(p.precursor_im) && p.precursor_im > 0.0) sample.precursor_im = p.precursor_im;
+      sample.precursor_charge = p.charge;
+      sample.fragment_mz = p.fragment_mz;
+      sample.library_intensity = p.library_intensity;
+      samples_.push_back(sample);
+    }
+    setup_(max_samples, max_tensor_bytes);
+  }
+
+  void TraceCollector::setup_(std::size_t, std::size_t max_tensor_bytes)
+  {
     // Without any library mobility every point lands in the central mobility bin (compatible_im is never true in
     // consumeSpectrum), so storing only that bin gives the same tensor at 1/8 of the memory.
     im_bins_ = std::any_of(samples_.begin(), samples_.end(), [](const Sample& s) { return s.precursor_im > 0.0; }) ? IM_BINS : 1;
@@ -173,8 +207,35 @@ namespace OpenMS::OpenDIA
     fragment_ppm_ = ppm;
   }
 
+  void TraceCollector::ionRange_(const std::string& sequence, const std::string& id, std::array<std::uint32_t, 3>& range)
+  {
+    require(!sequence.empty(), "No library sequence for precursor: " + id);
+    AASequence peptide;
+    try
+    {
+      peptide = AASequence::fromString(sequence);
+    }
+    catch (const Exception::BaseException&)
+    {
+      require(false, "Could not parse library sequence: " + sequence);
+    }
+    // Singly charged b_k and y_k for k = 1..n-1, kept inside the scan range used for the design study.
+    for (int series = 0; series < 2; ++series)
+    {
+      range[series] = static_cast<std::uint32_t>(byion_mz_.size());
+      for (Size k = 1; k < peptide.size(); ++k)
+      {
+        const double mz = series == 0 ? peptide.getPrefix(k).getMonoWeight(Residue::BIon, 1)
+                                      : peptide.getSuffix(k).getMonoWeight(Residue::YIon, 1);
+        if (mz >= 150.06 && mz <= 2000.0) { byion_mz_.push_back(static_cast<float>(mz)); }
+      }
+    }
+    range[2] = static_cast<std::uint32_t>(byion_mz_.size());
+  }
+
   void TraceCollector::enableByIonCounts(const OpenDIA::Library& library, double ppm, double intensity_min)
   {
+    require(windows_.size() == samples_.size(), "Indexed traces require the sequence callback overload for b/y ion counts.");
     require(evidence_on_, "b/y ion counts require enableEvidence() first.");
     require(std::isfinite(ppm) && ppm > 0.0 && std::isfinite(intensity_min) && intensity_min >= 0.0,
             "b/y ion tolerance must be positive and the intensity floor non-negative.");
@@ -196,31 +257,32 @@ namespace OpenMS::OpenDIA
       if (found == ranges.end())
       {
         const auto sequence = sequences.find(id);
-        require(sequence != sequences.end() && !sequence->second->empty(), "No library sequence for precursor: " + id);
-        AASequence peptide;
-        try
-        {
-          peptide = AASequence::fromString(*sequence->second);
-        }
-        catch (const Exception::BaseException&)
-        {
-          require(false, "Could not parse library sequence: " + *sequence->second);
-        }
+        require(sequence != sequences.end(), "No library sequence for precursor: " + id);
         std::array<std::uint32_t, 3> range{};
-        // Singly charged b_k and y_k for k = 1..n-1, kept inside the scan range used for the design study.
-        for (int series = 0; series < 2; ++series)
-        {
-          range[series] = static_cast<std::uint32_t>(byion_mz_.size());
-          for (Size k = 1; k < peptide.size(); ++k)
-          {
-            const double mz = series == 0 ? peptide.getPrefix(k).getMonoWeight(Residue::BIon, 1)
-                                          : peptide.getSuffix(k).getMonoWeight(Residue::YIon, 1);
-            if (mz >= 150.06 && mz <= 2000.0) { byion_mz_.push_back(static_cast<float>(mz)); }
-          }
-        }
-        range[2] = static_cast<std::uint32_t>(byion_mz_.size());
+        ionRange_(*sequence->second, id, range);
         found = ranges.emplace(id, range).first;
       }
+      byion_range_[i] = found->second;
+    }
+  }
+
+  void TraceCollector::enableByIonCounts(const std::function<const std::string&(std::size_t)>& sequence,
+                                         const std::function<std::uint64_t(std::size_t)>& precursor_key, double ppm, double intensity_min)
+  {
+    require(evidence_on_, "b/y ion counts require enableEvidence() first.");
+    require(std::isfinite(ppm) && ppm > 0.0 && std::isfinite(intensity_min) && intensity_min >= 0.0,
+            "b/y ion tolerance must be positive and the intensity floor non-negative.");
+    byion_ppm_ = ppm;
+    byion_intensity_min_ = intensity_min;
+    // Ions are generated once per precursor, in window order (the pooled m/z do not depend on the order).
+    std::unordered_map<std::uint64_t, std::array<std::uint32_t, 3>> ranges;
+    byion_mz_.clear();
+    byion_range_.assign(samples_.size(), {0, 0, 0});
+    for (std::size_t i = 0; i < samples_.size(); ++i)
+    {
+      const auto key = precursor_key(i);
+      auto [found, inserted] = ranges.try_emplace(key);
+      if (inserted) ionRange_(sequence(i), std::to_string(key), found->second);
       byion_range_[i] = found->second;
     }
   }

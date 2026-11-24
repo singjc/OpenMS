@@ -18,11 +18,13 @@
 
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <iosfwd>
 #include <limits>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace OpenMS::OpenDIA
@@ -77,6 +79,20 @@ namespace OpenMS::OpenDIA
     double rt_sigma_multiple = 4.0;
     double ms2_sigma_multiple = 5.0; ///< Unused since the mass tolerance is fitted (MassToleranceFit); kept for the JSON options record.
     double im_sigma_multiple = 4.0;
+  };
+
+  /// The library side of one precursor, as CalibrationCollector's index-based constructor reads it.
+  struct CalibrationPrecursor
+  {
+    std::string_view id;  ///< Valid until the constructor returns.
+    double precursor_mz = 0.0;
+    double library_rt = std::numeric_limits<double>::quiet_NaN();
+    double library_im = -1.0;   ///< Library 1/K0; not finite or not positive = none.
+    bool is_decoy = false;
+    std::size_t fragments = 0;  ///< All library fragments of the precursor.
+    /// The six most intense fragments (ties: lower m/z first, then library order); 0 past @p fragments.
+    std::array<double, 6> fragment_mz{};
+    std::array<double, 6> library_intensity{};
   };
 
   /** @brief One confident anchor: a panel target accepted at the anchor FDR. */
@@ -202,6 +218,16 @@ namespace OpenMS::OpenDIA
                          const std::vector<std::pair<std::string, std::string>>& traml_ids,
                          CalibrationOptions options = {}, std::optional<CalibrationWindow> window = std::nullopt);
 
+    /**
+      @brief Select the panel from candidate (target, decoy) precursor pairs without a Library: the same panel as the
+      Library constructor when @p pairs lists, in compound order, every target with a TRAML_ID not starting with DECOY_
+      and the precursor named DECOY_<its TRAML_ID>.
+      @param[in] describe Fills the library side of a precursor; false if it has no fragments.
+    */
+    CalibrationCollector(const std::vector<std::pair<std::uint32_t, std::uint32_t>>& pairs,
+                         const std::function<bool(std::uint32_t, CalibrationPrecursor&)>& describe,
+                         CalibrationOptions options = {}, std::optional<CalibrationWindow> window = std::nullopt);
+
     void consumeSpectrum(MSSpectrum& spectrum) override;
     void consumeChromatogram(MSChromatogram&) override {}
     void setExpectedSize(std::size_t, std::size_t) override {}
@@ -253,6 +279,10 @@ namespace OpenMS::OpenDIA
       double score = -1.0;
       std::size_t fragments = 0;
     };
+
+    void validate_() const;
+    void select_(const std::vector<std::pair<std::uint32_t, std::uint32_t>>& pairs,
+                 const std::function<bool(std::uint32_t, CalibrationPrecursor&)>& describe);
 
     std::vector<Candidate> candidates_(std::size_t member, std::size_t half_window, double rt_low, double rt_high,
                                        std::size_t max_candidates, std::size_t min_fragments) const;

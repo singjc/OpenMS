@@ -23,6 +23,7 @@
 #include <OpenMS/SYSTEM/SysInfo.h>
 
 #include <algorithm>
+#include <charconv>
 #include <chrono>
 #include <cmath>
 #include <fstream>
@@ -37,7 +38,34 @@ namespace OpenMS::OpenDIA
   {
     constexpr std::size_t K12 = FragmentGrid::FRAGMENTS;
 
-    std::string annotation(const OpenDIA::LibraryTransition& t) { return t.getAnnotation(); }
+    [[noreturn]] void invalid(const std::string& message, const std::string& value)
+    {
+      throw Exception::InvalidValue(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION, message, value);
+    }
+
+    /// A PQP transition ID as an integer; only canonical decimals (to_string gives the ID back) are accepted, so
+    /// comparing the formatted integers compares the IDs.
+    std::int64_t transitionNumber(std::string_view id)
+    {
+      std::int64_t v = 0;
+      const auto [end, error] = std::from_chars(id.data(), id.data() + id.size(), v);
+      if (error != std::errc() || end != id.data() + id.size() || std::to_string(v) != id)
+        invalid("Transition IDs must be decimal integers", std::string(id));
+      return v;
+    }
+
+    /// The transition IDs @p a < @p b as strings.
+    bool transitionIdLess(std::int64_t a, std::int64_t b)
+    {
+      char x[24], y[24];
+      const auto ex = std::to_chars(x, x + sizeof(x), a).ptr;
+      const auto ey = std::to_chars(y, y + sizeof(y), b).ptr;
+      return std::string_view(x, static_cast<std::size_t>(ex - x)) < std::string_view(y, static_cast<std::size_t>(ey - y));
+    }
+
+    bool safeText(std::string_view text) { return !text.empty() && text.find_first_of("\t\r\n") == std::string_view::npos; }
+
+    bool sameValue(double a, double b) { return a == b || (std::isnan(a) && std::isnan(b)); }
 
     /// " rss_mb=<current> peak_mb=<peak>" for stage log lines (diagnostic only).
     std::string memoryNote()
@@ -73,69 +101,101 @@ namespace OpenMS::OpenDIA
       return std::chrono::duration<double>(std::chrono::steady_clock::now() - since).count();
     }
 
-    /// Query list for StreamSearch from a (calibrated) library, in the heavy reader's transition order.
-    std::vector<TransitionQuery> makeQueries(OpenDIA::Library& targeted)
+    /// Query list for StreamSearch from the library calibrated by @p cal (RTs shifted by @p rt_correction when given), in
+    /// the order of the former calibrated-library sort (precursor m/z, product m/z, RT, transition ID, precursor ID).
+    std::vector<TransitionQuery> makeQueries(const AnalysisLibrary& lib, const CalibrationRT& cal, const std::vector<double>& rt_correction)
     {
+      const std::size_t np = lib.precursors.size();
       struct Coordinates
       {
         double seconds = 0.0, im = 0.0;
         bool has_rt = false, has_im = false;
       };
-      std::unordered_map<std::string, Coordinates> coordinates;
-      coordinates.reserve(targeted.getCompounds().size());
-      for (const auto& c : targeted.getCompounds())
+      std::vector<Coordinates> coordinates(np);
+      for (std::size_t pi = 0; pi < np; ++pi)
       {
-        coordinates.emplace(c.id, Coordinates{c.rt, c.drift_time, std::isfinite(c.rt), std::isfinite(c.drift_time) && c.drift_time > 0.0});
+        const auto& p = lib.precursors[pi];
+        double rt = p.library_rt, im = p.library_im;
+        if (std::isfinite(rt)) rt = cal.map(rt);
+        if (!rt_correction.empty() && std::isfinite(rt)) rt += rt_correction[pi];
+        if (cal.has_im && std::isfinite(im) && im > 0.0) im = cal.im_intercept + cal.im_slope * im;
+        coordinates[pi] = {rt, im, std::isfinite(rt), std::isfinite(im) && im > 0.0};
       }
       struct Key
       {
         double precursor_mz, product_mz, seconds;
+        std::uint32_t precursor;
         bool has_rt;
-        std::size_t index;
+        std::uint64_t fragment;
       };
-      auto& transitions = targeted.transitions;
-      std::vector<Key> keys(transitions.size());
-      for (std::size_t i = 0; i < transitions.size(); ++i)
+      const double factor = 1.0 + cal.ms2_offset_ppm * 1e-6;
+      std::vector<Key> keys;
+      keys.reserve(lib.fragments.size());
+      for (std::uint32_t pi = 0; pi < np; ++pi)
       {
-        const auto it = coordinates.find(transitions[i].peptide_ref);
-        const bool has_rt = it != coordinates.end() && it->second.has_rt;
-        keys[i] = {transitions[i].precursor_mz, transitions[i].product_mz, has_rt ? it->second.seconds : 0.0, has_rt, i};
+        const auto& c = coordinates[pi];
+        for (std::uint64_t f = lib.fragment_offset[pi]; f < lib.fragment_offset[pi + 1]; ++f)
+        {
+          double product = lib.fragments[f].product_mz;
+          product *= factor;
+          keys.push_back({lib.precursors[pi].mz, product, c.has_rt ? c.seconds : 0.0, pi, c.has_rt, f});
+        }
       }
-      std::stable_sort(keys.begin(), keys.end(), [&transitions](const Key& l, const Key& r)
+      std::stable_sort(keys.begin(), keys.end(), [&lib](const Key& l, const Key& r)
       {
         if (l.precursor_mz != r.precursor_mz) return l.precursor_mz < r.precursor_mz;
         if (l.product_mz != r.product_mz) return l.product_mz < r.product_mz;
         if (l.has_rt != r.has_rt) return !l.has_rt;
         if (l.has_rt && l.seconds != r.seconds) return l.seconds < r.seconds;
-        const auto& a = transitions[l.index];
-        const auto& b = transitions[r.index];
-        if (a.transition_name != b.transition_name) return a.transition_name < b.transition_name;
-        return a.peptide_ref < b.peptide_ref;
+        const std::int64_t a = lib.fragments[l.fragment].transition, b = lib.fragments[r.fragment].transition;
+        if (a != b) return transitionIdLess(a, b);
+        return lib.precursors[l.precursor].id < lib.precursors[r.precursor].id;
       });
-      std::vector<OpenDIA::LibraryTransition> sorted;
-      sorted.reserve(transitions.size());
-      for (const Key& k : keys) sorted.push_back(std::move(transitions[k.index]));
-      transitions = std::move(sorted);
       std::vector<TransitionQuery> queries;
-      queries.reserve(transitions.size());
-      for (const auto& t : transitions)
+      queries.reserve(keys.size());
+      for (const Key& k : keys)
       {
+        const auto& c = coordinates[k.precursor];
         TransitionQuery q;
-        q.precursor_id = t.peptide_ref;
-        q.precursor_mz = t.precursor_mz;
-        q.fragment_mz = t.product_mz;
-        const auto it = coordinates.find(t.peptide_ref);
-        if (it != coordinates.end())
-        {
-          q.library_rt = it->second.seconds;
-          q.has_library_rt = it->second.has_rt;
-          q.precursor_im = it->second.im;
-          q.has_precursor_im = it->second.has_im;
-        }
-        q.is_decoy = t.getDecoy();
+        q.precursor_id = lib.precursors[k.precursor].id;
+        q.precursor_mz = k.precursor_mz;
+        q.fragment_mz = k.product_mz;
+        q.library_rt = c.seconds;
+        q.has_library_rt = c.has_rt;
+        q.precursor_im = c.im;
+        q.has_precursor_im = c.has_im;
+        q.is_decoy = lib.precursors[k.precursor].decoy;
         queries.push_back(q);
       }
       return queries;
+    }
+
+    /// Up to @p N fragments of precursor @p pi, most intense first (ties: lower m/z, then library order), with m/z
+    /// multiplied by @p factor first (1 = library m/z).
+    template<std::size_t N>
+    std::size_t topFragments(const AnalysisLibrary& lib, std::uint32_t pi, double factor, std::array<double, N>& mz, std::array<double, N>& intensity)
+    {
+      const std::uint64_t begin = lib.fragment_offset[pi], end = lib.fragment_offset[pi + 1];
+      std::vector<std::pair<double, double>> f;  // (m/z, intensity)
+      f.reserve(end - begin);
+      for (std::uint64_t i = begin; i < end; ++i)
+      {
+        double product = lib.fragments[i].product_mz;
+        if (factor != 1.0) product *= factor;
+        f.emplace_back(product, lib.fragments[i].library_intensity);
+      }
+      std::stable_sort(f.begin(), f.end(), [](const auto& a, const auto& b)
+      {
+        return a.second != b.second ? a.second > b.second : a.first < b.first;
+      });
+      mz.fill(0.0);
+      intensity.fill(0.0);
+      for (std::size_t k = 0; k < std::min(N, f.size()); ++k)
+      {
+        mz[k] = f[k].first;
+        intensity[k] = f[k].second;
+      }
+      return f.size();
     }
 
     /// Forwards spectra and accumulates the time spent inside the wrapped consumer (the rest of a pass is reading).
@@ -209,108 +269,227 @@ namespace OpenMS::OpenDIA
                                         const std::function<void(const std::string&)>& log)
   {
     AnalysisLibrary lib;
-    lib.search = readAnyLibrary(search_pqp, log);
-    const auto traml = traMLIDMap(lib.search.traml_ids);
-    lib.search.traml_ids = {};
-    lib.traml_ids.assign(traml.begin(), traml.end());
-    std::unordered_map<std::string, std::string> traml_to_id;
-    for (const auto& [id, name] : traml) traml_to_id.emplace(name, id);
-    // Precursors from the compounds.
-    for (const auto& c : lib.search.getCompounds())
+    // The annotation vocabulary is small. Intern it while streaming, and discard it once the scoring fragments
+    // have been matched. No transition or precursor identity string is repeated per fragment.
+    std::unordered_map<std::string, std::uint32_t> annotation_ids;
+    std::vector<std::uint32_t> search_annotations;
+    struct SearchReader final : LibraryVisitor
     {
-      Precursor p;
-      p.id = c.id;
-      const auto t = traml.find(c.id);
-      if (t == traml.end()) throw Exception::InvalidValue(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION, "Precursor without TRAML_ID", c.id);
-      p.traml_id = t->second;
-      p.sequence = c.sequence;
-      p.charge = c.charge;
-      p.proteins = c.protein_refs;
-      p.library_rt = c.rt;
-      p.has_library_rt = std::isfinite(c.rt);
-      lib.index.emplace(p.id, static_cast<std::uint32_t>(lib.precursors.size()));
-      lib.precursors.push_back(std::move(p));
-    }
-    // Search fragments: m/z, decoy flag, annotations.
-    std::vector<std::unordered_set<std::string>> search_annotations(lib.precursors.size());
-    std::vector<std::vector<const OpenDIA::LibraryTransition*>> fragments(lib.precursors.size());
-    for (const auto& t : lib.search.getTransitions())
-    {
-      const auto it = lib.index.find(t.peptide_ref);
-      if (it == lib.index.end()) continue;
-      auto& p = lib.precursors[it->second];
-      p.mz = t.precursor_mz;
-      p.decoy = t.getDecoy();
-      search_annotations[it->second].insert(annotation(t));
-      fragments[it->second].push_back(&t);
-    }
-    // Pairs and families: a decoy belongs to the target whose TRAML_ID it carries after DECOY_.
-    std::unordered_map<std::string, std::uint32_t> pair_index;
-    for (auto& p : lib.precursors)
-    {
-      p.pair_key = p.traml_id;
-      if (p.decoy)
+      AnalysisLibrary& lib;
+      std::unordered_map<std::string, std::uint32_t>& annotations;
+      std::vector<std::uint32_t>& annotation_of;
+      std::unordered_map<std::string, std::uint32_t> proteins;
+      std::vector<std::uint32_t> precursor_of;
+
+      SearchReader(AnalysisLibrary& l, std::unordered_map<std::string, std::uint32_t>& a, std::vector<std::uint32_t>& f) :
+        lib(l), annotations(a), annotation_of(f) {}
+      void expect(std::size_t n) override
       {
-        if (p.traml_id.rfind("DECOY_", 0) != 0)
-          throw Exception::InvalidValue(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION, "Decoy TRAML_ID must be DECOY_<target TRAML_ID>", p.traml_id);
-        p.pair_key = p.traml_id.substr(6);
+        lib.fragments.reserve(n);
+        precursor_of.reserve(n);
+        annotation_of.reserve(n);
+        lib.precursors.reserve(n / 6 + 1);
+        lib.index.reserve(n / 6 + 1);
       }
-    }
-    for (auto& p : lib.precursors)
-    {
-      std::string family_sequence = p.sequence;
-      if (p.decoy)
+      void reset() override
       {
-        const auto target = traml_to_id.find(p.pair_key);
-        if (target != traml_to_id.end()) family_sequence = lib.precursors[lib.index.at(target->second)].sequence;
+        lib = AnalysisLibrary();
+        annotations.clear();
+        annotation_of.clear();
+        precursor_of.clear();
+        proteins.clear();
       }
-      p.family = unmodified(family_sequence);
-      p.fold = static_cast<std::uint8_t>(CrossFitScorer::fnv1a(p.family) % 3);
-      p.pair = pair_index.try_emplace(p.pair_key, static_cast<std::uint32_t>(pair_index.size())).first->second;
-    }
-    lib.pairs = pair_index.size();
-    // A pair shares the target's fold.
-    {
-      std::vector<int> pair_fold(lib.pairs, -1);
-      for (const auto& p : lib.precursors)
-        if (!p.decoy) pair_fold[p.pair] = p.fold;
-      for (auto& p : lib.precursors)
-        if (pair_fold[p.pair] >= 0) p.fold = static_cast<std::uint8_t>(pair_fold[p.pair]);
-    }
-    // Scoring fragments.
-    const auto assign = [&](std::uint32_t pi, std::vector<std::pair<long, const OpenDIA::LibraryTransition*>>& list)
-    {
-      std::sort(list.begin(), list.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
-      auto& p = lib.precursors[pi];
-      p.scoring_count = static_cast<std::uint8_t>(std::min(K12, list.size()));
-      double maximum = 0.0;
-      for (std::size_t s = 0; s < p.scoring_count; ++s) maximum = std::max(maximum, list[s].second->library_intensity);
-      for (std::size_t s = 0; s < p.scoring_count; ++s)
+      void fragment(const FragmentView& f, const PrecursorView& c) override
       {
-        p.scoring_mz[s] = list[s].second->product_mz;
-        p.scoring_library[s] = list[s].second->library_intensity / std::max(maximum, 1e-12);
-        p.scoring_in_search[s] = search_annotations[pi].contains(annotation(*list[s].second));
+        auto it = lib.index.find(c.id);
+        if (it == lib.index.end())
+        {
+          if (lib.precursors.size() >= UINT32_MAX) invalid("Too many library precursors", std::string(c.id));
+          it = lib.index.emplace(std::string(c.id), static_cast<std::uint32_t>(lib.precursors.size())).first;
+          Precursor p;
+          p.id = it->first;
+          p.sequence = c.sequence;
+          p.charge = c.charge;
+          p.library_rt = c.rt;
+          p.library_im = c.drift_time;
+          p.has_library_rt = std::isfinite(c.rt);
+          p.mz = f.precursor_mz;
+          p.decoy = f.decoy;
+          std::string joined;
+          for (const auto s : *c.proteins) { if (!joined.empty()) joined += ';'; joined += s; }
+          auto [protein, inserted] = proteins.try_emplace(joined, static_cast<std::uint32_t>(proteins.size()));
+          if (inserted) lib.protein_sets.push_back(std::move(joined));
+          p.proteins = protein->second;
+          lib.precursors.push_back(std::move(p));
+        }
+        const auto& p = lib.precursors[it->second];
+        if (!sameValue(p.mz, f.precursor_mz) || p.decoy != f.decoy)
+          invalid("Invalid or inconsistent library fragment", std::string(p.id));
+        lib.fragments.push_back({f.product_mz, f.library_intensity, transitionNumber(f.transition_id)});
+        precursor_of.push_back(it->second);
+        const std::string a = fragmentAnnotation(f.fragment_type, f.fragment_nr, f.fragment_charge);
+        annotation_of.push_back(annotations.try_emplace(a, static_cast<std::uint32_t>(annotations.size())).first->second);
+      }
+      void finish()
+      {
+        lib.fragment_offset.assign(lib.precursors.size() + 1, 0);
+        for (const auto pi : precursor_of) ++lib.fragment_offset[pi + 1];
+        std::partial_sum(lib.fragment_offset.begin(), lib.fragment_offset.end(), lib.fragment_offset.begin());
+        // Preserve the relative file order within each precursor, even for interleaved fragments.
+        if (!std::is_sorted(precursor_of.begin(), precursor_of.end()))
+        {
+          std::vector<Fragment> sorted(lib.fragments.size());
+          std::vector<std::uint32_t> sorted_annotations(annotation_of.size());
+          auto next = lib.fragment_offset;
+          for (std::size_t i = 0; i < lib.fragments.size(); ++i)
+          {
+            const auto at = next[precursor_of[i]]++;
+            sorted[at] = lib.fragments[i];
+            sorted_annotations[at] = annotation_of[i];
+          }
+          lib.fragments.swap(sorted);
+          annotation_of.swap(sorted_annotations);
+        }
+        std::vector<std::uint32_t>().swap(precursor_of);
+        proteins.clear();
       }
     };
+    auto traml_ids = [&]()
+    {
+      SearchReader reader(lib, annotation_ids, search_annotations);
+      auto ids = visitAnyLibrary(search_pqp, reader, log);
+      reader.finish();
+      return ids;
+    }();
+    {
+      // Keep the original map insertion and iteration order: duplicate TRAML names are resolved just as they were
+      // when readPrecursorTraMLIDs fed the workflow and CalibrationCollector.
+      const auto traml = traMLIDMap(traml_ids);
+      std::vector<std::pair<std::string, std::string>>().swap(traml_ids);
+      std::unordered_map<std::string, std::uint32_t> by_name;
+      for (const auto& [id, name] : traml) by_name.emplace(name, lib.find(id));
+      std::unordered_map<std::string_view, std::uint32_t> seed_partner;
+      std::unordered_map<std::string, std::uint32_t> pair_index, sibling_index;
+      for (std::uint32_t pi = 0; pi < lib.precursors.size(); ++pi)
+      {
+        const auto t = traml.find(std::string(lib.precursors[pi].id));
+        if (t == traml.end()) invalid("Precursor without TRAML_ID", std::string(lib.precursors[pi].id));
+        seed_partner.emplace(t->second, pi);
+      }
+      for (std::uint32_t pi = 0; pi < lib.precursors.size(); ++pi)
+      {
+        auto& p = lib.precursors[pi];
+        const auto& name = traml.at(std::string(p.id));
+        std::string key = name;
+        if (p.decoy)
+        {
+          if (name.rfind("DECOY_", 0) != 0) invalid("Decoy TRAML_ID must be DECOY_<target TRAML_ID>", name);
+          key = name.substr(6);
+        }
+        const std::string* sequence = &p.sequence;
+        if (p.decoy)
+        {
+          const auto target = by_name.find(key);
+          if (target != by_name.end() && target->second != UINT32_MAX) sequence = &lib.precursors[target->second].sequence;
+        }
+        const std::string family = unmodified(*sequence);
+        const auto hash = CrossFitScorer::fnv1a(family);
+        p.fold = static_cast<std::uint8_t>(hash % 3);
+        p.rt_fold = static_cast<std::uint8_t>(hash % 5);
+        p.family_seed = CrossFitScorer::fnv1a("v" + family);
+        p.pair_seed = CrossFitScorer::fnv1a("v" + key);
+        p.trace_safe = safeText(p.id) && safeText(family);
+        p.pair = pair_index.try_emplace(key, static_cast<std::uint32_t>(pair_index.size())).first->second;
+        const auto partner = seed_partner.find("DECOY_" + name);
+        if (partner != seed_partner.end()) p.decoy_partner = partner->second;
+        if (name.rfind("DECOY_", 0) != 0)
+        {
+          const auto decoy = by_name.find("DECOY_" + name);
+          if (decoy != by_name.end()) lib.calibration_pairs.emplace_back(pi, decoy->second);
+        }
+        p.sibling_group = sibling_index.try_emplace((p.decoy ? "D" : "T") + p.sequence,
+                                                   static_cast<std::uint32_t>(sibling_index.size())).first->second;
+        if (p.sibling_group == lib.sibling_group_sizes.size()) lib.sibling_group_sizes.push_back(0);
+        ++lib.sibling_group_sizes[p.sibling_group];
+      }
+      lib.pairs = pair_index.size();
+      std::vector<int> pair_fold(lib.pairs, -1);
+      for (const auto& p : lib.precursors) if (!p.decoy) pair_fold[p.pair] = p.fold;
+      for (auto& p : lib.precursors) if (pair_fold[p.pair] >= 0) p.fold = static_cast<std::uint8_t>(pair_fold[p.pair]);
+    }
     if (scoring_pqp.empty())
     {
       for (std::uint32_t pi = 0; pi < lib.precursors.size(); ++pi)
       {
-        std::vector<std::pair<long, const OpenDIA::LibraryTransition*>> list;
-        for (const auto* t : fragments[pi]) list.emplace_back(std::stol(t->transition_name), t);
-        assign(pi, list);
+        std::vector<std::uint64_t> list;
+        for (auto f = lib.fragment_offset[pi]; f < lib.fragment_offset[pi + 1]; ++f) list.push_back(f);
+        std::sort(list.begin(), list.end(), [&](auto a, auto b) { return lib.fragments[a].transition < lib.fragments[b].transition; });
+        auto& p = lib.precursors[pi];
+        p.scoring_count = static_cast<std::uint8_t>(std::min(K12, list.size()));
+        for (std::size_t s = 0; s < p.scoring_count; ++s)
+        {
+          p.scoring_mz[s] = lib.fragments[list[s]].product_mz;
+          p.scoring_library[s] = lib.fragments[list[s]].library_intensity;
+          p.scoring_in_search[s] = true;
+        }
       }
     }
     else
     {
-      const OpenDIA::Library scoring = readAnyLibrary(scoring_pqp, log);
-      std::vector<std::vector<std::pair<long, const OpenDIA::LibraryTransition*>>> lists(lib.precursors.size());
-      for (const auto& t : scoring.getTransitions())
+      struct ScoringReader final : LibraryVisitor
       {
-        const auto it = lib.index.find(t.peptide_ref);
-        if (it != lib.index.end()) lists[it->second].emplace_back(std::stol(t.transition_name), &t);
-      }
-      for (std::uint32_t pi = 0; pi < lib.precursors.size(); ++pi) assign(pi, lists[pi]);
+        AnalysisLibrary& lib;
+        const std::unordered_map<std::string, std::uint32_t>& annotation_ids;
+        const std::vector<std::uint32_t>& search_annotations;
+        // Only the smallest twelve transition IDs are retained per precursor, never the scoring Library.
+        std::vector<std::array<std::int64_t, K12>> ids;
+        ScoringReader(AnalysisLibrary& l, const std::unordered_map<std::string, std::uint32_t>& a, const std::vector<std::uint32_t>& f) :
+          lib(l), annotation_ids(a), search_annotations(f), ids(l.precursors.size()) {}
+        void reset() override
+        {
+          for (auto& p : lib.precursors)
+          {
+            p.scoring_count = 0;
+            p.scoring_mz.fill(0.0);
+            p.scoring_library.fill(0.0);
+            p.scoring_in_search.fill(false);
+          }
+        }
+        void fragment(const FragmentView& f, const PrecursorView&) override
+        {
+          const auto pi = lib.find(f.precursor_id);
+          if (pi == UINT32_MAX) return;
+          auto& p = lib.precursors[pi];
+          const auto id = transitionNumber(f.transition_id);
+          std::size_t at = 0;
+          while (at < p.scoring_count && ids[pi][at] <= id) ++at;
+          if (at == K12) return;
+          const auto count = std::min(K12, static_cast<std::size_t>(p.scoring_count) + 1);
+          for (std::size_t s = count - 1; s > at; --s)
+          {
+            ids[pi][s] = ids[pi][s - 1];
+            p.scoring_mz[s] = p.scoring_mz[s - 1];
+            p.scoring_library[s] = p.scoring_library[s - 1];
+            p.scoring_in_search[s] = p.scoring_in_search[s - 1];
+          }
+          ids[pi][at] = id;
+          p.scoring_count = static_cast<std::uint8_t>(count);
+          p.scoring_mz[at] = f.product_mz;
+          p.scoring_library[at] = f.library_intensity;
+          const auto a = annotation_ids.find(fragmentAnnotation(f.fragment_type, f.fragment_nr, f.fragment_charge));
+          p.scoring_in_search[at] = a != annotation_ids.end() &&
+            std::find(search_annotations.begin() + lib.fragment_offset[pi], search_annotations.begin() + lib.fragment_offset[pi + 1], a->second)
+             != search_annotations.begin() + lib.fragment_offset[pi + 1];
+        }
+      };
+      ScoringReader reader(lib, annotation_ids, search_annotations);
+      visitAnyLibrary(scoring_pqp, reader, log);
+    }
+    for (auto& p : lib.precursors)
+    {
+      double maximum = 0.0;
+      for (std::size_t s = 0; s < p.scoring_count; ++s) maximum = std::max(maximum, p.scoring_library[s]);
+      for (std::size_t s = 0; s < p.scoring_count; ++s) p.scoring_library[s] /= std::max(maximum, 1e-12);
     }
     return lib;
   }
@@ -335,7 +514,18 @@ namespace OpenMS::OpenDIA
     const auto t_run = std::chrono::steady_clock::now();
 
     // 1. Calibration (uncalibrated library).
-    OpenDIA::Library targeted = lib.search;
+    const auto describe = [&lib](std::uint32_t pi, CalibrationPrecursor& out)
+    {
+      if (pi == UINT32_MAX || pi >= lib.precursors.size()) return false;
+      const auto& p = lib.precursors[pi];
+      out.id = p.id;
+      out.precursor_mz = p.mz;
+      out.library_rt = p.library_rt;
+      out.library_im = p.library_im;
+      out.is_decoy = p.decoy;
+      out.fragments = topFragments(lib, pi, 1.0, out.fragment_mz, out.library_intensity);
+      return out.fragments != 0;
+    };
     std::vector<std::pair<std::string, double>> anchors;  // used anchors: precursor id, run RT
     {
       CalibrationOptions copt = options_.calibration;
@@ -344,7 +534,7 @@ namespace OpenMS::OpenDIA
       std::size_t passes = 0;
       while (!calibrated)
       {
-        CalibrationCollector collector(targeted, lib.traml_ids, copt, window);
+        CalibrationCollector collector(lib.calibration_pairs, describe, copt, window);
         collector.setThreads(options_.threads);
         collector.setIonMobilityArrayAsVSSC(options_.im_array_as_vssc);
         const std::string io = readSpectra(path, collector, {2});
@@ -386,7 +576,7 @@ namespace OpenMS::OpenDIA
         " seconds=" + std::to_string(seconds(t_run)));
 
     // Steps 2-6.
-    searchAndScore_(path, result, targeted, anchors, {}, cal.tolerance_s, say, t_run);
+    searchAndScore_(path, result, anchors, {}, cal.tolerance_s, say, t_run);
     if (!options_.rt_refine) return result;
 
     // Per-run ridge RT correction from the first pass's own q <= 0.01 target IDs, then a
@@ -407,7 +597,7 @@ namespace OpenMS::OpenDIA
       if (p.decoy || !p.has_library_rt || best[pi] == UINT32_MAX || !(result.windows[best[pi]].q_value <= 0.01)) continue;
       train.push_back(pi);
       y.push_back(result.windows[best[pi]].peak.rt_apex - cal.map(p.library_rt));
-      folds.push_back(static_cast<std::uint32_t>(CrossFitScorer::fnv1a(p.family) % 5));
+      folds.push_back(p.rt_fold);
     }
     const auto refined = refineRT_(train, y, folds, cal.tolerance_s, "RT refine", say);
     if (refined.first.empty()) return result;
@@ -415,8 +605,7 @@ namespace OpenMS::OpenDIA
     std::vector<RunWindow>().swap(result.windows);
     std::vector<float>().swap(result.features);
     result.feature_names.clear();
-    OpenDIA::Library second = lib.search;
-    searchAndScore_(path, result, second, anchors, refined.first, refined.second, say, t_run);
+    searchAndScore_(path, result, anchors, refined.first, refined.second, say, t_run);
     return result;
   }
 
@@ -430,20 +619,30 @@ namespace OpenMS::OpenDIA
       say(label + ": skipped (" + std::to_string(train.size()) + " training IDs)");
       return {};
     }
-    std::vector<std::string> sequences;
-    sequences.reserve(lib.precursors.size());
-    for (const auto& p : lib.precursors) sequences.push_back(p.sequence);
-    const RTRefineModel model(sequences);
+    const RTRefineModel model(lib.precursors.size(), [&lib](std::size_t i) -> const std::string& { return lib.precursors[i].sequence; });
     const std::size_t dim = model.dimension();
     std::vector<double> x;
-    x.reserve(lib.precursors.size() * dim);
-    for (const auto& p : lib.precursors)
+    x.reserve(train.size() * dim);
+    std::vector<std::size_t> dense_train;
+    dense_train.reserve(train.size());
+    // Keep training order unchanged so every floating-point accumulation is identical.
+    for (const auto i : train)
     {
+      const auto& p = lib.precursors[i];
       const auto f = model.features(p.sequence, p.charge, p.mz);
       x.insert(x.end(), f.begin(), f.end());
+      dense_train.push_back(dense_train.size());
     }
-    const auto refine = fitRTRefine(x, dim, train, y, folds);
+    auto refine = fitRTRefine(x, dim, dense_train, y, folds);
     std::vector<double>().swap(x);
+    // Predict the full library with only one feature row resident at a time.
+    refine.correction.resize(lib.precursors.size());
+    for (std::size_t i = 0; i < lib.precursors.size(); ++i)
+    {
+      const auto& p = lib.precursors[i];
+      const auto f = model.features(p.sequence, p.charge, p.mz);
+      refine.correction[i] = refine.fit.predict(f.data());
+    }
     const auto p95 = [](std::vector<double> v)
     {
       for (auto& e : v) e = std::abs(e);
@@ -462,10 +661,10 @@ namespace OpenMS::OpenDIA
     say(label + ": training IDs=" + std::to_string(train.size()) + ", alpha=" + std::to_string(refine.alpha) + ", p95 |residual| base=" +
         std::to_string(base) + " s refined=" + std::to_string(refined) + " s, rt_tolerance_s " + std::to_string(tolerance_s) + " -> " +
         std::to_string(new_tol));
-    return {refine.correction, new_tol};
+    return {std::move(refine.correction), new_tol};
   }
 
-  void RunAnalysis::searchAndScore_(const std::string& path, RunResult& result, OpenDIA::Library& targeted,
+  void RunAnalysis::searchAndScore_(const std::string& path, RunResult& result,
                                     const std::vector<std::pair<std::string, double>>& anchors, const std::vector<double>& rt_correction,
                                     double rt_tolerance_s, const Log& say, std::chrono::steady_clock::time_point t_run)
   {
@@ -474,17 +673,6 @@ namespace OpenMS::OpenDIA
 
     // 2. Search with the calibrated library (RTs shifted by the per-precursor correction when given).
     const auto t_search = std::chrono::steady_clock::now();
-    for (auto& c : targeted.compounds)
-    {
-      if (std::isfinite(c.rt)) c.rt = cal.map(c.rt);
-      if (!rt_correction.empty() && std::isfinite(c.rt))
-      {
-        const auto it = lib.index.find(c.id);
-        if (it != lib.index.end()) c.rt += rt_correction[it->second];
-      }
-      if (cal.has_im && std::isfinite(c.drift_time) && c.drift_time > 0.0) c.drift_time = cal.im_intercept + cal.im_slope * c.drift_time;
-    }
-    for (auto& t : targeted.transitions) t.product_mz *= 1.0 + cal.ms2_offset_ppm * 1e-6;
     std::vector<std::uint32_t> search_to_library;
     std::vector<SearchCandidate> candidates;
     std::string search_io;
@@ -499,14 +687,14 @@ namespace OpenMS::OpenDIA
       so.picker.boundary_half_widths = cal.boundary_half_widths;
       so.min_transitions = options_.min_transitions;
       // Candidates are kept in memory.
-      StreamSearch search(makeQueries(targeted), so);
+      StreamSearch search(makeQueries(lib, cal, rt_correction), so);
       search_io = readSpectra(path, search, {2});
       const auto t_finish = std::chrono::steady_clock::now();
       search.finish();
       search_io += " finish_s=" + std::to_string(seconds(t_finish));
       candidates = search.candidates();
       search_to_library.resize(search.precursorCount());
-      for (std::size_t p = 0; p < search.precursorCount(); ++p) search_to_library[p] = lib.index.at(search.precursorId(p));
+      for (std::size_t p = 0; p < search.precursorCount(); ++p) search_to_library[p] = lib.find(search.precursorId(p));
     }
     say("Search: candidates=" + std::to_string(candidates.size()) + " seconds=" + std::to_string(seconds(t_search)) + search_io);
 
@@ -550,11 +738,11 @@ namespace OpenMS::OpenDIA
     std::vector<double> calibrated_im(lib.precursors.size(), 0.0);
     if (cal.has_im)
     {
-      for (const auto& c : lib.search.compounds)
+      for (std::size_t pi = 0; pi < lib.precursors.size(); ++pi)
       {
-        const auto it = lib.index.find(c.id);
-        if (it != lib.index.end() && std::isfinite(c.drift_time) && c.drift_time > 0.0)
-          calibrated_im[it->second] = cal.im_intercept + cal.im_slope * c.drift_time;
+        const auto& p = lib.precursors[pi];
+        if (std::isfinite(p.library_im) && p.library_im > 0.0)
+          calibrated_im[pi] = cal.im_intercept + cal.im_slope * p.library_im;
       }
     }
     for (std::size_t l = 0; l < local_precursors.size(); ++l)
@@ -574,7 +762,32 @@ namespace OpenMS::OpenDIA
       }
     }
     std::vector<InterferenceResolver::Window> grid_windows(n);
-    std::vector<TraceWindow> trace_windows(n);
+    std::vector<double> trace_apex(n);
+    std::vector<std::uint32_t> trace_precursor_of(n);
+    std::vector<TracePrecursor> trace_precursors(local_precursors.size());
+    for (std::size_t l = 0; l < local_precursors.size(); ++l)
+    {
+      const auto pi = local_precursors[l];
+      const auto& p = lib.precursors[pi];
+      if (!p.trace_safe) invalid("Invalid candidate identity or group", std::string(p.id));
+      auto& t = trace_precursors[l];
+      t.precursor_mz = p.mz;
+      t.precursor_im = p.library_im;
+      if (cal.has_im && std::isfinite(t.precursor_im) && t.precursor_im > 0.0)
+        t.precursor_im = cal.im_intercept + cal.im_slope * t.precursor_im;
+      t.charge = p.charge;
+      t.is_decoy = p.decoy;
+      const double factor = 1.0 + cal.ms2_offset_ppm * 1e-6;
+      for (auto f = lib.fragment_offset[pi]; f < lib.fragment_offset[pi + 1]; ++f)
+      {
+        const auto& fragment = lib.fragments[f];
+        const double mz = fragment.product_mz * factor;
+        if (!std::isfinite(mz) || mz <= 0.0 || !std::isfinite(p.mz) || p.mz <= 0.0 ||
+            !std::isfinite(fragment.library_intensity) || fragment.library_intensity < 0.0)
+          invalid("Invalid or inconsistent library fragment", std::string(p.id));
+      }
+      topFragments(lib, pi, factor, t.fragment_mz, t.library_intensity);
+    }
     for (std::size_t i = 0; i < n; ++i)
     {
       const auto& w = windows[i];
@@ -582,18 +795,15 @@ namespace OpenMS::OpenDIA
       grid_windows[i].rt_start = w.peak.rt_start;
       grid_windows[i].rt_apex = w.peak.rt_apex;
       grid_windows[i].rt_end = w.peak.rt_end;
-      trace_windows[i] = {std::to_string(w.candidate), lib.precursors[w.precursor].id, lib.precursors[w.precursor].family, -1, w.peak.rt_apex};
+      trace_apex[i] = w.peak.rt_apex;
+      trace_precursor_of[i] = local_of[w.precursor];
     }
     FragmentGridCollector grids(grid_precursors, grid_windows, options_.grid_half_width_s, options_.grid_extraction_ppm);
     // With a mobility calibration the 12-fragment grid (and with it the interference inputs) is extracted within the
     // calibrated 1/K0 tolerance of each precursor, as the search is; without one it pools all points as before.
     if (cal.has_im && cal.im_tolerance > 0.0) grids.enableIonMobility(cal.im_tolerance, options_.im_array_as_vssc);
     grids.setThreads(options_.threads);
-    // The 6-fragment tensor uses the calibrated search library (the calibrated coordinates):
-    // fragment m/z shifted by the ppm offset and precursor 1/K0 mapped by the calibrated line. That is exactly
-    // `targeted` after step 2 (it differs from it only in the mapped RT, which TraceCollector does not read), so it is
-    // reused instead of a further copy of the library.
-    OpenDIA::Library& trace_library = targeted;
+    // The 6-fragment tensor uses calibrated m/z and precursor 1/K0, resolved above without a Library copy.
     // Streaming tensors: a window's 6-fragment tensor is held only while its RT range is being read. The tensor-derived
     // features are computed when the window closes and the tensor is released, so tensor memory follows the windows
     // co-eluting at one time.
@@ -625,18 +835,18 @@ namespace OpenMS::OpenDIA
         }
       }
     };
-    TraceCollector traces(std::move(trace_windows), trace_library, 0.02, options_.grid_half_width_s, TRACE_IM_HALF_WIDTH, n, options_.trace_tensor_gb << 30,
-                          on_close);
+    TraceCollector traces(trace_apex, trace_precursor_of, trace_precursors, 0.02, options_.grid_half_width_s, TRACE_IM_HALF_WIDTH,
+                          n, options_.trace_tensor_gb << 30, on_close);
+    std::vector<double>().swap(trace_apex);
+    std::vector<std::uint32_t>().swap(trace_precursor_of);
+    std::vector<TracePrecursor>().swap(trace_precursors);
     traces.setIonMobilityArrayAsVSSC(options_.im_array_as_vssc);
     traces.setFragmentTolerancePpm(options_.trace_tolerance_ppm);
     traces.setThreads(options_.threads);
     traces.enableEvidence(20.0, options_.core_half_width_s);
-    traces.enableByIonCounts(trace_library, options_.byion_ppm, options_.byion_intensity_min);
-    // The collector has copied what it needs (fragments, sequences' ions), so the calibrated library copy is dead:
-    // release it before the extraction pass, where the run's memory peaks.
-    targeted = OpenDIA::Library();
-    // Candidate identity strings are not read by the workflow after setup.
-    traces.releaseWindowIds();
+    traces.enableByIonCounts([&](std::size_t i) -> const std::string& { return lib.precursors[windows[i].precursor].sequence; },
+                             [&](std::size_t i) -> std::uint64_t { return windows[i].precursor; },
+                             options_.byion_ppm, options_.byion_intensity_min);
     std::string extract_io;
     {
       TeeConsumer both(grids, traces);
@@ -707,7 +917,7 @@ namespace OpenMS::OpenDIA
       input.pair.push_back(dense_pair[p.pair]);
       input.decoy.push_back(p.decoy);
       input.fold.push_back(p.fold);
-      input.pair_hash.push_back(CrossFitScorer::fnv1a("v" + p.pair_key));
+      input.pair_hash.push_back(p.pair_seed);
     }
     // Seeds: the window nearest each used anchor (|apex - anchor run RT| <= anchor_apex_s) is positive; the decoy partner's
     // best search window (most supporting fragments, then most scans, then lowest row) and a sample of other decoy windows
@@ -734,20 +944,18 @@ namespace OpenMS::OpenDIA
       auto& aw = anchor_window[w.precursor];
       if (dt <= options_.anchor_apex_s && (aw == UINT32_MAX || dt < std::abs(windows[aw].peak.rt_apex - a->second))) aw = i;
     }
-    std::unordered_map<std::string, std::uint32_t> by_traml;
-    for (std::uint32_t pi = 0; pi < lib.precursors.size(); ++pi) by_traml.emplace(lib.precursors[pi].traml_id, pi);
     std::unordered_set<std::uint32_t> negative_rows;
     std::size_t positives = 0;
     for (std::uint32_t pi = 0; pi < lib.precursors.size(); ++pi)
     {
       if (anchor_window[pi] == UINT32_MAX) continue;
       const auto& p = lib.precursors[pi];
-      input.seeds.push_back({anchor_window[pi], true, CrossFitScorer::fnv1a("v" + p.family)});
+      input.seeds.push_back({anchor_window[pi], true, p.family_seed});
       ++positives;
-      const auto partner = by_traml.find("DECOY_" + p.traml_id);
-      if (partner != by_traml.end() && best_of[partner->second] != UINT32_MAX && negative_rows.insert(best_of[partner->second]).second)
+      const auto partner = p.decoy_partner;
+      if (partner != UINT32_MAX && best_of[partner] != UINT32_MAX && negative_rows.insert(best_of[partner]).second)
       {
-        input.seeds.push_back({best_of[partner->second], false, CrossFitScorer::fnv1a("v" + lib.precursors[partner->second].family)});
+        input.seeds.push_back({best_of[partner], false, lib.precursors[partner].family_seed});
       }
     }
     {
@@ -768,7 +976,7 @@ namespace OpenMS::OpenDIA
       {
         std::swap(decoys[k], decoys[k + next() % (decoys.size() - k)]);
         const auto& p = lib.precursors[windows[decoys[k]].precursor];
-        input.seeds.push_back({decoys[k], false, CrossFitScorer::fnv1a("v" + p.family)});
+        input.seeds.push_back({decoys[k], false, p.family_seed});
       }
     }
     say("Seeds: positives=" + std::to_string(positives) + " negatives=" + std::to_string(input.seeds.size() - positives));
@@ -778,25 +986,15 @@ namespace OpenMS::OpenDIA
     auto scored = CrossFitScorer::run(input, so, [&](const std::string& l) { say("Scorer " + l); });
     {
       // Charge-state sibling rescoring (PLAN_SIB): siblings share the family fold, so first-pass scores are out-of-fold for each other.
-      std::unordered_map<std::string, std::uint32_t> group_of;
-      std::vector<std::uint32_t> precursor_group(lib.precursors.size()), group_precursors;
-      for (std::uint32_t pi = 0; pi < lib.precursors.size(); ++pi)
-      {
-        const auto& p = lib.precursors[pi];
-        const auto it = group_of.try_emplace((p.decoy ? "D" : "T") + p.sequence, static_cast<std::uint32_t>(group_of.size())).first;
-        if (it->second == group_precursors.size()) group_precursors.push_back(0);
-        ++group_precursors[it->second];
-        precursor_group[pi] = it->second;
-      }
       std::vector<std::uint32_t> group(n), prec(n);
       std::vector<double> rt(n);
       for (std::size_t i = 0; i < n; ++i)
       {
         prec[i] = windows[i].precursor;
-        group[i] = precursor_group[prec[i]];
+        group[i] = lib.precursors[prec[i]].sibling_group;
         rt[i] = windows[i].peak.rt_apex;
       }
-      const auto sib = stage2SiblingFeatures(group, prec, rt, scored.score, group_precursors, CrossFitScorer::NOT_KEPT);
+      const auto sib = stage2SiblingFeatures(group, prec, rt, scored.score, lib.sibling_group_sizes, CrossFitScorer::NOT_KEPT);
       constexpr std::size_t S = STAGE2_SIBLING_FEATURES;
       const std::size_t d2 = d + S;
       std::vector<float> wide(n * d2);

@@ -323,6 +323,85 @@ int main(int argc, char** argv)
     late.consumeSpectrum(first_scan);
     rejects([&] { late.consumeSpectrum(back); });
   }
+  // Resolved precursor indices are not window indices: reorder precursors and repeat one at a different apex.
+  for (const bool mobility : {false, true})
+  {
+    auto lib = library;
+    for (auto& t : lib.transitions) { t.setDecoy(false); }
+    lib.compounds[0].sequence = "PEPTIDEK";
+    lib.compounds[0].charge = 2;
+    lib.compounds[0].drift_time = mobility ? 1.0 : -1.0;
+    auto decoy = lib.compounds[0];
+    decoy.id = "decoy";
+    decoy.sequence = "EDITPEPK";
+    lib.compounds.push_back(decoy);
+    for (auto t : library.transitions)
+    {
+      t.peptide_ref = "decoy";
+      t.product_mz += 10.0;
+      t.setDecoy(true);
+      lib.transitions.push_back(t);
+    }
+    const std::vector<OpenDIA::TraceWindow> resolved_windows = {
+      {"r0", "target", "g", -1, 10}, {"r1", "decoy", "g", 0, 12}, {"r2", "target", "g", -1, 14}};
+    std::vector<OpenDIA::TracePrecursor> precursors(2);
+    for (std::size_t p = 0; p < precursors.size(); ++p)
+    {
+      auto& precursor = precursors[p];
+      precursor.precursor_mz = 500;
+      precursor.precursor_im = mobility ? 1.0 : -1.0;
+      precursor.charge = 2;
+      precursor.is_decoy = p == 0;
+      precursor.fragment_mz = {p == 0 ? 210.0 : 200.0, p == 0 ? 110.0 : 100.0};
+      precursor.library_intensity = {3, 1};
+    }
+    const std::vector<std::uint32_t> precursor_of = {1, 0, 1};
+    OpenDIA::TraceCollector legacy(resolved_windows, lib);
+    OpenDIA::TraceCollector indexed({10, 12, 14}, precursor_of, precursors, 0.02, 15, 0.03, 3,
+                                    OpenDIA::TraceCollector::DEFAULT_MAX_TENSOR_BYTES);
+    legacy.enableEvidence(20, 4);
+    indexed.enableEvidence(20, 4);
+    legacy.enableByIonCounts(lib, 10, 300);
+    rejects([&] { indexed.enableByIonCounts(lib, 10, 300); });
+    std::size_t sequence_calls = 0, key_calls = 0;
+    rejects([&] { indexed.enableByIonCounts([&](std::size_t) -> const std::string& { return lib.compounds[0].sequence; },
+                                            [](std::size_t) { return std::uint64_t(0); }, 0, 300); });
+    indexed.enableByIonCounts([&](std::size_t w) -> const std::string&
+    {
+      ++sequence_calls;
+      return lib.compounds[precursor_of[w] == 1 ? 0 : 1].sequence;
+    }, [&](std::size_t w) { ++key_calls; return std::uint64_t(precursor_of[w]) + (std::uint64_t(1) << 40); }, 10, 300);
+    require(key_calls == resolved_windows.size(), "Callback key must be evaluated once per window.");
+    require(sequence_calls == 2, "Callback must generate ions once per distinct 64-bit precursor key.");
+    for (double rt : {8.0, 10.0, 12.0, 14.0, 16.0})
+    {
+      auto a = scan(rt, mobility);
+      a.emplace_back(227.1026, 1000);
+      a.emplace_back(391.1823, 900);
+      if (mobility)
+      {
+        a.getFloatDataArrays()[0].push_back(1.0f);
+        a.getFloatDataArrays()[0].push_back(1.0f);
+      }
+      auto b = a;
+      legacy.consumeSpectrum(a);
+      indexed.consumeSpectrum(b);
+    }
+    require(indexed.imBins() == legacy.imBins() && indexed.intensities() == legacy.intensities(),
+            "Indexed traces differ from Library traces.");
+    for (std::size_t w = 0; w < resolved_windows.size(); ++w)
+    {
+      require(indexed.fragmentMZ(w) == legacy.fragmentMZ(w) && indexed.libraryIntensities(w) == legacy.libraryIntensities(w) &&
+              indexed.isDecoy(w) == legacy.isDecoy(w) && indexed.hasIM(w) == legacy.hasIM(w), "Indexed precursor metadata differs.");
+      require(indexed.byIonCounts(w) == legacy.byIonCounts(w) &&
+              indexed.evidence(w).byion_apex_dt == legacy.evidence(w).byion_apex_dt, "Callback b/y counts differ.");
+    }
+    require(indexed.byIonCounts(0)[0] > 0 && indexed.byIonCounts(0)[1] > 0, "Equivalence fixture must contain matched b/y ions.");
+    rejects([&] { OpenDIA::TraceCollector invalid({10}, {}, precursors, 0.02, 15, 0.03, 3, 100000); });
+    rejects([&] { OpenDIA::TraceCollector invalid({10}, {2}, precursors, 0.02, 15, 0.03, 3, 100000); });
+    rejects([&] { OpenDIA::TraceCollector invalid({-1}, {0}, precursors, 0.02, 15, 0.03, 3, 100000); });
+  }
+
   // Retain the tiny .npy/metadata fixture for a real NumPy interoperability check.
   return 0;
 }

@@ -13,6 +13,7 @@
 #include <functional>
 #include <limits>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -125,4 +126,81 @@ namespace OpenMS::OpenDIA
 
   /// The Parquet copy readAnyLibrary uses for the PQP @p pqp: <directory>/<stem>.opendia.parquet.
   std::string parquetCachePath(const std::string& pqp);
+
+  /// One library fragment as streamed by visitParquetLibrary / visitAnyLibrary (the fields of LibraryTransition).
+  struct FragmentView
+  {
+    std::string_view precursor_id;
+    std::string_view transition_id;
+    std::string_view fragment_type;
+    double precursor_mz = 0.0;
+    double product_mz = 0.0;
+    double library_intensity = 0.0;
+    double precursor_im = -1.0;
+    std::int8_t fragment_charge = 0;
+    std::int16_t fragment_nr = -1;
+    bool decoy = false;
+  };
+
+  /// The precursor of a streamed fragment (the fields its LibraryCompound gets when this is its first fragment).
+  struct PrecursorView
+  {
+    std::string_view id;
+    std::string_view sequence;
+    double rt = 0.0;
+    double drift_time = -1.0;
+    int charge = 0;
+    const std::vector<std::string_view>* proteins = nullptr;  ///< Never null.
+  };
+
+  /// getAnnotation() of a fragment given by its fields.
+  std::string fragmentAnnotation(std::string_view type, std::int16_t ordinal, std::int8_t charge);
+
+  /**
+    @brief Receives the fragments of a library one at a time, in library order, without the library being held in
+    memory (visitParquetLibrary, visitAnyLibrary).
+  */
+  class LibraryVisitor
+  {
+  public:
+    virtual ~LibraryVisitor() = default;
+    /// Number of fragments that follow, if known (a capacity hint).
+    virtual void expect(std::size_t /*fragments*/) {}
+    /// One fragment with its precursor. The views are only valid during the call.
+    virtual void fragment(const FragmentView& fragment, const PrecursorView& precursor) = 0;
+    /// Forget every fragment received so far (a Parquet copy that fails while being read is replaced by its PQP).
+    virtual void reset() = 0;
+  };
+
+  /// Builds a Library from a stream of fragments (readParquetLibrary, readAnyLibrary).
+  class LibraryBuilder final : public LibraryVisitor
+  {
+  public:
+    Library library;  ///< traml_ids are set by the caller.
+    void expect(std::size_t fragments) override;
+    void fragment(const FragmentView& fragment, const PrecursorView& precursor) override;
+    void reset() override;
+
+  private:
+    std::unordered_map<std::string, std::uint32_t> seen_;
+  };
+
+  /// Stream @p library into @p visitor in its fragment order (each fragment with the compound of its precursor).
+  void visitLibrary(const Library& library, LibraryVisitor& visitor);
+
+  /**
+    @brief Stream an OpenDIA Parquet library into @p visitor (one row group in memory at a time).
+    @return Library::traml_ids.
+    @throws Exception::FileNotReadable, Exception::InvalidValue As readParquetLibrary.
+  */
+  std::vector<std::pair<std::string, std::string>> visitParquetLibrary(const std::string& path, LibraryVisitor& visitor);
+
+  /**
+    @brief readAnyLibrary, streamed: the same fragments in the same order, and the same Parquet copy decisions. A PQP
+    without a usable copy is read (and converted) in full first; a Parquet library or copy is streamed.
+    @return Library::traml_ids.
+  */
+  std::vector<std::pair<std::string, std::string>> visitAnyLibrary(const std::string& path, LibraryVisitor& visitor,
+                                                                   const std::function<void(const std::string&)>& log = {},
+                                                                   std::size_t cache_min_transitions = 100000);
 }

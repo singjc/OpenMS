@@ -123,15 +123,17 @@ namespace OpenMS::OpenDIA
     return "unknown";
   }
 
-  std::string LibraryTransition::getAnnotation() const
+  std::string fragmentAnnotation(std::string_view type, std::int16_t ordinal, std::int8_t charge)
   {
-    if (fragment_type.empty()) return "";
-    if (fragment_type == "prec") return "prec";
-    std::string result = fragment_type;
-    if (fragment_nr >= 0) result += std::to_string(fragment_nr);
-    if (fragment_charge > 0) result += "^" + std::to_string(static_cast<int>(fragment_charge));
+    if (type.empty()) return "";
+    if (type == "prec") return "prec";
+    std::string result(type);
+    if (ordinal >= 0) result += std::to_string(ordinal);
+    if (charge > 0) result += "^" + std::to_string(static_cast<int>(charge));
     return result;
   }
+
+  std::string LibraryTransition::getAnnotation() const { return fragmentAnnotation(fragment_type, fragment_nr, fragment_charge); }
 
   Library readLibrary(const std::string& pqp)
   {
@@ -278,6 +280,86 @@ namespace OpenMS::OpenDIA
       lib.traml_ids.emplace_back(std::move(id), std::move(traml));
     }
     return lib;
+  }
+
+  void LibraryBuilder::expect(std::size_t fragments)
+  {
+    library.transitions.reserve(fragments);
+    library.compounds.reserve(fragments / 6 + 1);
+  }
+
+  void LibraryBuilder::fragment(const FragmentView& f, const PrecursorView& p)
+  {
+    LibraryTransition t;
+    t.transition_name = f.transition_id;
+    t.peptide_ref = f.precursor_id;
+    t.library_intensity = f.library_intensity;
+    t.product_mz = f.product_mz;
+    t.precursor_mz = f.precursor_mz;
+    t.precursor_im = f.precursor_im;
+    t.fragment_charge = f.fragment_charge;
+    t.fragment_nr = f.fragment_nr;
+    t.fragment_type = f.fragment_type;
+    t.decoy = f.decoy;
+    if (seen_.try_emplace(t.peptide_ref, static_cast<std::uint32_t>(library.compounds.size())).second)
+    {
+      LibraryCompound c;
+      c.id = p.id;
+      c.rt = p.rt;
+      c.drift_time = p.drift_time;
+      c.charge = p.charge;
+      c.sequence = p.sequence;
+      c.protein_refs.assign(p.proteins->begin(), p.proteins->end());
+      library.compounds.push_back(std::move(c));
+    }
+    library.transitions.push_back(std::move(t));
+  }
+
+  void LibraryBuilder::reset()
+  {
+    library = Library();
+    seen_.clear();
+  }
+
+  void visitLibrary(const Library& library, LibraryVisitor& visitor)
+  {
+    std::unordered_map<std::string_view, std::uint32_t> compound;
+    compound.reserve(library.compounds.size());
+    for (std::size_t i = 0; i < library.compounds.size(); ++i) compound.try_emplace(library.compounds[i].id, static_cast<std::uint32_t>(i));
+    visitor.expect(library.transitions.size());
+    std::vector<std::string_view> proteins;
+    std::uint32_t proteins_of = UINT32_MAX;
+    for (const auto& t : library.transitions)
+    {
+      const auto it = compound.find(t.peptide_ref);
+      if (it == compound.end())
+        throw Exception::InvalidValue(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION, "Fragment of a precursor without compound", t.peptide_ref);
+      const LibraryCompound& c = library.compounds[it->second];
+      if (it->second != proteins_of)
+      {
+        proteins.assign(c.protein_refs.begin(), c.protein_refs.end());
+        proteins_of = it->second;
+      }
+      FragmentView f;
+      f.precursor_id = t.peptide_ref;
+      f.transition_id = t.transition_name;
+      f.fragment_type = t.fragment_type;
+      f.precursor_mz = t.precursor_mz;
+      f.product_mz = t.product_mz;
+      f.library_intensity = t.library_intensity;
+      f.precursor_im = t.precursor_im;
+      f.fragment_charge = t.fragment_charge;
+      f.fragment_nr = t.fragment_nr;
+      f.decoy = t.decoy;
+      PrecursorView p;
+      p.id = c.id;
+      p.sequence = c.sequence;
+      p.rt = c.rt;
+      p.drift_time = c.drift_time;
+      p.charge = c.charge;
+      p.proteins = &proteins;
+      visitor.fragment(f, p);
+    }
   }
 
   std::unordered_map<std::string, std::string> traMLIDMap(const std::vector<std::pair<std::string, std::string>>& traml_ids)

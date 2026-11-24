@@ -353,9 +353,8 @@ protected:
       {
         if (h.q > q_cut || global_q[p] > q_cut) continue;
         const auto& w = results[h.run].windows[h.window];
-        std::string proteins;
-        for (const auto& s : pre.proteins) proteins += (proteins.empty() ? "" : ";") + s;
-        std::string row = stem_(inputs[h.run]) + '\t' + pre.id + '\t' + pre.sequence + '\t' + std::to_string(pre.charge) + '\t' + proteins;
+        const auto& proteins = library.protein_sets[pre.proteins];
+        std::string row = stem_(inputs[h.run]) + '\t' + std::string(pre.id) + '\t' + pre.sequence + '\t' + std::to_string(pre.charge) + '\t' + proteins;
         for (double v : {w.peak.rt_apex, w.peak.rt_start, w.peak.rt_end, w.peak.area, static_cast<double>(w.score), w.q_value, global_q[p]}) number_(row, v);
         all << row << '\n';
         ++rows;
@@ -378,7 +377,7 @@ protected:
     {
       if (!(w.score > OpenDIA::CrossFitScorer::NOT_KEPT)) continue;
       const auto& p = library.precursors[w.precursor];
-      std::string row = run + '\t' + std::to_string(w.candidate) + '\t' + p.id + '\t' + (p.decoy ? "1" : "0") + '\t' + p.sequence + '\t' + std::to_string(p.charge);
+      std::string row = run + '\t' + std::to_string(w.candidate) + '\t' + std::string(p.id) + '\t' + (p.decoy ? "1" : "0") + '\t' + p.sequence + '\t' + std::to_string(p.charge);
       for (double v : {w.peak.rt_apex, w.peak.rt_start, w.peak.rt_end, w.peak.area}) number_(row, v);
       row += '\t' + std::to_string(w.peak.transition_support);
       for (double v : {static_cast<double>(w.score), w.q_value}) number_(row, v);
@@ -400,7 +399,7 @@ protected:
     {
       const auto& w = result.windows[i];
       const auto& p = library.precursors[w.precursor];
-      std::string row = std::to_string(w.candidate) + '\t' + p.id + '\t' + (p.decoy ? "1" : "0") + '\t' + std::to_string(p.fold);
+      std::string row = std::to_string(w.candidate) + '\t' + std::string(p.id) + '\t' + (p.decoy ? "1" : "0") + '\t' + std::to_string(p.fold);
       number_(row, w.peak.rt_apex);
       for (std::size_t k = 0; k < d; ++k) number_(row, result.features[i * d + k]);
       number_(row, w.score);

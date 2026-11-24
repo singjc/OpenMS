@@ -30,6 +30,18 @@ namespace OpenMS::OpenDIA
     double apex_rt = 0.0;
   };
 
+  /// The library side of one candidate window, as TraceCollector's index-based constructor reads it.
+  struct TracePrecursor
+  {
+    double precursor_mz = 0.0;
+    double precursor_im = -1.0;  ///< Calibrated 1/K0; not finite or not positive = none.
+    int charge = 0;
+    bool is_decoy = false;
+    /// The six most intense fragments (ties: lower m/z first, then library order); 0 = padding.
+    std::array<double, 6> fragment_mz{};
+    std::array<double, 6> library_intensity{};
+  };
+
   /**
     @brief Per-window extraction evidence for the scorer features.
 
@@ -94,6 +106,20 @@ namespace OpenMS::OpenDIA
                    double mz_tolerance = 0.02, double rt_half_width = 15.0,
                    double im_half_width = 0.03, std::size_t max_samples = 16384,
                    std::size_t max_tensor_bytes = DEFAULT_MAX_TENSOR_BYTES, CloseCallback on_close = {});
+
+    /**
+      @brief The same collector from already resolved windows: @p apex_rt and @p precursor_of (index into @p precursors)
+      per window, no identities (window() is unavailable) and no Library. The library-side checks of the Library
+      constructor (identity text, fragment values, decoy agreement) are the caller's.
+    */
+    TraceCollector(const std::vector<double>& apex_rt, const std::vector<std::uint32_t>& precursor_of,
+                   const std::vector<TracePrecursor>& precursors, double mz_tolerance, double rt_half_width,
+                   double im_half_width, std::size_t max_samples, std::size_t max_tensor_bytes, CloseCallback on_close = {});
+
+    /// enableByIonCounts() with the modified sequence of every window given by @p sequence (window index); ions are
+    /// generated once per @p precursor_key.
+    void enableByIonCounts(const std::function<const std::string&(std::size_t)>& sequence,
+                           const std::function<std::uint64_t(std::size_t)>& precursor_key, double ppm, double intensity_min);
 
     void consumeSpectrum(MSSpectrum& spectrum) override;
     void consumeChromatogram(MSChromatogram&) override;
@@ -180,6 +206,8 @@ namespace OpenMS::OpenDIA
     std::array<std::uint16_t, 2> byIonCounts(std::size_t i) const;
 
   private:
+    void setup_(std::size_t max_samples, std::size_t max_tensor_bytes);
+    void ionRange_(const std::string& sequence, const std::string& id, std::array<std::uint32_t, 3>& range);
     struct Sample
     {
       double apex_rt = 0.0;

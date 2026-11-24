@@ -5,6 +5,15 @@
 # $Authors: Justin Sing $
 # --------------------------------------------------------------------------
 
+add_executable(OpenDIAWorkflow_test OpenDIAWorkflow_test.cpp)
+target_link_libraries(OpenDIAWorkflow_test PRIVATE OpenDIA_impl)
+if(EXISTS "${CMAKE_SOURCE_DIR}/src/tests/topp/TargetedFileConverter_10_input.pqp")
+  add_test(NAME OpenDIAWorkflow_test COMMAND OpenDIAWorkflow_test ${CMAKE_CURRENT_BINARY_DIR}
+    ${CMAKE_SOURCE_DIR}/src/tests/topp/TargetedFileConverter_10_input.pqp)
+else()
+  add_test(NAME OpenDIAWorkflow_test COMMAND OpenDIAWorkflow_test ${CMAKE_CURRENT_BINARY_DIR})
+endif()
+
 add_executable(OpenDIASearch_test OpenDIASearch_test.cpp)
 target_link_libraries(OpenDIASearch_test PRIVATE OpenDIA_impl)
 add_test(NAME OpenDIASearch_test COMMAND OpenDIASearch_test)

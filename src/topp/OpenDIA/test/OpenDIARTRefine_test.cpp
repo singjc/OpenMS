@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <iostream>
 #include <random>
 #include <stdexcept>
@@ -24,6 +25,10 @@ namespace
     if (!condition) throw std::runtime_error(message);
   }
   bool near(double a, double b, double tol) { return std::abs(a - b) <= tol; }
+  bool sameBytes(const std::vector<double>& a, const std::vector<double>& b)
+  {
+    return a.size() == b.size() && (a.empty() || std::memcmp(a.data(), b.data(), a.size() * sizeof(double)) == 0);
+  }
 }
 
 int main()
@@ -92,6 +97,66 @@ int main()
     require(near(a.alpha, 0.01, 1e-12), "smallest alpha chosen on noise-free data");
     require(a.training == seqs.size() && a.correction.size() == seqs.size() && a.out_of_fold.size() == seqs.size(), "result sizes");
     for (std::size_t i = 0; i < seqs.size(); ++i) require(near(a.out_of_fold[i], ys[i], 0.1), "out-of-fold close");
+
+    // A shuffled, sparse training subset must preserve arithmetic order when packed densely.
+    // Include library-only tokens to ensure the vocabulary is still built from every row.
+    seqs.back() = ".(UniMod:1)WC(UniMod:4)M(UniMod:35)K";
+    const RTRefineModel full_model(seqs);
+    std::size_t callbacks = 0;
+    const RTRefineModel streamed_model(seqs.size(), [&](std::size_t i) -> const std::string&
+    {
+      require(i == callbacks++, "vocabulary callback visits rows in library order");
+      return seqs[i];
+    });
+    require(callbacks == seqs.size(), "vocabulary callback visits every row once");
+    require(full_model.vocabulary() == streamed_model.vocabulary() && full_model.alphabet() == streamed_model.alphabet(),
+            "callback vocabulary and alphabet identical");
+    const auto feature_row = [&](const RTRefineModel& m, std::size_t i)
+    {
+      return m.features(seqs[i], 1 + static_cast<int>(i % 5), 400.0 + static_cast<double>(i) / 7.0);
+    };
+    const std::size_t full_d = full_model.dimension();
+    std::vector<double> full_x;
+    for (std::size_t i = 0; i < seqs.size(); ++i)
+    {
+      const auto row = feature_row(full_model, i);
+      require(sameBytes(row, feature_row(streamed_model, i)), "callback features byte-identical");
+      full_x.insert(full_x.end(), row.begin(), row.end());
+    }
+    std::vector<std::size_t> sparse_rows;
+    for (std::size_t i = 0; i < seqs.size() - 1; i += 3) sparse_rows.push_back(i);
+    std::shuffle(sparse_rows.begin(), sparse_rows.end(), rng);
+    std::vector<double> packed_x, targets;
+    std::vector<std::size_t> dense_rows;
+    std::vector<std::uint32_t> sparse_folds;
+    for (const auto i : sparse_rows)
+    {
+      const auto row = feature_row(streamed_model, i);
+      packed_x.insert(packed_x.end(), row.begin(), row.end());
+      dense_rows.push_back(dense_rows.size());
+      targets.push_back(ys[i] + std::sin(static_cast<double>(i)));
+      sparse_folds.push_back(static_cast<std::uint32_t>(i % 5));
+    }
+    const auto full = fitRTRefine(full_x, full_d, sparse_rows, targets, sparse_folds);
+    const auto packed = fitRTRefine(packed_x, full_d, dense_rows, targets, sparse_folds);
+    require(std::memcmp(&full.alpha, &packed.alpha, sizeof(double)) == 0, "packed alpha byte-identical");
+    require(full.training == packed.training && packed.correction.size() == sparse_rows.size(), "packed matrix contains training rows only");
+    require(sameBytes(full.out_of_fold, packed.out_of_fold), "packed out-of-fold byte-identical");
+    require(sameBytes(full.fit.mean, packed.fit.mean) && sameBytes(full.fit.sd, packed.fit.sd) &&
+            sameBytes(full.fit.weights, packed.fit.weights) &&
+            std::memcmp(&full.fit.intercept, &packed.fit.intercept, sizeof(double)) == 0, "packed final fit byte-identical");
+    std::vector<double> predictions;
+    for (std::size_t i = 0; i < seqs.size(); ++i)
+    {
+      const auto row = feature_row(streamed_model, i);
+      predictions.push_back(packed.fit.predict(row.data()));
+    }
+    require(sameBytes(full.correction, predictions), "streamed full-library predictions byte-identical");
+    for (std::size_t r = 0; r < sparse_rows.size(); ++r)
+    {
+      require(std::memcmp(&packed.correction[r], &full.correction[sparse_rows[r]], sizeof(double)) == 0,
+              "packed training corrections byte-identical");
+    }
   }
   catch (const std::exception& e)
   {

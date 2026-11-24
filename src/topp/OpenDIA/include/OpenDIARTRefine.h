@@ -10,6 +10,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -31,6 +32,8 @@ namespace OpenMS::OpenDIA
 
     /// Build the vocabulary (sorted distinct tokens) and the residue alphabet from all library sequences.
     explicit RTRefineModel(const std::vector<std::string>& sequences);
+    /// The same model from @p n sequences given one at a time.
+    RTRefineModel(std::size_t n, const std::function<const std::string&(std::size_t)>& sequence);
 
     /// Feature vector length.
     std::size_t dimension() const { return vocabulary_.size() + 2 * alphabet_.size() + 2 + 4 + 1; }
@@ -66,12 +69,13 @@ namespace OpenMS::OpenDIA
     std::vector<double> out_of_fold;    ///< Cross-fitted predictions for the training rows, in training order.
     double alpha = 0.0;
     std::size_t training = 0;
+    RidgeFit fit;                       ///< The final model (predicts correction for any feature row).
   };
 
   /**
     @brief Choose alpha from 10^{-2, -1.5, ..., 4} by 5-fold CV (minimum mean squared error, first on ties), then fit.
 
-    @param[in] x         n x d features (row major), all precursors
+    @param[in] x         n x d features (row major), optionally only the training rows
     @param[in] d         Feature count
     @param[in] train     Training row indices into x
     @param[in] y         Targets, one per training row

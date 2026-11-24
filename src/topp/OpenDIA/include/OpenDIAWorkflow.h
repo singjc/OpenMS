@@ -18,7 +18,9 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -36,38 +38,79 @@ namespace OpenMS::OpenDIA
   {
     struct Precursor
     {
-      std::string id;          ///< PQP precursor ID.
-      std::string traml_id;
+      std::string_view id;     ///< PQP precursor ID (views the key in index).
       std::string sequence;    ///< Modified sequence.
-      std::string family;      ///< Parent target's unmodified sequence.
-      std::string pair_key;    ///< TRAML_ID of the target (own for a target, without DECOY_ for a decoy).
-      std::vector<std::string> proteins;
+      std::uint32_t proteins = 0;  ///< Index into protein_sets.
       int charge = 0;
       double mz = 0.0;
       double library_rt = 0.0;
+      double library_im = -1.0;  ///< Library 1/K0 (uncalibrated), -1 if absent.
       bool has_library_rt = false;
       bool decoy = false;
-      std::uint8_t fold = 0;
-      std::uint32_t pair = 0;  ///< Dense pair index.
+      bool trace_safe = false;   ///< ID and family are non-empty and free of tabs and line breaks.
+      std::uint8_t fold = 0;     ///< FNV-1a of the family mod 3 (the target's fold for a pair).
+      std::uint8_t rt_fold = 0;  ///< FNV-1a of the family mod 5 (RT refinement folds).
+      std::uint32_t pair = 0;    ///< Dense pair index.
+      std::uint32_t decoy_partner = UINT32_MAX;  ///< First precursor named DECOY_<TRAML_ID>, UINT32_MAX if none.
+      std::uint32_t sibling_group = 0;           ///< Same decoy flag and modified sequence.
+      std::uint64_t family_seed = 0;             ///< FNV-1a of "v" + family.
+      std::uint64_t pair_seed = 0;               ///< FNV-1a of "v" + pair key (the target's TRAML_ID).
       std::array<double, 12> scoring_mz{};        ///< Library m/z of the scoring fragments (0 = absent).
       std::array<double, 12> scoring_library{};   ///< Relative to the precursor's most intense scoring fragment.
       std::array<bool, 12> scoring_in_search{};   ///< Also one of the search fragments (same annotation).
       std::uint8_t scoring_count = 0;
     };
 
-    OpenDIA::Library search;  ///< Search library (calibrated in place by calibrate()).
+    /// One search fragment (library m/z and intensity, PQP transition ID).
+    struct Fragment
+    {
+      double product_mz = 0.0;
+      double library_intensity = 0.0;
+      std::int64_t transition = 0;
+    };
+
+    /// Hash of IDs for heterogeneous (std::string_view) lookup.
+    struct IdHash
+    {
+      using is_transparent = void;
+      std::size_t operator()(std::string_view s) const noexcept { return std::hash<std::string_view>{}(s); }
+    };
+
     std::vector<Precursor> precursors;
-    std::unordered_map<std::string, std::uint32_t> index;  ///< PQP precursor ID -> index.
-    std::vector<std::pair<std::string, std::string>> traml_ids;
+    /// Search fragments of precursor i: fragments[fragment_offset[i], fragment_offset[i + 1]), in library order.
+    std::vector<Fragment> fragments;
+    std::vector<std::uint64_t> fragment_offset;
+    /// Distinct protein columns of precursors.tsv (references joined by ';').
+    std::vector<std::string> protein_sets;
+    /// PQP precursor ID -> index. Owns the IDs (nodes are stable, so Precursor::id stays valid when moved).
+    std::unordered_map<std::string, std::uint32_t, IdHash, std::equal_to<>> index;
+    /// Calibration candidates: (target, DECOY_ partner or UINT32_MAX) in precursor order, as CalibrationCollector pairs them.
+    std::vector<std::pair<std::uint32_t, std::uint32_t>> calibration_pairs;
+    std::vector<std::uint32_t> sibling_group_sizes;
     std::size_t pairs = 0;
+
+    AnalysisLibrary() = default;
+    AnalysisLibrary(AnalysisLibrary&&) = default;
+    AnalysisLibrary& operator=(AnalysisLibrary&&) = default;
+    AnalysisLibrary(const AnalysisLibrary&) = delete;  ///< Precursor::id views index.
+    AnalysisLibrary& operator=(const AnalysisLibrary&) = delete;
+
+    /// Index of precursor @p id, UINT32_MAX if unknown.
+    std::uint32_t find(std::string_view id) const
+    {
+      const auto it = index.find(id);
+      return it == index.end() ? UINT32_MAX : it->second;
+    }
 
     /**
       @brief Read the search library and, if given, the scoring library (same precursor IDs; up to 12 fragments each,
       in transition ID order). Without a scoring library the search fragments are the scoring fragments.
 
-      Either may be a PQP or an OpenDIA Parquet library; a PQP is converted to Parquet once (readAnyLibrary), and
-      @p log receives what was read or written.
-      @throws Exception::InvalidValue On a decoy without its target or a precursor missing from the scoring library.
+      Either may be a PQP or an OpenDIA Parquet library; a PQP is converted to Parquet once (visitAnyLibrary), and
+      @p log receives what was read or written. Parquet inputs and valid caches are streamed into this table, with no
+      resident Library. The first PQP read still materializes a Library while writing its automatic cache.
+      @throws Exception::InvalidValue On a decoy TRAML_ID without the DECOY_ prefix, a transition ID that is not a
+      canonical decimal integer, or fragments of one precursor with different precursor m/z or decoy flags.
     */
     static AnalysisLibrary read(const std::string& search_pqp, const std::string& scoring_pqp = "",
                                 const std::function<void(const std::string&)>& log = {});
@@ -147,13 +190,13 @@ namespace OpenMS::OpenDIA
     using Log = std::function<void(const std::string&)>;
     RunAnalysis(AnalysisLibrary& library, RunOptions options, Log log = {});
 
-    /// Analyse one run (raw, mzML, ...). The library's search transitions are recalibrated for each run.
+    /// Analyse one run (raw, mzML, ...). The library is calibrated for each run on the fly (it is not changed).
     RunResult run(const std::string& path);
 
   private:
-    /// Steps 2-6 into @p result (calibration set). @p targeted is a copy of the search library (consumed);
-    /// @p rt_correction (seconds per precursor, empty = none) is added to the calibrated compound RT.
-    void searchAndScore_(const std::string& path, RunResult& result, OpenDIA::Library& targeted,
+    /// Steps 2-6 into @p result (calibration set). @p rt_correction (seconds per precursor, empty = none) is added to
+    /// the calibrated library RT.
+    void searchAndScore_(const std::string& path, RunResult& result,
                          const std::vector<std::pair<std::string, double>>& anchors, const std::vector<double>& rt_correction,
                          double rt_tolerance_s, const Log& say, std::chrono::steady_clock::time_point t_run);
     /// Fit the ridge RT correction on @p train (library precursor indices, targets @p y in seconds, CV folds @p folds).

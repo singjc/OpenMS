@@ -50,12 +50,18 @@ namespace OpenMS::OpenDIA
     return out;
   }
 
-  RTRefineModel::RTRefineModel(const std::vector<std::string>& sequences)
+  RTRefineModel::RTRefineModel(const std::vector<std::string>& sequences) :
+    RTRefineModel(sequences.size(), [&sequences](std::size_t i) -> const std::string& { return sequences[i]; })
+  {
+  }
+
+  RTRefineModel::RTRefineModel(std::size_t n, const std::function<const std::string&(std::size_t)>& sequence)
   {
     std::set<std::string> vocabulary;
     std::set<char> alphabet;
-    for (const auto& s : sequences)
+    for (std::size_t i = 0; i < n; ++i)
     {
+      const std::string& s = sequence(i);
       for (auto& t : tokenize(s))
       {
         if (std::isupper(static_cast<unsigned char>(t[0]))) alphabet.insert(t[0]);
@@ -226,10 +232,10 @@ namespace OpenMS::OpenDIA
         result.out_of_fold = std::move(pred);
       }
     }
-    const auto fit = fitRidge(x, d, train, y, result.alpha);
+    result.fit = fitRidge(x, d, train, y, result.alpha);
     const std::size_t n = d == 0 ? 0 : x.size() / d;
     result.correction.resize(n);
-    for (std::size_t i = 0; i < n; ++i) result.correction[i] = fit.predict(x.data() + i * d);
+    for (std::size_t i = 0; i < n; ++i) result.correction[i] = result.fit.predict(x.data() + i * d);
     return result;
   }
 }
