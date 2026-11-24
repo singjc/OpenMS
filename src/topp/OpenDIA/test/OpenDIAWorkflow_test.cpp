@@ -243,6 +243,20 @@ int main(int argc, char** argv)
     readAnyLibrary(pqp, {}, 0);
     const auto cache = parquetCachePath(pqp);
     const auto metadata = readParquetLibraryMetadata(cache);
+    // A Codon experiment can link immutable baseline PQPs into its own directory. Automatic conversion must write
+    // beside the link, not beside the resolved baseline source. Symlink creation needs extra privileges on Windows.
+    const auto linked = (dir / "linked.pqp").string();
+    std::error_code symlink_error;
+    fs::create_symlink(pqp, linked, symlink_error);
+    if (!symlink_error)
+    {
+      const auto original_cache_time = fs::last_write_time(cache);
+      const auto linked_library = readAnyLibrary(linked, {}, 0);
+      require(fs::exists(parquetCachePath(linked)), "automatic cache must be adjacent to the PQP symlink");
+      require(fs::last_write_time(cache) == original_cache_time, "symlink conversion must not rewrite the baseline cache");
+      require(fs::equivalent(pqp, linked) && linked_library.transitions.size() == legacy.transitions.size(), "linked PQP parity");
+      compareLegacy(AnalysisLibrary::read(linked), legacy, legacy);
+    }
     std::vector<std::pair<std::string, std::string>> entries(metadata.begin(), metadata.end());
     auto damaged = legacy;
     require(damaged.transitions.size() > 1, "PQP fixture needs multiple transitions for partial fallback");

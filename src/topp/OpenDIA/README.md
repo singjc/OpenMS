@@ -48,6 +48,14 @@ decoy, m/z, charge, library RT and 1/K0, sequence, proteins, transition ID, prod
 charge and intensity rank within the precursor; precursors without fragments are one row without a fragment.
 `-decoys predict` still needs a PQP.
 
+**Library memory.** Parquet inputs and valid automatic caches are decoded one row group at a time into a compact
+analysis table. Search fragments retain only m/z, intensity and the numeric transition ID. Precursor IDs and protein
+sets are interned, and folds, pair hashes, decoy partners and sibling groups are computed once. A separate scoring
+library is streamed into the twelve lowest transition IDs per precursor, not retained as another library. Calibration
+and trace collectors read indexed coordinates. Search applies calibration and RT corrections on the fly, without
+copying the library for either pass. RT refinement keeps feature rows only for its training IDs and predicts the
+remaining rows individually. The first PQP read still materializes the source library to create the automatic cache.
+
 Across runs, a precursor's global q-value comes from its best run score, by paired target-decoy competition.
 
 **Outputs** (in `-out_dir`):
@@ -92,7 +100,13 @@ result:
 
 ## Tests
 
-Run `ctest -R '^OpenDIA'`.
+Run `ctest -R 'OpenDIA'` to include the TOPP INI/CTD checks as well as the core tests.
+- **`OpenDIAWorkflow_test`:** compact-table grouping, top-twelve scoring, identities, moves and partial-cache fallback
+  against an independent materialized library oracle, including shuffled/interleaved fragments.
+- **`OpenDIACalibration_test` and `OpenDIATraces_test`:** indexed and Library-based collector equivalence, including
+  fragment ties, repeated precursor windows, mobility and b/y-ion callbacks.
+- **`OpenDIARTRefine_test`:** byte-identical ridge fits, out-of-fold predictions and final predictions from full-library
+  and training-only feature matrices, with an identical all-library vocabulary.
 - **`OpenDIAScorer_test`:**
   - gradients against finite differences;
   - the readout in closed form;
