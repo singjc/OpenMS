@@ -155,6 +155,8 @@ namespace OpenMS::OpenDIA
     SearchCandidate peak;
     float score = CrossFitScorer::NOT_KEPT;
     double q_value = 1.0;
+    float network_score = CrossFitScorer::NOT_KEPT;  ///< Calibrated network score before the GBM rescore (diagnostic).
+    double network_q_value = 1.0;                     ///< Pooled paired TDC q of network_score (diagnostic).
   };
 
   struct RunResult

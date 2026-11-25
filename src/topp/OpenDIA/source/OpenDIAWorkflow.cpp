@@ -1036,6 +1036,11 @@ namespace OpenMS::OpenDIA
     }
     {
       // Hard-negative GBM rescoring (PLAN_GBT) on the hardest 2 % of decoy precursors.
+      for (std::size_t i = 0; i < n; ++i)
+      {
+        windows[i].network_score = scored.score[i];
+        windows[i].network_q_value = scored.q_value[i];
+      }
       auto gbm = gbmRescore(input, scored.score, 0.02, options_.seed, options_.threads, say, options_.gbm_rounds, options_.gbm_positive_q);
       scored.score = std::move(gbm.score);
       scored.q_value = std::move(gbm.q_value);

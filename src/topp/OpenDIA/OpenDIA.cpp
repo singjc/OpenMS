@@ -393,7 +393,7 @@ protected:
     std::ofstream out(path);
     out << "candidate_row\tprecursor_id\tis_decoy\tfold\trt_apex";
     for (const auto& n : result.feature_names) out << '\t' << n;
-    out << "\tscore\tq_value\n";
+    out << "\tscore\tq_value\tnetwork_score\tnetwork_q_value\n";
     const std::size_t d = result.feature_names.size();
     for (std::size_t i = 0; i < result.windows.size(); ++i)
     {
@@ -404,6 +404,8 @@ protected:
       for (std::size_t k = 0; k < d; ++k) number_(row, result.features[i * d + k]);
       number_(row, w.score);
       number_(row, w.q_value);
+      number_(row, w.network_score);
+      number_(row, w.network_q_value);
       out << row << '\n';
     }
     out.close();
