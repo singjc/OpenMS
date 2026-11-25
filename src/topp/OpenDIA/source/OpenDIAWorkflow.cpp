@@ -29,6 +29,7 @@
 #include <fstream>
 #include <map>
 #include <numeric>
+#include <optional>
 #include <sstream>
 #include <unordered_set>
 
@@ -762,6 +763,10 @@ namespace OpenMS::OpenDIA
       }
     }
     std::vector<InterferenceResolver::Window> grid_windows(n);
+    // Collectors live only until the features are assembled (step 5); they are reset there, with grid_windows, so their
+    // per-window state is not held through scoring.
+    std::optional<FragmentGridCollector> grids_holder;
+    std::optional<TraceCollector> traces_holder;
     std::vector<double> trace_apex(n);
     std::vector<std::uint32_t> trace_precursor_of(n);
     std::vector<TracePrecursor> trace_precursors(local_precursors.size());
@@ -798,7 +803,8 @@ namespace OpenMS::OpenDIA
       trace_apex[i] = w.peak.rt_apex;
       trace_precursor_of[i] = local_of[w.precursor];
     }
-    FragmentGridCollector grids(grid_precursors, grid_windows, options_.grid_half_width_s, options_.grid_extraction_ppm);
+    FragmentGridCollector& grids =
+        grids_holder.emplace(grid_precursors, grid_windows, options_.grid_half_width_s, options_.grid_extraction_ppm);
     // With a mobility calibration the 12-fragment grid (and with it the interference inputs) is extracted within the
     // calibrated 1/K0 tolerance of each precursor, as the search is; without one it pools all points as before.
     if (cal.has_im && cal.im_tolerance > 0.0) grids.enableIonMobility(cal.im_tolerance, options_.im_array_as_vssc);
@@ -835,8 +841,8 @@ namespace OpenMS::OpenDIA
         }
       }
     };
-    TraceCollector traces(trace_apex, trace_precursor_of, trace_precursors, 0.02, options_.grid_half_width_s, TRACE_IM_HALF_WIDTH,
-                          n, options_.trace_tensor_gb << 30, on_close);
+    TraceCollector& traces = traces_holder.emplace(trace_apex, trace_precursor_of, trace_precursors, 0.02, options_.grid_half_width_s,
+                                                   TRACE_IM_HALF_WIDTH, n, options_.trace_tensor_gb << 30, on_close);
     std::vector<double>().swap(trace_apex);
     std::vector<std::uint32_t>().swap(trace_precursor_of);
     std::vector<TracePrecursor>().swap(trace_precursors);
@@ -866,6 +872,9 @@ namespace OpenMS::OpenDIA
     const auto names = runFeatureNames();
     const std::size_t d = names.size();
     result.feature_names = names;
+    // Capacity for the sibling columns added after the first scorer pass, so widening never reallocates (untouched
+    // capacity is not resident).
+    result.features.reserve(n * (d + STAGE2_SIBLING_FEATURES));
     result.features.assign(n * d, 0.0f);
     const double noise = FragmentGrid::noiseLevel(grid_windows, resolver_precursors);
     const auto t_interference = std::chrono::steady_clock::now();
@@ -900,12 +909,23 @@ namespace OpenMS::OpenDIA
     }
     say("Features: " + std::to_string(d) + " per window, noise=" + std::to_string(noise) + " seconds=" + std::to_string(seconds(t_features)) +
         " interference_seconds=" + std::to_string(interference_s));
+    // Everything below reads only result.features, windows and the library. Release the extraction state now (about
+    // 384 bytes per window for grid_windows alone) instead of holding it through scoring.
+    traces_holder.reset();
+    grids_holder.reset();
+    std::vector<InterferenceResolver::Window>().swap(grid_windows);
+    std::vector<FragmentGridCollector::Precursor>().swap(grid_precursors);
+    std::vector<InterferenceResolver::Precursor>().swap(resolver_precursors);
+    std::vector<float>().swap(boundary);
+    std::vector<float>().swap(extra_block);
+    std::vector<float>().swap(mf_block);
 
     // 6. Scorer.
     const auto t_score = std::chrono::steady_clock::now();
     CrossFitScorer::Input input;
     input.dimension = d;
-    input.features = result.features;
+    // The scorer input owns the feature table during scoring; result.features is restored when scoring ends.
+    input.features = std::move(result.features);
     std::vector<std::uint32_t> dense_precursor(lib.precursors.size(), UINT32_MAX), dense_pair(lib.pairs, UINT32_MAX);
     std::uint32_t np = 0, npair = 0;
     for (const auto& w : windows)
@@ -995,20 +1015,22 @@ namespace OpenMS::OpenDIA
         rt[i] = windows[i].peak.rt_apex;
       }
       const auto sib = stage2SiblingFeatures(group, prec, rt, scored.score, lib.sibling_group_sizes, CrossFitScorer::NOT_KEPT);
+      std::vector<std::uint32_t>().swap(group);
+      std::vector<double>().swap(rt);
       constexpr std::size_t S = STAGE2_SIBLING_FEATURES;
       const std::size_t d2 = d + S;
-      std::vector<float> wide(n * d2);
+      // Widen in place, last row first: row i moves from i * d to i * d2 >= i * d, so no unread value is overwritten.
+      auto& f = input.features;
+      f.resize(n * d2);
       std::size_t co_t = 0, co_d = 0;
-      for (std::size_t i = 0; i < n; ++i)
+      for (std::size_t i = n; i-- > 0;)
       {
-        std::copy_n(result.features.data() + i * d, d, wide.data() + i * d2);
-        std::copy_n(sib.data() + i * S, S, wide.data() + i * d2 + d);
+        std::copy_backward(f.data() + i * d, f.data() + i * d + d, f.data() + i * d2 + d);
+        std::copy_n(sib.data() + i * S, S, f.data() + i * d2 + d);
         if (sib[i * S + 1] > 0.0f) (lib.precursors[prec[i]].decoy ? co_d : co_t) += 1;
       }
-      result.features = std::move(wide);
       for (const char* nm : {"s_n", "s_co", "s_best", "s_best_d"}) result.feature_names.emplace_back(nm);
       input.dimension = d2;
-      input.features = result.features;
       scored = CrossFitScorer::run(input, so, [&](const std::string& l) { say("Scorer " + l); });
       say("Sibling features: windows with a co-eluting sibling target=" + std::to_string(co_t) + " decoy=" + std::to_string(co_d) + "; rescored");
     }
@@ -1018,6 +1040,7 @@ namespace OpenMS::OpenDIA
       scored.score = std::move(gbm.score);
       scored.q_value = std::move(gbm.q_value);
     }
+    result.features = std::move(input.features);
     for (std::size_t i = 0; i < n; ++i)
     {
       windows[i].score = scored.score[i];
