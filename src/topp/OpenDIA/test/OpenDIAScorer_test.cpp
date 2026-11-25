@@ -95,6 +95,35 @@ int main()
     std::vector<double> g4;
     net.objective(pos, neg, 1e-2, &g4, 4);
     check(g4 == g, "gradient independent of thread count");
+
+    // The transposed (vectorised) forward pass is bit-identical to the plain one.
+    bool same = true;
+    for (const auto& [d, hid, emb] : std::vector<std::tuple<std::size_t, std::size_t, std::size_t>>{{5, 7, 3}, {45, 64, 16}, {3, 300, 5}})
+    {
+      WhitenedNetwork big(d, hid, emb, 17 + d);
+      std::vector<float> x(d);
+      for (int rep = 0; rep < 20; ++rep)
+      {
+        for (auto& v : x) v = nd(rng);
+        std::vector<double> plain(big.outputs()), fast(big.outputs()), act(hid), u(emb);
+        big.embed(x.data(), plain.data());
+        big.embed(big.transposed(), x.data(), fast.data(), act.data(), u.data());
+        same = same && plain == fast;
+      }
+    }
+    check(same, "transposed forward pass bit-identical");
+
+    // The readout (decoy covariance) does not depend on the thread count, also above the parallel threshold.
+    {
+      const std::size_t k = 21, rows_n = 5003;
+      std::vector<double> hp(37 * k), hn(rows_n * k);
+      for (auto& v : hp) v = nd(rng) + 0.5;
+      for (auto& v : hn) v = nd(rng);
+      double o1 = 0.0, o4 = 0.0;
+      const auto w1 = WhitenedNetwork::readout(hp, hn, k, 1e-2, o1, 1);
+      const auto w4 = WhitenedNetwork::readout(hp, hn, k, 1e-2, o4, 4);
+      check(w1 == w4 && o1 == o4, "readout independent of thread count");
+    }
   }
 
   // 2. Readout in one dimension: w = (mu+ - mu-) / (var- + lambda).

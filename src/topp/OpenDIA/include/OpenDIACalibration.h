@@ -297,6 +297,15 @@ namespace OpenMS::OpenDIA
     std::optional<CalibrationWindow> window_;
     std::vector<Member> panel_;
     std::vector<std::size_t> by_mz_;
+    /// Per by_mz_ position: precursor m/z, the member's collection range and its closed flag, so spectra skip
+    /// members outside their range without touching the (large) Member.
+    struct Slot
+    {
+      double mz, low, high;
+      bool closed;
+    };
+    std::vector<Slot> slots_;
+    std::vector<std::size_t> active_; ///< Scratch: members of the current isolation window inside their range.
     bool ion_mobility_array_as_vssc_ = false;
     bool saw_im_ = false;
     int threads_ = 1;

@@ -439,6 +439,12 @@ namespace OpenMS::OpenDIA
         }
       }
     }
+    slots_.resize(by_mz_.size());
+    for (std::size_t s = 0; s < by_mz_.size(); ++s)
+    {
+      const Member& member = panel_[by_mz_[s]];
+      slots_[s] = {member.precursor_mz, member.window_low, member.window_high, member.closed};
+    }
   }
 
   void CalibrationCollector::consumeSpectrum(MSSpectrum& spectrum)
@@ -483,36 +489,42 @@ namespace OpenMS::OpenDIA
       {
         continue;
       }
-      auto first = std::lower_bound(by_mz_.begin(), by_mz_.end(), lower, [this](std::size_t i, double mz) { return panel_[i].precursor_mz < mz; });
-      auto last = first;
-      while (last != by_mz_.end() && panel_[*last].precursor_mz <= upper) ++last;
+      const auto first = std::lower_bound(slots_.begin(), slots_.end(), lower, [](const Slot& s, double mz) { return s.mz < mz; });
+      // Members outside their collection range are skipped here; only the rest are visited.
+      active_.clear();
+      for (auto slot = first; slot != slots_.end() && slot->mz <= upper; ++slot)
+      {
+        if (rt < slot->low)
+        {
+          continue; // Outside the windowed pass's collection range (never in the default whole-run pass).
+        }
+        if (rt > slot->high)
+        {
+          // Spectra arrive in RT order, so this member is complete: release the growth reserve of its traces.
+          if (!slot->closed)
+          {
+            Member& member = panel_[by_mz_[slot - slots_.begin()]];
+            member.rt.shrink_to_fit();
+            member.intensity.shrink_to_fit();
+            member.ppm.shrink_to_fit();
+            member.im.shrink_to_fit();
+            member.closed = true;
+            slot->closed = true;
+          }
+          continue;
+        }
+        active_.push_back(by_mz_[slot - slots_.begin()]);
+      }
       // Members of one isolation window are distinct and each touches only its own traces, so they are processed in
       // parallel; isolation windows stay sequential (a member covered by two merges in the same order as before).
-      const auto count = static_cast<std::ptrdiff_t>(last - first);
+      const auto count = static_cast<std::ptrdiff_t>(active_.size());
       std::exception_ptr error = nullptr;
 #pragma omp parallel for schedule(dynamic, 32) num_threads(threads_) if (threads_ > 1 && count >= 256)
       for (std::ptrdiff_t m = 0; m < count; ++m)
       {
       try
       {
-        Member& member = panel_[*(first + m)];
-        if (rt < member.window_low)
-        {
-          continue; // Outside the windowed pass's collection range (never in the default whole-run pass).
-        }
-        if (rt > member.window_high)
-        {
-          // Spectra arrive in RT order, so this member is complete: release the growth reserve of its traces.
-          if (!member.closed)
-          {
-            member.rt.shrink_to_fit();
-            member.intensity.shrink_to_fit();
-            member.ppm.shrink_to_fit();
-            member.im.shrink_to_fit();
-            member.closed = true;
-          }
-          continue;
-        }
+        Member& member = panel_[active_[m]];
         if (!member.rt.empty() && rt < member.rt.back())
         {
           throw std::runtime_error("Calibration requires MS2 spectra in nondecreasing RT order");

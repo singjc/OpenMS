@@ -148,8 +148,47 @@ namespace OpenMS::OpenDIA
     }
   }
 
+  WhitenedNetwork::Transposed WhitenedNetwork::transposed() const
+  {
+    const double* w1 = parameters_.data();
+    const double* w2 = w1 + hidden_ * dimension_ + hidden_;
+    Transposed t;
+    t.w1.resize(dimension_ * hidden_);
+    t.w2.resize(hidden_ * embed_);
+    for (std::size_t j = 0; j < hidden_; ++j)
+      for (std::size_t i = 0; i < dimension_; ++i) t.w1[i * hidden_ + j] = w1[j * dimension_ + i];
+    for (std::size_t e = 0; e < embed_; ++e)
+      for (std::size_t j = 0; j < hidden_; ++j) t.w2[j * embed_ + e] = w2[e * hidden_ + j];
+    return t;
+  }
+
+  void WhitenedNetwork::embed(const Transposed& t, const float* z, double* h, double* act, double* u) const
+  {
+    // Same sums as embed(z, h), each accumulated over its inputs in the same order; the loops are only interchanged
+    // so that independent units sit in the inner loop and vectorise.
+    const double* c1 = parameters_.data() + hidden_ * dimension_;
+    const double* c2 = c1 + hidden_ + embed_ * hidden_;
+    for (std::size_t j = 0; j < hidden_; ++j) act[j] = c1[j];
+    for (std::size_t i = 0; i < dimension_; ++i)
+    {
+      const double x = z[i];
+      const double* col = t.w1.data() + i * hidden_;
+      for (std::size_t j = 0; j < hidden_; ++j) act[j] += col[j] * x;
+    }
+    for (std::size_t j = 0; j < hidden_; ++j) act[j] = act[j] > 0.0 ? act[j] : 0.0;
+    for (std::size_t i = 0; i < dimension_; ++i) h[i] = z[i];
+    for (std::size_t e = 0; e < embed_; ++e) u[e] = c2[e];
+    for (std::size_t j = 0; j < hidden_; ++j)
+    {
+      const double a = act[j];
+      const double* col = t.w2.data() + j * embed_;
+      for (std::size_t e = 0; e < embed_; ++e) u[e] += col[e] * a;
+    }
+    for (std::size_t e = 0; e < embed_; ++e) h[dimension_ + e] = std::tanh(u[e]);
+  }
+
   std::vector<double> WhitenedNetwork::readout(const std::vector<double>& positive, const std::vector<double>& negative, std::size_t k,
-                                               double lambda, double& objective)
+                                               double lambda, double& objective, int threads)
   {
     const std::size_t np = positive.size() / k, nn = negative.size() / k;
     if (np < 1 || nn < 2) throw std::invalid_argument("WhitenedNetwork::readout: needs >= 1 positive and >= 2 negative rows.");
@@ -163,12 +202,27 @@ namespace OpenMS::OpenDIA
       mp[i] /= static_cast<double>(np);
       mn[i] /= static_cast<double>(nn);
     }
-    std::vector<double> s(k * k, 0.0), c(k);
-    for (std::size_t r = 0; r < nn; ++r)
+    std::vector<double> s(k * k, 0.0);
+    // Each entry s_ij (j <= i) accumulates c_r[i] c_r[j] over the rows r in ascending order, as a serial loop would;
+    // rows are centred in blocks shared by all threads and the entries are split across threads, so the result does
+    // not depend on the thread count.
+    constexpr std::size_t BLOCK = 256;
+    std::vector<double> c(std::min(BLOCK, nn) * k);
+#pragma omp parallel num_threads(threads) if (threads > 1 && nn * k * k >= (std::size_t{1} << 20))
+    for (std::size_t r0 = 0; r0 < nn; r0 += BLOCK)
     {
-      for (std::size_t i = 0; i < k; ++i) c[i] = negative[r * k + i] - mn[i];
-      for (std::size_t i = 0; i < k; ++i)
-        for (std::size_t j = 0; j <= i; ++j) s[i * k + j] += c[i] * c[j];
+      const std::size_t rb = std::min(BLOCK, nn - r0);
+#pragma omp for schedule(static)
+      for (std::ptrdiff_t r = 0; r < static_cast<std::ptrdiff_t>(rb); ++r)
+        for (std::size_t i = 0; i < k; ++i) c[r * k + i] = negative[(r0 + r) * k + i] - mn[i];
+#pragma omp for schedule(static, 1)
+      for (std::ptrdiff_t i = 0; i < static_cast<std::ptrdiff_t>(k); ++i)
+        for (std::size_t j = 0; j <= static_cast<std::size_t>(i); ++j)
+        {
+          double acc = s[i * k + j];
+          for (std::size_t r = 0; r < rb; ++r) acc += c[r * k + i] * c[r * k + j];
+          s[i * k + j] = acc;
+        }
     }
     for (std::size_t i = 0; i < k; ++i)
     {
@@ -192,44 +246,25 @@ namespace OpenMS::OpenDIA
   {
     const std::size_t k = outputs(), np = positive.size(), nn = negative.size(), n = np + nn;
     std::vector<double> h(n * k), act(gradient ? n * hidden_ : 0);
-    const double* w1 = parameters_.data();
-    const double* c1 = w1 + hidden_ * dimension_;
-    const double* w2 = c1 + hidden_;
-    const double* c2 = w2 + embed_ * hidden_;
+    const double* w2 = parameters_.data() + hidden_ * dimension_ + hidden_;
     const auto row = [&](std::size_t r) { return r < np ? positive[r] : negative[r - np]; };
+    const Transposed t = transposed();
 
-#pragma omp parallel for num_threads(threads) schedule(static)
-    for (std::ptrdiff_t r = 0; r < static_cast<std::ptrdiff_t>(n); ++r)
+#pragma omp parallel num_threads(threads)
     {
-      const float* z = row(static_cast<std::size_t>(r));
-      double* hr = h.data() + r * k;
-      double local[256];
-      std::vector<double> big;
-      double* a = gradient ? act.data() + r * hidden_ : local;
-      if (!gradient && hidden_ > 256)
+      std::vector<double> scratch(hidden_ + embed_);
+#pragma omp for schedule(static)
+      for (std::ptrdiff_t r = 0; r < static_cast<std::ptrdiff_t>(n); ++r)
       {
-        big.resize(hidden_);
-        a = big.data();
-      }
-      for (std::size_t j = 0; j < hidden_; ++j)
-      {
-        double s = c1[j];
-        for (std::size_t i = 0; i < dimension_; ++i) s += w1[j * dimension_ + i] * z[i];
-        a[j] = s > 0.0 ? s : 0.0;
-      }
-      for (std::size_t i = 0; i < dimension_; ++i) hr[i] = z[i];
-      for (std::size_t e = 0; e < embed_; ++e)
-      {
-        double s = c2[e];
-        for (std::size_t j = 0; j < hidden_; ++j) s += w2[e * hidden_ + j] * a[j];
-        hr[dimension_ + e] = std::tanh(s);
+        double* a = gradient ? act.data() + r * hidden_ : scratch.data();
+        embed(t, row(static_cast<std::size_t>(r)), h.data() + r * k, a, scratch.data() + hidden_);
       }
     }
 
     // Readout on the batch.
     const std::vector<double> hp(h.begin(), h.begin() + np * k), hn(h.begin() + np * k, h.end());
     double obj = 0.0;
-    const auto w = readout(hp, hn, k, lambda, obj);
+    const auto w = readout(hp, hn, k, lambda, obj, threads);
     if (!gradient) return obj;
 
     // d obj / d h: positives 2 w / P; negatives -2 w / N - 2 w (w' c_j) / (N - 1), c_j the centred negative.
@@ -257,10 +292,12 @@ namespace OpenMS::OpenDIA
       double* g_c1 = g_w1 + hidden_ * dimension_;
       double* g_w2 = g_c1 + hidden_;
       double* g_c2 = g_w2 + embed_ * hidden_;
-      std::vector<double> gu2(embed_), ga(hidden_);
+      std::vector<double> gu2(embed_), ga(hidden_), zd(dimension_);
       for (std::size_t r = ch * CHUNK; r < std::min(n, (ch + 1) * CHUNK); ++r)
       {
-        const float* z = row(r);
+        const float* zf = row(r);
+        for (std::size_t i = 0; i < dimension_; ++i) zd[i] = zf[i];
+        const double* z = zd.data();
         const double* hr = h.data() + r * k;
         const double* a = act.data() + r * hidden_;
         for (std::size_t e = 0; e < embed_; ++e)
@@ -511,12 +548,20 @@ namespace OpenMS::OpenDIA
       f.criterion = best;
       // Final readout on the training rows.
       std::vector<double> hp(tp.size() * k), hn(tn.size() * k);
-#pragma omp parallel for num_threads(o.threads) schedule(static)
-      for (std::ptrdiff_t i = 0; i < static_cast<std::ptrdiff_t>(tp.size()); ++i) f.net.embed(z.data() + static_cast<std::size_t>(tp[i]) * d, hp.data() + i * k);
-#pragma omp parallel for num_threads(o.threads) schedule(static)
-      for (std::ptrdiff_t i = 0; i < static_cast<std::ptrdiff_t>(tn.size()); ++i) f.net.embed(z.data() + static_cast<std::size_t>(tn[i]) * d, hn.data() + i * k);
+      const auto t = f.net.transposed();
+      const std::size_t hid = f.net.hidden();
+#pragma omp parallel num_threads(o.threads)
+      {
+        std::vector<double> s(hid + f.net.embedded());
+#pragma omp for schedule(static)
+        for (std::ptrdiff_t i = 0; i < static_cast<std::ptrdiff_t>(tp.size()); ++i)
+          f.net.embed(t, z.data() + static_cast<std::size_t>(tp[i]) * d, hp.data() + i * k, s.data(), s.data() + hid);
+#pragma omp for schedule(static)
+        for (std::ptrdiff_t i = 0; i < static_cast<std::ptrdiff_t>(tn.size()); ++i)
+          f.net.embed(t, z.data() + static_cast<std::size_t>(tn[i]) * d, hn.data() + i * k, s.data(), s.data() + hid);
+      }
       double obj = 0.0;
-      f.w = WhitenedNetwork::readout(hp, hn, k, o.lambda, obj);
+      f.w = WhitenedNetwork::readout(hp, hn, k, o.lambda, obj, o.threads);
       return f;
     }
 
@@ -525,14 +570,16 @@ namespace OpenMS::OpenDIA
                    std::vector<float>& full, std::vector<float>* linear, int threads)
     {
       const std::size_t k = f.net.outputs();
+      const auto t = f.net.transposed();
+      const std::size_t hid = f.net.hidden();
 #pragma omp parallel num_threads(threads)
       {
-        std::vector<double> h(k);
+        std::vector<double> h(k), scratch(hid + f.net.embedded());
 #pragma omp for schedule(static)
         for (std::ptrdiff_t i = 0; i < static_cast<std::ptrdiff_t>(rows.size()); ++i)
         {
           const std::uint32_t r = rows[i];
-          f.net.embed(z.data() + static_cast<std::size_t>(r) * d, h.data());
+          f.net.embed(t, z.data() + static_cast<std::size_t>(r) * d, h.data(), scratch.data(), scratch.data() + hid);
           double lin = 0.0, s = 0.0;
           for (std::size_t j = 0; j < d; ++j) lin += h[j] * f.w[j];
           s = lin;

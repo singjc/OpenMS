@@ -33,11 +33,29 @@ namespace OpenMS::OpenDIA
     std::size_t dimension() const { return dimension_; }
     /// Embedding size d + embed.
     std::size_t outputs() const { return dimension_ + embed_; }
+    std::size_t hidden() const { return hidden_; }
+    std::size_t embedded() const { return embed_; }
     std::vector<double>& parameters() { return parameters_; }
     const std::vector<double>& parameters() const { return parameters_; }
 
     /// h of one row (outputs() values).
     void embed(const float* z, double* h) const;
+
+    /// Weights in input-major order for row-wise evaluation (see embed(const Transposed&, ...)); stale once
+    /// parameters() change.
+    struct Transposed
+    {
+      std::vector<double> w1; ///< [dimension x hidden]
+      std::vector<double> w2; ///< [hidden x embed]
+    };
+    Transposed transposed() const;
+
+    /**
+      @brief h of one row from transposed weights; bit-identical to embed(z, h).
+      @param[out] act Post-ReLU hidden activations (hidden values; scratch if not needed).
+      @param[out] u Pre-tanh embedding sums (embed values; scratch).
+    */
+    void embed(const Transposed& t, const float* z, double* h, double* act, double* u) const;
 
     /**
       @brief Readout objective of a batch and, optionally, its gradient with respect to parameters().
@@ -57,10 +75,11 @@ namespace OpenMS::OpenDIA
       @param[in] k Embedding size.
       @param[in] lambda Ridge (> 0).
       @param[out] objective (mu_P - mu_N)' w.
+      @param[in] threads Worker threads; the result does not depend on it.
       @return w.
     */
     static std::vector<double> readout(const std::vector<double>& positive, const std::vector<double>& negative, std::size_t k,
-                                       double lambda, double& objective);
+                                       double lambda, double& objective, int threads = 1);
 
   private:
     std::size_t dimension_, hidden_, embed_;

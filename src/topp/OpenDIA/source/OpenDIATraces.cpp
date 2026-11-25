@@ -300,7 +300,7 @@ namespace OpenMS::OpenDIA
       const double half = mz * byion_ppm_ * 1e-6;
       double best = std::numeric_limits<double>::infinity();
       double best_intensity = 0.0;
-      for (auto point = spectrum.MZBegin(mz - half); point != spectrum.end() && point->getMZ() <= mz + half; ++point)
+      for (auto point = mz_index_.lowerBound(mz - half); point != spectrum.end() && point->getMZ() <= mz + half; ++point)
       {
         const double distance = std::abs(point->getMZ() - mz);
         if (distance < best)
