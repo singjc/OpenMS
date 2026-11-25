@@ -129,6 +129,7 @@ namespace OpenMS::OpenDIA
     double trace_tolerance_ppm = 10.0;  ///< Trace-tensor fragment half width in ppm (PLAN_TRPPM D pass: 10). Must be positive.
     int gbm_rounds = 3;                 ///< GBM rescore rounds (PRECHECK_GBMFIX; default 3 = PLAN_GBT).
     double gbm_positive_q = 0.01;       ///< GBM positives: target winners at this pooled q (default 0.01 = PLAN_GBT).
+    double gbm_blend = 0.0;             ///< Network weight w of the per-precursor network/GBM score blend (FDR-20261125; 0 = off).
     std::size_t min_transitions = 1;
     std::size_t population_min_support = 3;     ///< Pairs whose best candidate has fewer supporting fragments are dropped.
     double grid_half_width_s = 15.0;

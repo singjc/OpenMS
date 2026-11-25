@@ -83,6 +83,9 @@ protected:
     registerDoubleOption_("gbm_positive_q", "<q>", 0.01, "Advanced, experimental (PRECHECK_GBMFIX): GBM positives are target winners at this pooled q", false, true);
     setMinFloat_("gbm_positive_q", 0.0001);
     setMaxFloat_("gbm_positive_q", 1.0);
+    registerDoubleOption_("gbm_blend", "<w>", 0.0, "Advanced, experimental (FDR-20261125): network weight of a per-precursor network/GBM score blend, recalibrated before q (0 = off)", false, true);
+    setMinFloat_("gbm_blend", 0.0);
+    setMaxFloat_("gbm_blend", 1.0);
     registerIntOption_("trace_tensor_gb", "<GiB>", 64, "Advanced: hard cap on the 6-fragment trace tensor in GiB (about 6.1 KiB per candidate window with ion mobility); "
                        "raise it for very large libraries, memory permitting", false, true);
     setMinInt_("trace_tensor_gb", 1);
@@ -255,6 +258,7 @@ protected:
     options.trace_tolerance_ppm = getDoubleOption_("trace_tolerance_ppm");
     options.gbm_rounds = getIntOption_("gbm_rounds");
     options.gbm_positive_q = getDoubleOption_("gbm_positive_q");
+    options.gbm_blend = getDoubleOption_("gbm_blend");
     if (!(options.search_valley_fraction > 0.0))
     {
       writeLogError_("-valley_fraction must be in (0, 1].");

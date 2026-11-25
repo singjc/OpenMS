@@ -169,6 +169,47 @@ int main()
       for (float v : res.score) kept += v > -1e29f;
       check(kept == 2 * pairs, "one kept window per precursor");
     }
+
+    // (d) blendScores: kept rows follow the GBM, the order at w = 1 follows the network, bad w throws.
+    {
+      const auto net = CrossFitScorer::calibrateTail(in, [&]
+      {
+        // Network-like input: the best window per precursor keeps the weak score.
+        std::vector<float> k(in.rows(), CrossFitScorer::NOT_KEPT);
+        for (std::size_t r = 0; r < in.rows(); r += wpp) k[r] = weak[r];
+        return k;
+      }());
+      const auto g = gbmRescore(in, weak, 0.02, 1, 2);
+      const auto b0 = blendScores(in, net, g.score, 0.0);
+      const auto b5 = blendScores(in, net, g.score, 0.5);
+      const auto b1 = blendScores(in, net, g.score, 1.0);
+      bool rows_ok = true;
+      for (std::size_t r = 0; r < in.rows(); ++r)
+        rows_ok = rows_ok && ((b5.score[r] > -1e29f) == (g.score[r] > -1e29f)) && ((b1.score[r] > -1e29f) == (g.score[r] > -1e29f));
+      check(rows_ok, "blend keeps exactly the GBM-kept rows");
+      // w = 0: same order of precursors as the GBM score (calibrateTail is monotone per fold).
+      bool order0 = true;
+      for (std::size_t a = 0; a < in.rows() && order0; a += 97)
+        for (std::size_t c = 0; c < in.rows() && order0; c += 89)
+          if (g.score[a] > -1e29f && g.score[c] > -1e29f && in.fold[a] == in.fold[c] && g.score[a] < g.score[c]) order0 = b0.score[a] <= b0.score[c];
+      check(order0, "blend w = 0 keeps the GBM order within a fold");
+      // w = 1: within a fold, precursor order follows the network score.
+      std::vector<float> net_p(2 * pairs, 0.0f);
+      for (std::size_t r = 0; r < in.rows(); ++r)
+        if (net[r] > -1e29f) net_p[in.precursor[r]] = net[r];
+      bool order1 = true;
+      for (std::size_t a = 0; a < in.rows() && order1; ++a)
+        for (std::size_t c = a + 1; c < std::min(in.rows(), a + 400) && order1; ++c)
+          if (b1.score[a] > -1e29f && b1.score[c] > -1e29f && in.fold[a] == in.fold[c] && net_p[in.precursor[a]] < net_p[in.precursor[c]])
+            order1 = b1.score[a] <= b1.score[c];
+      check(order1, "blend w = 1 follows the network order within a fold");
+      const auto b5b = blendScores(in, net, g.score, 0.5);
+      check(b5b.score == b5.score && b5b.q_value == b5.q_value, "blend is deterministic");
+      std::cout << "blendScores w 0 / 0.5 / 1: targets at q<=0.01 " << count(b0.q_value) << " / " << count(b5.q_value) << " / " << count(b1.q_value) << '\n';
+      bool threw = false;
+      try { blendScores(in, net, g.score, 1.5); } catch (const std::invalid_argument&) { threw = true; }
+      check(threw, "blend rejects w outside [0, 1]");
+    }
   }
 
   // Optional timing run: OPENDIA_GBM_BENCH_ROWS=<rows> (49 features, OPENDIA_GBM_BENCH_THREADS threads, default 8).

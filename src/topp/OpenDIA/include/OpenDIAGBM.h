@@ -80,4 +80,16 @@ namespace OpenMS::OpenDIA
   CrossFitScorer::Result gbmRescore(const CrossFitScorer::Input& input, const std::vector<float>& score, double hard_fraction,
                                     std::uint64_t seed, int threads, const std::function<void(const std::string&)>& log = {},
                                     int rounds = 3, double positive_q = 0.01);
+
+  /**
+    @brief Blend the network and GBM calibrated scores per precursor, then recalibrate and recompete (FDR-20261125).
+
+    For each precursor, b = w * network + (1 - w) * gbm. Here network is the calibrated score of the precursor's network-kept
+    window, and gbm is the calibrated score of its GBM-kept window. b is placed on the GBM-kept row, and the other rows
+    stay NOT_KEPT. Scores are then recalibrated with CrossFitScorer::calibrateTail, and q-values come from pooledPairedTDC.
+    A precursor without a network-kept window keeps its GBM score as b. w must lie in [0, 1].
+    Only score and q_value of the result are filled.
+  */
+  CrossFitScorer::Result blendScores(const CrossFitScorer::Input& input, const std::vector<float>& network, const std::vector<float>& gbm,
+                                     double w);
 }

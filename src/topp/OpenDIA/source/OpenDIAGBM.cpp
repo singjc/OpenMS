@@ -440,4 +440,36 @@ namespace OpenMS::OpenDIA
     for (std::size_t i = 0; i < comp.ranked.size(); ++i) res.q_value[comp.ranked[i]] = comp.q[i];
     return res;
   }
+
+  CrossFitScorer::Result blendScores(const CrossFitScorer::Input& in, const std::vector<float>& network, const std::vector<float>& gbm, double w)
+  {
+    const std::size_t n = in.rows();
+    if (network.size() != n || gbm.size() != n) throw std::invalid_argument("blendScores: inconsistent input sizes.");
+    if (!(w >= 0.0 && w <= 1.0)) throw std::invalid_argument("blendScores: w must lie in [0, 1].");
+    std::uint32_t n_precursors = 0;
+    for (std::uint32_t p : in.precursor) n_precursors = std::max(n_precursors, p + 1);
+    std::vector<double> net(n_precursors, 0.0);
+    std::vector<std::uint8_t> has(n_precursors, 0);
+    for (std::size_t r = 0; r < n; ++r)
+      if (network[r] > -1e29f)
+      {
+        net[in.precursor[r]] = network[r];
+        has[in.precursor[r]] = 1;
+      }
+    std::vector<float> blended(n, CrossFitScorer::NOT_KEPT);
+    for (std::size_t r = 0; r < n; ++r)
+    {
+      if (!(gbm[r] > -1e29f)) continue;
+      const std::uint32_t p = in.precursor[r];
+      blended[r] = has[p] ? static_cast<float>(w * net[p] + (1.0 - w) * static_cast<double>(gbm[r])) : gbm[r];
+    }
+    CrossFitScorer::Result res;
+    res.score = CrossFitScorer::calibrateTail(in, blended);
+    res.q_value.assign(n, 1.0);
+    std::vector<std::uint32_t> all(n);
+    std::iota(all.begin(), all.end(), 0u);
+    const auto comp = CrossFitScorer::pooledPairedTDC(in, res.score, all);
+    for (std::size_t i = 0; i < comp.ranked.size(); ++i) res.q_value[comp.ranked[i]] = comp.q[i];
+    return res;
+  }
 }

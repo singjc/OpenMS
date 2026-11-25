@@ -1042,6 +1042,12 @@ namespace OpenMS::OpenDIA
         windows[i].network_q_value = scored.q_value[i];
       }
       auto gbm = gbmRescore(input, scored.score, 0.02, options_.seed, options_.threads, say, options_.gbm_rounds, options_.gbm_positive_q);
+      if (options_.gbm_blend > 0.0)
+      {
+        // FDR-20261125: blend the network and GBM calibrated scores per precursor, then recalibrate (opt-in).
+        gbm = blendScores(input, scored.score, gbm.score, options_.gbm_blend);
+        say("GBM blend: network weight " + std::to_string(options_.gbm_blend));
+      }
       scored.score = std::move(gbm.score);
       scored.q_value = std::move(gbm.q_value);
     }
