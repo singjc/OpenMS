@@ -13,6 +13,7 @@
 #include <limits>
 #include <numeric>
 #include <stdexcept>
+#include <tuple>
 
 namespace OpenMS::OpenDIA
 {
@@ -41,9 +42,16 @@ namespace OpenMS::OpenDIA
       double g = 0.0, h = 0.0;
       std::vector<Bin> hist;           ///< d x 256.
       Split split;
+      double lo = -std::numeric_limits<double>::infinity();  ///< Weight bounds (monotone constraints only).
+      double hi = std::numeric_limits<double>::infinity();
+      double wl = 0.0, wr = 0.0;       ///< Bounded child weights of the chosen split (monotone constraints only).
     };
 
     double score(double g, double h, double l2) { return g * g / (h + l2 + EPS); }
+
+    /// Bounded leaf weight and its gain term -(2 g w + (h + l2) w^2) (equals score() when the bound is inactive).
+    double boundedWeight(double g, double h, double l2, double lo, double hi) { return std::clamp(-g / (h + l2 + EPS), lo, hi); }
+    double boundedScore(double g, double h, double l2, double w) { return -(2.0 * g * w + (h + l2 + EPS) * w * w); }
 
     std::uint64_t splitmix(std::uint64_t& state)
     {
@@ -155,15 +163,22 @@ namespace OpenMS::OpenDIA
         }
       }
     };
+    const bool restrict_features = !use_feature.empty();
+    const bool constrained = !monotone.empty();
+    if ((restrict_features && use_feature.size() != d) || (constrained && monotone.size() != d))
+      throw std::invalid_argument("HistGBM::fit: use_feature / monotone must have one entry per feature.");
     const auto findSplit = [&](Leaf& leaf)
     {
       std::vector<Split> per(d);
+      std::vector<std::pair<double, double>> per_w(constrained ? d : 0);
       const std::size_t count = leaf.end - leaf.begin;
-      const double parent = score(leaf.g, leaf.h, o.l2);
+      const double parent = constrained ? boundedScore(leaf.g, leaf.h, o.l2, boundedWeight(leaf.g, leaf.h, o.l2, leaf.lo, leaf.hi))
+                                        : score(leaf.g, leaf.h, o.l2);
 #pragma omp parallel for num_threads(threads) schedule(static)
       for (std::ptrdiff_t jj = 0; jj < static_cast<std::ptrdiff_t>(d); ++jj)
       {
         const std::size_t j = static_cast<std::size_t>(jj);
+        if (restrict_features && !use_feature[j]) continue;
         const Bin* hb = leaf.hist.data() + j * 256;
         const int nb = static_cast<int>(thresholds[j].size()) + 1;
         double gl = 0.0, hl = 0.0;
@@ -178,13 +193,28 @@ namespace OpenMS::OpenDIA
           if (nr < o.min_samples_leaf) break;
           const double hr = leaf.h - hl;
           if (hl < MIN_HESSIAN || hr < MIN_HESSIAN) continue;
-          const double gain = score(gl, hl, o.l2) + score(leaf.g - gl, hr, o.l2) - parent;
-          if (gain > per[j].gain) per[j] = {gain, static_cast<int>(j), b};
+          if (!constrained)
+          {
+            const double gain = score(gl, hl, o.l2) + score(leaf.g - gl, hr, o.l2) - parent;
+            if (gain > per[j].gain) per[j] = {gain, static_cast<int>(j), b};
+            continue;
+          }
+          // Left holds the lower feature values: +1 needs w_left <= w_right, -1 needs w_left >= w_right.
+          const double wl = boundedWeight(gl, hl, o.l2, leaf.lo, leaf.hi);
+          const double wr = boundedWeight(leaf.g - gl, hr, o.l2, leaf.lo, leaf.hi);
+          if ((monotone[j] > 0 && wl > wr) || (monotone[j] < 0 && wl < wr)) continue;
+          const double gain = boundedScore(gl, hl, o.l2, wl) + boundedScore(leaf.g - gl, hr, o.l2, wr) - parent;
+          if (gain > per[j].gain)
+          {
+            per[j] = {gain, static_cast<int>(j), b};
+            per_w[j] = {wl, wr};
+          }
         }
       }
       leaf.split = Split();
       for (const auto& s : per)
         if (s.feature >= 0 && s.gain > leaf.split.gain) leaf.split = s;
+      if (constrained && leaf.split.feature >= 0) std::tie(leaf.wl, leaf.wr) = per_w[static_cast<std::size_t>(leaf.split.feature)];
     };
 
     for (int it = 0; it < o.max_iter; ++it)
@@ -236,6 +266,23 @@ namespace OpenMS::OpenDIA
         }
         right.g = parent.g - left.g;
         right.h = parent.h - left.h;
+        left.lo = right.lo = parent.lo;
+        left.hi = right.hi = parent.hi;
+        if (constrained && monotone[static_cast<std::size_t>(j)] != 0)
+        {
+          // Children's bounds meet at the midpoint of their weights, so every later leaf keeps the order.
+          const double mid = 0.5 * (parent.wl + parent.wr);
+          if (monotone[static_cast<std::size_t>(j)] > 0)
+          {
+            left.hi = std::min(left.hi, mid);
+            right.lo = std::max(right.lo, mid);
+          }
+          else
+          {
+            left.lo = std::max(left.lo, mid);
+            right.hi = std::min(right.hi, mid);
+          }
+        }
         Leaf& small = nl <= nr ? left : right;
         Leaf& large = nl <= nr ? right : left;
         buildHist(small);
@@ -262,7 +309,8 @@ namespace OpenMS::OpenDIA
       }
       for (auto& leaf : leaves)
       {
-        const double v = -o.learning_rate * leaf.g / (leaf.h + o.l2 + EPS);
+        const double v = constrained ? o.learning_rate * boundedWeight(leaf.g, leaf.h, o.l2, leaf.lo, leaf.hi)
+                                     : -o.learning_rate * leaf.g / (leaf.h + o.l2 + EPS);
         tree[leaf.node].value = v;
         for (std::size_t k = leaf.begin; k < leaf.end; ++k) raw[idx[k]] += v;
       }
@@ -304,10 +352,12 @@ namespace OpenMS::OpenDIA
 
   CrossFitScorer::Result gbmRescore(const CrossFitScorer::Input& in, const std::vector<float>& score, double hard_fraction,
                                     std::uint64_t seed, int threads, const std::function<void(const std::string&)>& log,
-                                    int rounds, double positive_q)
+                                    int rounds, double positive_q, const GBMVariant& variant)
   {
     const std::size_t n = in.rows(), d = in.dimension;
     if (score.size() != n || in.features.size() != n * d) throw std::invalid_argument("gbmRescore: inconsistent input sizes.");
+    if ((!variant.use_feature.empty() && variant.use_feature.size() != d) || (!variant.monotone.empty() && variant.monotone.size() != d))
+      throw std::invalid_argument("gbmRescore: the GBM variant needs one entry per feature column.");
     if (rounds < 1 || !(positive_q > 0.0) || positive_q > 1.0) throw std::invalid_argument("gbmRescore: rounds must be >= 1 and positive_q in (0, 1].");
     threads = std::max(1, threads);
     constexpr std::size_t MAX_NEG = 1500000;
@@ -396,6 +446,8 @@ namespace OpenMS::OpenDIA
           (in.pair_hash[r] % 100 < 10 ? va : tr).push_back(r);
         }
         HistGBM model;
+        model.use_feature = variant.use_feature;
+        model.monotone = variant.monotone;
         if (!fp.empty() && !fn.empty() && !tr.empty()) model.fit(in.features.data(), d, tr, va, label, weight, go);
         else model.init = 0.0;
         line += (f ? "/" : "") + std::to_string(model.trees.size());

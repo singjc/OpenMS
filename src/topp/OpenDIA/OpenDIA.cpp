@@ -86,6 +86,10 @@ protected:
     registerDoubleOption_("gbm_blend", "<w>", 0.0, "Advanced, experimental (FDR-20261125): network weight of a per-precursor network/GBM score blend, recalibrated before q (0 = off)", false, true);
     setMinFloat_("gbm_blend", 0.0);
     setMaxFloat_("gbm_blend", 1.0);
+    registerFlag_("evidence_share", "Advanced, experimental (FDR-20261125): after the first scorer pass, recompute shared-fragment explaining away with claimants restricted to "
+                  "higher-scored windows at first-pass q <= 0.01 (any label) and add them as e_* features before rescoring", true);
+    registerStringList_("gbm_exclude", "<names>", {}, "Advanced, experimental (FDR-20261125): feature columns the hard-negative GBM never splits on", false, true);
+    registerStringList_("gbm_monotone", "<name:+1|name:-1>", {}, "Advanced, experimental (FDR-20261125): monotone constraints of the hard-negative GBM per feature column", false, true);
     registerIntOption_("trace_tensor_gb", "<GiB>", 64, "Advanced: hard cap on the 6-fragment trace tensor in GiB (about 6.1 KiB per candidate window with ion mobility); "
                        "raise it for very large libraries, memory permitting", false, true);
     setMinInt_("trace_tensor_gb", 1);
@@ -259,6 +263,9 @@ protected:
     options.gbm_rounds = getIntOption_("gbm_rounds");
     options.gbm_positive_q = getDoubleOption_("gbm_positive_q");
     options.gbm_blend = getDoubleOption_("gbm_blend");
+    options.evidence_share = getFlag_("evidence_share");
+    options.gbm_exclude = getStringList_("gbm_exclude");
+    options.gbm_monotone = getStringList_("gbm_monotone");
     if (!(options.search_valley_fraction > 0.0))
     {
       writeLogError_("-valley_fraction must be in (0, 1].");

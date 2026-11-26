@@ -14,6 +14,7 @@
 #include <iostream>
 #include <numeric>
 #include <random>
+#include <stdexcept>
 
 using namespace OpenMS::OpenDIA;
 
@@ -210,6 +211,74 @@ int main()
       try { blendScores(in, net, g.score, 1.5); } catch (const std::invalid_argument&) { threw = true; }
       check(threw, "blend rejects w outside [0, 1]");
     }
+  }
+
+  // (f) Feature restrictions (FDR-20261125): all-ones use_feature and all-zero monotone reproduce the plain fit,
+  // excluded features are never split on, and a monotone feature gives a monotone prediction.
+  {
+    const std::size_t n = 20000, d = 6;
+    auto p = makeProblem(n, d, 11);
+    std::vector<std::uint32_t> tr, va;
+    for (std::uint32_t i = 0; i < n; ++i) (i % 10 ? tr : va).push_back(i);
+    HistGBM::Options o;
+    o.threads = 2;
+    o.max_iter = 40;
+    HistGBM plain, ones;
+    plain.fit(p.x.data(), d, tr, va, p.y, p.w, o);
+    ones.use_feature.assign(d, 1);
+    ones.fit(p.x.data(), d, tr, va, p.y, p.w, o);
+    bool same = plain.trees.size() == ones.trees.size();
+    for (std::size_t i = 0; same && i < n; ++i) same = plain.predict(p.x.data() + i * d) == ones.predict(p.x.data() + i * d);
+    check(same, "use_feature all ones reproduces the plain fit");
+
+    HistGBM ex;
+    ex.use_feature.assign(d, 1);
+    ex.use_feature[2] = 0;
+    ex.fit(p.x.data(), d, tr, va, p.y, p.w, o);
+    bool none = !ex.trees.empty();
+    for (const auto& t : ex.trees)
+      for (const auto& nd : t) none = none && nd.feature != 2;
+    check(none, "excluded feature is never split on");
+
+    // x2 > 1.5 raises the label, so +1 is the natural direction; -1 forces the reverse. Check both on a sweep of x2.
+    for (int dir : {+1, -1})
+    {
+      HistGBM mono;
+      mono.monotone.assign(d, 0);
+      mono.monotone[2] = static_cast<std::int8_t>(dir);
+      mono.fit(p.x.data(), d, tr, va, p.y, p.w, o);
+      bool ok = !mono.trees.empty();
+      for (std::size_t i = 0; ok && i < 200; ++i)
+      {
+        std::vector<float> row(p.x.begin() + i * d, p.x.begin() + (i + 1) * d);
+        double prev = 0.0;
+        for (int k = 0; k <= 60 && ok; ++k)
+        {
+          row[2] = -3.0f + 0.1f * k;
+          const double v = mono.predict(row.data());
+          if (k) ok = dir > 0 ? v >= prev : v <= prev;
+          prev = v;
+        }
+      }
+      check(ok, dir > 0 ? "monotone +1 prediction is non-decreasing" : "monotone -1 prediction is non-increasing");
+    }
+    HistGBM zero;
+    zero.monotone.assign(d, 0);
+    zero.fit(p.x.data(), d, tr, va, p.y, p.w, o);
+    std::vector<double> s;
+    for (std::size_t i = 0; i < n; i += 10) s.push_back(zero.predict(p.x.data() + i * d));
+    std::vector<std::uint8_t> y;
+    for (std::size_t i = 0; i < n; i += 10) y.push_back(p.y[i]);
+    check(auc(s, y) > 0.97, "all-free monotone vector still fits");
+    bool threw = false;
+    try
+    {
+      HistGBM bad;
+      bad.use_feature.assign(d - 1, 1);
+      bad.fit(p.x.data(), d, tr, va, p.y, p.w, o);
+    }
+    catch (const std::invalid_argument&) { threw = true; }
+    check(threw, "wrong-size use_feature throws");
   }
 
   // Optional timing run: OPENDIA_GBM_BENCH_ROWS=<rows> (49 features, OPENDIA_GBM_BENCH_THREADS threads, default 8).

@@ -56,6 +56,18 @@ namespace OpenMS::OpenDIA
     std::vector<std::vector<Node>> trees;
 
     /**
+      @brief Optional restrictions (FDR-20261125). Empty vectors mean none and leave the fit unchanged.
+
+      use_feature[j] == 0: the model never splits on feature j.
+      monotone[j] = +1 / -1: the model's output is non-decreasing / non-increasing in feature j. Each leaf carries bounds
+      on its weight; a split on a constrained feature must order the children's weights, and its children's bounds meet at
+      the midpoint of their weights. Splits on other features pass the bounds down (the basic method of LightGBM). With a
+      monotone constraint the split gain is computed from the bounded weights.
+    */
+    std::vector<std::uint8_t> use_feature;
+    std::vector<std::int8_t> monotone;
+
+    /**
       @brief Fit on rows `train` of the row-major matrix `x` (n x d); rows `valid` drive early stopping (may be empty).
       @param label 1 positive, 0 negative, indexed like `x` rows.
       @param weight Sample weight, indexed like `x` rows.
@@ -67,6 +79,13 @@ namespace OpenMS::OpenDIA
     double predict(const float* row) const;
   };
 
+  /// GBM feature restrictions for gbmRescore (FDR-20261125; see HistGBM::use_feature and HistGBM::monotone). Empty = none.
+  struct GBMVariant
+  {
+    std::vector<std::uint8_t> use_feature;  ///< Per feature column: 0 excludes it from the GBM.
+    std::vector<std::int8_t> monotone;      ///< Per feature column: +1 non-decreasing, -1 non-increasing, 0 free.
+  };
+
   /**
     @brief Hard-negative GBM rescoring of CrossFitScorer windows.
 
@@ -75,11 +94,11 @@ namespace OpenMS::OpenDIA
     a HistGBM is trained on the other folds (negatives subsampled to at most 1.5 M, positive weight n_neg / n_pos,
     validation rows by pair_hash % 100 < 10) and scores its fold by the raw margin. Finally each precursor keeps its
     best window, scores are calibrated with CrossFitScorer::calibrateTail and q-values come from pooledPairedTDC.
-    Only score and q_value of the result are filled.
+    Only score and q_value of the result are filled. @p variant restricts the GBM's use of feature columns (default: none).
   */
   CrossFitScorer::Result gbmRescore(const CrossFitScorer::Input& input, const std::vector<float>& score, double hard_fraction,
                                     std::uint64_t seed, int threads, const std::function<void(const std::string&)>& log = {},
-                                    int rounds = 3, double positive_q = 0.01);
+                                    int rounds = 3, double positive_q = 0.01, const GBMVariant& variant = {});
 
   /**
     @brief Blend the network and GBM calibrated scores per precursor, then recalibrate and recompete (FDR-20261125).

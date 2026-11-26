@@ -874,7 +874,7 @@ namespace OpenMS::OpenDIA
     result.feature_names = names;
     // Capacity for the sibling columns added after the first scorer pass, so widening never reallocates (untouched
     // capacity is not resident).
-    result.features.reserve(n * (d + STAGE2_SIBLING_FEATURES));
+    result.features.reserve(n * (d + STAGE2_SIBLING_FEATURES + (options_.evidence_share ? InterferenceResolver::FEATURES : 0)));
     result.features.assign(n * d, 0.0f);
     const double noise = FragmentGrid::noiseLevel(grid_windows, resolver_precursors);
     const auto t_interference = std::chrono::steady_clock::now();
@@ -910,12 +910,16 @@ namespace OpenMS::OpenDIA
     say("Features: " + std::to_string(d) + " per window, noise=" + std::to_string(noise) + " seconds=" + std::to_string(seconds(t_features)) +
         " interference_seconds=" + std::to_string(interference_s));
     // Everything below reads only result.features, windows and the library. Release the extraction state now (about
-    // 384 bytes per window for grid_windows alone) instead of holding it through scoring.
+    // 384 bytes per window for grid_windows alone) instead of holding it through scoring. Evidence sharing keeps the
+    // interference inputs for its second resolver pass after the first scorer pass.
     traces_holder.reset();
     grids_holder.reset();
-    std::vector<InterferenceResolver::Window>().swap(grid_windows);
+    if (!options_.evidence_share)
+    {
+      std::vector<InterferenceResolver::Window>().swap(grid_windows);
+      std::vector<InterferenceResolver::Precursor>().swap(resolver_precursors);
+    }
     std::vector<FragmentGridCollector::Precursor>().swap(grid_precursors);
-    std::vector<InterferenceResolver::Precursor>().swap(resolver_precursors);
     std::vector<float>().swap(boundary);
     std::vector<float>().swap(extra_block);
     std::vector<float>().swap(mf_block);
@@ -1017,8 +1021,31 @@ namespace OpenMS::OpenDIA
       const auto sib = stage2SiblingFeatures(group, prec, rt, scored.score, lib.sibling_group_sizes, CrossFitScorer::NOT_KEPT);
       std::vector<std::uint32_t>().swap(group);
       std::vector<double>().swap(rt);
+      // Evidence sharing (FDR-20261125, opt-in): shared fragments are credited to the higher-scored window when that
+      // window is confident after the first pass (q <= 0.01, any label). Same rule for targets and decoys.
+      std::vector<float> share;
+      if (options_.evidence_share)
+      {
+        InterferenceResolver::ClaimantFilter filter;
+        filter.score = scored.score;
+        filter.eligible.resize(n);
+        std::size_t eligible = 0;
+        for (std::size_t i = 0; i < n; ++i)
+        {
+          filter.eligible[i] = scored.score[i] != CrossFitScorer::NOT_KEPT && scored.q_value[i] <= 0.01;
+          eligible += filter.eligible[i];
+        }
+        InterferenceResolver::Statistics st;
+        share = InterferenceResolver::compute(resolver_precursors, grid_windows, cal.ms2_tolerance_ppm,
+                                              2.0 * options_.grid_half_width_s / InterferenceResolver::BINS, options_.threads, &st,
+                                              cal.has_im ? 2.0 * cal.im_tolerance : 0.0, &filter);
+        std::vector<InterferenceResolver::Window>().swap(grid_windows);
+        std::vector<InterferenceResolver::Precursor>().swap(resolver_precursors);
+        say("Evidence sharing: claimant windows=" + std::to_string(eligible) + " windows with a claimant=" + std::to_string(st.windows_with_claimant));
+      }
       constexpr std::size_t S = STAGE2_SIBLING_FEATURES;
-      const std::size_t d2 = d + S;
+      const std::size_t E = options_.evidence_share ? InterferenceResolver::FEATURES : 0;
+      const std::size_t d2 = d + S + E;
       // Widen in place, last row first: row i moves from i * d to i * d2 >= i * d, so no unread value is overwritten.
       auto& f = input.features;
       f.resize(n * d2);
@@ -1027,9 +1054,12 @@ namespace OpenMS::OpenDIA
       {
         std::copy_backward(f.data() + i * d, f.data() + i * d + d, f.data() + i * d2 + d);
         std::copy_n(sib.data() + i * S, S, f.data() + i * d2 + d);
+        if (E) std::copy_n(share.data() + i * E, E, f.data() + i * d2 + d + S);
         if (sib[i * S + 1] > 0.0f) (lib.precursors[prec[i]].decoy ? co_d : co_t) += 1;
       }
       for (const char* nm : {"s_n", "s_co", "s_best", "s_best_d"}) result.feature_names.emplace_back(nm);
+      if (E)
+        for (const char* nm : InterferenceResolver::featureNames()) result.feature_names.emplace_back(std::string("e_") + (nm + 2));
       input.dimension = d2;
       scored = CrossFitScorer::run(input, so, [&](const std::string& l) { say("Scorer " + l); });
       say("Sibling features: windows with a co-eluting sibling target=" + std::to_string(co_t) + " decoy=" + std::to_string(co_d) + "; rescored");
@@ -1041,7 +1071,32 @@ namespace OpenMS::OpenDIA
         windows[i].network_score = scored.score[i];
         windows[i].network_q_value = scored.q_value[i];
       }
-      auto gbm = gbmRescore(input, scored.score, 0.02, options_.seed, options_.threads, say, options_.gbm_rounds, options_.gbm_positive_q);
+      GBMVariant variant;
+      const auto column = [&](const std::string& name) -> std::size_t
+      {
+        const auto it = std::find(result.feature_names.begin(), result.feature_names.end(), name);
+        if (it == result.feature_names.end()) throw std::invalid_argument("Unknown GBM feature column: " + name);
+        return static_cast<std::size_t>(it - result.feature_names.begin());
+      };
+      if (!options_.gbm_exclude.empty())
+      {
+        variant.use_feature.assign(input.dimension, 1);
+        for (const auto& nm : options_.gbm_exclude) variant.use_feature[column(nm)] = 0;
+      }
+      if (!options_.gbm_monotone.empty())
+      {
+        variant.monotone.assign(input.dimension, 0);
+        for (const auto& spec : options_.gbm_monotone)
+        {
+          const auto colon = spec.rfind(':');
+          const std::string sign = colon == std::string::npos ? "" : spec.substr(colon + 1);
+          if (sign != "+1" && sign != "-1") throw std::invalid_argument("GBM monotone constraint must be name:+1 or name:-1: " + spec);
+          variant.monotone[column(spec.substr(0, colon))] = sign == "+1" ? 1 : -1;
+        }
+      }
+      if (!variant.use_feature.empty() || !variant.monotone.empty())
+        say("GBM restrictions: excluded " + std::to_string(options_.gbm_exclude.size()) + " monotone " + std::to_string(options_.gbm_monotone.size()));
+      auto gbm = gbmRescore(input, scored.score, 0.02, options_.seed, options_.threads, say, options_.gbm_rounds, options_.gbm_positive_q, variant);
       if (options_.gbm_blend > 0.0)
       {
         // FDR-20261125: blend the network and GBM calibrated scores per precursor, then recalibrate (opt-in).

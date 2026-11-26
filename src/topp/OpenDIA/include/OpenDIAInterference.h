@@ -84,6 +84,19 @@ namespace OpenMS::OpenDIA
     };
 
     /**
+      @brief Optional claimant restriction (evidence sharing, FDR-20261125).
+
+      With a filter, window b may claim window a only when eligible[b] != 0 and score[b] > score[a]: shared fragments are
+      credited to the higher-scored, confident window, which is itself not explained by lower-scored windows. The rule is
+      the same for targets and decoys and uses no labels. Both vectors are indexed like the windows.
+    */
+    struct ClaimantFilter
+    {
+      std::vector<float> score;
+      std::vector<std::uint8_t> eligible;
+    };
+
+    /**
       @brief Compute the features of every window.
       @param[in] precursors Precursors referenced by the windows.
       @param[in] windows Candidate windows.
@@ -93,12 +106,14 @@ namespace OpenMS::OpenDIA
       @param[out] stats Optional counts.
       @param[in] im_link_width If > 0, two precursors that both have a 1/K0 link only if their 1/K0 differ by at most this
                  (their mobility extraction windows overlap); 0 links on m/z alone.
+      @param[in] filter Optional claimant restriction (nullptr: every linked window claims, as before).
       @return windows.size() x FEATURES, row-major.
-      @throws std::invalid_argument On a non-positive tolerance, bin width or thread count, or a bad precursor index.
+      @throws std::invalid_argument On a non-positive tolerance, bin width or thread count, a bad precursor index or a
+              filter whose sizes differ from the window count.
     */
     static std::vector<float> compute(const std::vector<Precursor>& precursors, const std::vector<Window>& windows,
                                       double fragment_tolerance_ppm, double rt_bin_seconds, int threads = 1, Statistics* stats = nullptr,
-                                      double im_link_width = 0.0);
+                                      double im_link_width = 0.0, const ClaimantFilter* filter = nullptr);
 
     /// Feature column names, in output order.
     static const std::array<const char*, FEATURES>& featureNames();
