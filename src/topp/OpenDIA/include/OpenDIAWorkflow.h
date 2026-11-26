@@ -135,6 +135,7 @@ namespace OpenMS::OpenDIA
     bool evidence_share = false;
     std::vector<std::string> gbm_exclude;  ///< Feature columns the GBM never splits on (FDR-20261125; empty = none).
     std::vector<std::string> gbm_monotone; ///< "name:+1" / "name:-1" monotone GBM constraints (FDR-20261125; empty = none).
+    bool gbm_fold_local = false;           ///< Fold-local GBM training chains (FDR-20261126, GBMVariant::fold_local; off = as before).
     std::size_t min_transitions = 1;
     std::size_t population_min_support = 3;     ///< Pairs whose best candidate has fewer supporting fragments are dropped.
     double grid_half_width_s = 15.0;

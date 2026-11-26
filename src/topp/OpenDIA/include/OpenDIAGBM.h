@@ -84,6 +84,14 @@ namespace OpenMS::OpenDIA
   {
     std::vector<std::uint8_t> use_feature;  ///< Per feature column: 0 excludes it from the GBM.
     std::vector<std::int8_t> monotone;      ///< Per feature column: +1 non-decreasing, -1 non-increasing, 0 free.
+    /**
+      Fold-local training (FDR-20261126, opt-in; false = unchanged). Each outer fold f gets its own training chain on the
+      rows outside f: positive selection, hard-negative mining and every round's training scores use only those rows, and
+      the training rows are rescored between rounds by inner cross-fitting (each other fold scored by a model trained on
+      the remaining one). Fold f is only ever predicted, never selected from or trained on. The initial network score is
+      still the pooled out-of-fold network score. Needs at least 3 folds.
+    */
+    bool fold_local = false;
   };
 
   /**

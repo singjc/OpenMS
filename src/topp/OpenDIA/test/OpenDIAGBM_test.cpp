@@ -171,6 +171,49 @@ int main()
       check(kept == 2 * pairs, "one kept window per precursor");
     }
 
+    // (c2) Fold-local training (FDR-20261126): still gains targets, and the held-out fold's scores do not depend on the
+    // incoming scores of that fold (a perturbation confined to fold 0 leaves fold 0's raw GBM margins unchanged).
+    {
+      GBMVariant fl;
+      fl.fold_local = true;
+      // A stronger incoming score (feature 0 itself) so every outer fold's training rows yield positives.
+      std::vector<float> strong(in.rows());
+      for (std::size_t r = 0; r < in.rows(); ++r) strong[r] = in.features[r * d];
+      const auto res = gbmRescore(in, strong, 0.02, 1, 2, [](const std::string& l) { std::cout << l << '\n'; }, 3, 0.01, fl);
+      const std::size_t c = count(res.q_value);
+      std::cout << "gbmRescore fold-local: targets at q<=0.01 " << c << " (weak input " << count(q0) << ")\n";
+      check(c > count(q0), "fold-local gbmRescore gains targets");
+      std::size_t kept = 0;
+      for (float v : res.score) kept += v > -1e29f;
+      check(kept == 2 * pairs, "fold-local: one kept window per precursor");
+      auto shifted = strong;
+      for (std::size_t r = 0; r < in.rows(); ++r)
+        if (in.fold[r] == 0) shifted[r] += in.decoy[r] ? 0.3f : -0.3f;
+      // Raw margins are compared through the kept-window choice and the calibrated score order within fold 0. The
+      // calibration of fold 0 uses fold 0's own decoys only, so identical margins give identical calibrated scores.
+      const auto res2 = gbmRescore(in, shifted, 0.02, 1, 2, {}, 3, 0.01, fl);
+      bool same0 = true;
+      for (std::size_t r = 0; r < in.rows(); ++r)
+        if (in.fold[r] == 0) same0 = same0 && res.score[r] == res2.score[r];
+      check(same0, "fold-local: fold 0 scores are independent of fold 0's incoming scores");
+      // Default (pooled) training does depend on them; this documents the leak the option removes.
+      const auto p1 = gbmRescore(in, strong, 0.02, 1, 2);
+      const auto p2 = gbmRescore(in, shifted, 0.02, 1, 2);
+      bool pooled_same0 = true;
+      for (std::size_t r = 0; r < in.rows(); ++r)
+        if (in.fold[r] == 0) pooled_same0 = pooled_same0 && p1.score[r] == p2.score[r];
+      check(!pooled_same0, "pooled training: fold 0 scores depend on fold 0's incoming scores");
+      bool threw = false;
+      try
+      {
+        auto two = in;
+        for (auto& f : two.fold) f = static_cast<std::uint8_t>(f % 2);
+        gbmRescore(two, weak, 0.02, 1, 2, {}, 3, 0.01, fl);
+      }
+      catch (const std::invalid_argument&) { threw = true; }
+      check(threw, "fold-local needs at least 3 folds");
+    }
+
     // (d) blendScores: kept rows follow the GBM, the order at w = 1 follows the network, bad w throws.
     {
       const auto net = CrossFitScorer::calibrateTail(in, [&]

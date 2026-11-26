@@ -1096,6 +1096,8 @@ namespace OpenMS::OpenDIA
       }
       if (!variant.use_feature.empty() || !variant.monotone.empty())
         say("GBM restrictions: excluded " + std::to_string(options_.gbm_exclude.size()) + " monotone " + std::to_string(options_.gbm_monotone.size()));
+      variant.fold_local = options_.gbm_fold_local;
+      if (variant.fold_local) say("GBM fold-local training: on");
       auto gbm = gbmRescore(input, scored.score, 0.02, options_.seed, options_.threads, say, options_.gbm_rounds, options_.gbm_positive_q, variant);
       if (options_.gbm_blend > 0.0)
       {

@@ -90,6 +90,8 @@ protected:
                   "higher-scored windows at first-pass q <= 0.01 (any label) and add them as e_* features before rescoring", true);
     registerStringList_("gbm_exclude", "<names>", {}, "Advanced, experimental (FDR-20261125): feature columns the hard-negative GBM never splits on", false, true);
     registerStringList_("gbm_monotone", "<name:+1|name:-1>", {}, "Advanced, experimental (FDR-20261125): monotone constraints of the hard-negative GBM per feature column", false, true);
+    registerFlag_("gbm_fold_local", "Advanced, experimental (FDR-20261126): train the hard-negative GBM per outer fold on that fold's training rows only, "
+                  "including positive selection, hard-negative mining and the rescoring between rounds (inner cross-fit)", true);
     registerIntOption_("trace_tensor_gb", "<GiB>", 64, "Advanced: hard cap on the 6-fragment trace tensor in GiB (about 6.1 KiB per candidate window with ion mobility); "
                        "raise it for very large libraries, memory permitting", false, true);
     setMinInt_("trace_tensor_gb", 1);
@@ -266,6 +268,7 @@ protected:
     options.evidence_share = getFlag_("evidence_share");
     options.gbm_exclude = getStringList_("gbm_exclude");
     options.gbm_monotone = getStringList_("gbm_monotone");
+    options.gbm_fold_local = getFlag_("gbm_fold_local");
     if (!(options.search_valley_fraction > 0.0))
     {
       writeLogError_("-valley_fraction must be in (0, 1].");

@@ -350,6 +350,153 @@ namespace OpenMS::OpenDIA
     return z;
   }
 
+  namespace
+  {
+    /// Hard-negative selection of one GBM round on @p rows only (the production rule restricted to a row subset).
+    void selectTraining(const CrossFitScorer::Input& in, const std::vector<float>& s, const std::vector<std::uint32_t>& rows,
+                        double hard_fraction, double positive_q, std::uint32_t n_precursors,
+                        std::vector<std::uint32_t>& pos, std::vector<std::uint32_t>& neg)
+    {
+      const auto comp = CrossFitScorer::pooledPairedTDC(in, s, rows);
+      pos.clear();
+      neg.clear();
+      for (std::size_t i = 0; i < comp.ranked.size(); ++i)
+        if (comp.q[i] <= positive_q && !in.decoy[comp.ranked[i]]) pos.push_back(comp.ranked[i]);
+      std::vector<std::uint32_t> dw;
+      for (std::uint32_t w : comp.winners)
+        if (in.decoy[w]) dw.push_back(w);
+      if (hard_fraction > 0.0)
+      {
+        std::sort(dw.begin(), dw.end(), [&](std::uint32_t a, std::uint32_t b) { return s[a] != s[b] ? s[a] > s[b] : a < b; });
+        const std::size_t take = std::min(dw.size(), std::max<std::size_t>(1, static_cast<std::size_t>(std::ceil(hard_fraction * dw.size()))));
+        std::vector<std::uint8_t> hard(n_precursors, 0);
+        for (std::size_t i = 0; i < take; ++i) hard[in.precursor[dw[i]]] = 1;
+        for (std::uint32_t r : rows)
+          if (in.decoy[r] && hard[in.precursor[r]]) neg.push_back(r);
+      }
+      else neg = dw;
+      std::sort(pos.begin(), pos.end());
+      std::sort(neg.begin(), neg.end());
+    }
+
+    /// Fit one HistGBM on the selected rows whose fold is in @p train_fold, then write its margin to every row whose fold
+    /// is @p predict_fold. Same weighting, negative cap and validation split as the pooled loop. Returns the tree count.
+    std::size_t fitPredict(const CrossFitScorer::Input& in, const std::vector<std::uint32_t>& pos, const std::vector<std::uint32_t>& neg,
+                           const std::vector<std::uint8_t>& train_fold, std::uint8_t predict_fold, const GBMVariant& variant,
+                           std::uint64_t subsample_state, int threads, std::vector<float>& out)
+    {
+      constexpr std::size_t MAX_NEG = 1500000;
+      const std::size_t n = in.rows(), d = in.dimension;
+      std::vector<std::uint32_t> fp, fn;
+      for (std::uint32_t r : pos)
+        if (train_fold[in.fold[r]]) fp.push_back(r);
+      for (std::uint32_t r : neg)
+        if (train_fold[in.fold[r]]) fn.push_back(r);
+      if (fn.size() > MAX_NEG)
+      {
+        std::uint64_t state = subsample_state;
+        for (std::size_t k = 0; k < MAX_NEG; ++k) std::swap(fn[k], fn[k + splitmix(state) % (fn.size() - k)]);
+        fn.resize(MAX_NEG);
+        std::sort(fn.begin(), fn.end());
+      }
+      const double wpos = fp.empty() ? 1.0 : static_cast<double>(fn.size()) / static_cast<double>(fp.size());
+      std::vector<std::uint32_t> rows;
+      rows.reserve(fp.size() + fn.size());
+      std::merge(fp.begin(), fp.end(), fn.begin(), fn.end(), std::back_inserter(rows));
+      std::vector<std::uint8_t> label(n, 0);
+      std::vector<double> weight(n, 1.0);
+      std::vector<std::uint32_t> tr, va;
+      for (std::uint32_t r : rows)
+      {
+        label[r] = !in.decoy[r];
+        weight[r] = label[r] ? wpos : 1.0;
+        (in.pair_hash[r] % 100 < 10 ? va : tr).push_back(r);
+      }
+      HistGBM model;
+      model.use_feature = variant.use_feature;
+      model.monotone = variant.monotone;
+      HistGBM::Options go;
+      go.threads = threads;
+      if (!fp.empty() && !fn.empty() && !tr.empty()) model.fit(in.features.data(), d, tr, va, label, weight, go);
+      else model.init = 0.0;
+#pragma omp parallel for num_threads(threads) schedule(static)
+      for (std::ptrdiff_t r = 0; r < static_cast<std::ptrdiff_t>(n); ++r)
+        if (in.fold[r] == predict_fold) out[r] = static_cast<float>(model.predict(in.features.data() + static_cast<std::size_t>(r) * d));
+      return model.trees.size();
+    }
+
+    /**
+      Fold-local GBM chains (GBMVariant::fold_local). For outer fold f the training rows are T = rows with fold != f. Each
+      round selects positives and hard negatives on T only; between rounds T is rescored by inner cross-fitting (each fold
+      g in T by a model trained on T without g). The last round's selection trains one model on all of T, which scores f.
+    */
+    std::vector<float> foldLocalScores(const CrossFitScorer::Input& in, const std::vector<float>& score, double hard_fraction,
+                                       std::uint64_t seed, int threads, const std::function<void(const std::string&)>& log,
+                                       int rounds, double positive_q, const GBMVariant& variant, std::uint8_t n_folds,
+                                       std::uint32_t n_precursors)
+    {
+      if (n_folds < 3) throw std::invalid_argument("gbmRescore: fold-local training needs at least 3 folds.");
+      const std::size_t n = in.rows();
+      std::vector<float> out(n, 0.0f);
+      for (std::uint8_t f = 0; f < n_folds; ++f)
+      {
+        std::vector<std::uint32_t> rows;
+        for (std::uint32_t r = 0; r < n; ++r)
+          if (in.fold[r] != f) rows.push_back(r);
+        std::vector<float> s = score, next = score;
+        std::vector<std::uint32_t> pos, neg, last_pos, last_neg;
+        std::string line = "GBM fold-local f" + std::to_string(f) + ":";
+        for (int round = 0; round < rounds; ++round)
+        {
+          try
+          {
+            selectTraining(in, s, rows, hard_fraction, positive_q, n_precursors, pos, neg);
+          }
+          catch (const std::invalid_argument& e)
+          {
+            if (round == 0) throw;
+            line += " r" + std::to_string(round + 1) + " stopped (" + e.what() + ")";
+            break;
+          }
+          if (pos.empty() || neg.empty())
+          {
+            // Same as the pooled loop: nothing to train on keeps the incoming score (here for fold f only).
+            line += " r" + std::to_string(round + 1) + " stopped (no positives or negatives)";
+            break;
+          }
+          last_pos = pos;
+          last_neg = neg;
+          line += " r" + std::to_string(round + 1) + " pos " + std::to_string(pos.size()) + " neg " + std::to_string(neg.size());
+          if (round + 1 == rounds) break;
+          // Inner cross-fit rescoring of the training rows for the next round's selection.
+          for (std::uint8_t g = 0; g < n_folds; ++g)
+          {
+            if (g == f) continue;
+            std::vector<std::uint8_t> train_fold(n_folds, 1);
+            train_fold[f] = 0;
+            train_fold[g] = 0;
+            const auto trees = fitPredict(in, pos, neg, train_fold, g, variant, seed + 100000 * (f + 1) + 1000 * (round + 1) + g, threads, next);
+            line += (g == (f == 0 ? 1 : 0) ? " trees " : "/") + std::to_string(trees);
+          }
+          s = next;
+        }
+        if (last_pos.empty() || last_neg.empty())
+        {
+          for (std::uint32_t r = 0; r < n; ++r)
+            if (in.fold[r] == f) out[r] = score[r];
+          if (log) log(line + " | kept the incoming score");
+          continue;
+        }
+        std::vector<std::uint8_t> train_fold(n_folds, 1);
+        train_fold[f] = 0;
+        const auto trees = fitPredict(in, last_pos, last_neg, train_fold, f, variant, seed + 100000 * (f + 1) + f, threads, out);
+        line += " | final trees " + std::to_string(trees);
+        if (log) log(line);
+      }
+      return out;
+    }
+  }
+
   CrossFitScorer::Result gbmRescore(const CrossFitScorer::Input& in, const std::vector<float>& score, double hard_fraction,
                                     std::uint64_t seed, int threads, const std::function<void(const std::string&)>& log,
                                     int rounds, double positive_q, const GBMVariant& variant)
@@ -375,6 +522,12 @@ namespace OpenMS::OpenDIA
     go.threads = threads;
     const int ROUNDS = rounds;
     int round = 0;
+    if (variant.fold_local)
+    {
+      // FDR-20261126: fold-local training chains; skips the pooled loop and its final check below.
+      s = foldLocalScores(in, score, hard_fraction, seed, threads, log, rounds, positive_q, variant, n_folds, n_precursors);
+      round = ROUNDS + 1;
+    }
     for (; round < ROUNDS; ++round)
     {
       CrossFitScorer::Competition comp;
