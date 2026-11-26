@@ -677,4 +677,93 @@ namespace OpenMS::OpenDIA
     for (std::size_t i = 0; i < comp.ranked.size(); ++i) res.q_value[comp.ranked[i]] = comp.q[i];
     return res;
   }
+
+  std::vector<double> bulkNullQ(const CrossFitScorer::Input& in, const std::vector<float>& score, int threads,
+                                const std::function<void(const std::string&)>& log)
+  {
+    const std::size_t n = in.rows(), d = in.dimension;
+    if (score.size() != n) throw std::invalid_argument("bulkNullQ: inconsistent input sizes.");
+    std::vector<std::uint32_t> kept;
+    for (std::uint32_t r = 0; r < n; ++r)
+      if (score[r] > -1e29f) kept.push_back(r);
+    const auto comp = CrossFitScorer::pooledPairedTDC(in, score, kept);
+    std::uint8_t n_folds = 0;
+    for (std::uint32_t r : comp.winners) n_folds = std::max<std::uint8_t>(n_folds, in.fold[r] + 1);
+    if (n_folds < 2) throw std::invalid_argument("bulkNullQ: needs at least 2 folds.");
+
+    // Bulk: precursor winners below their fold's median decoy-winner score.
+    std::vector<double> med(n_folds, 0.0);
+    for (std::uint8_t f = 0; f < n_folds; ++f)
+    {
+      std::vector<double> v;
+      for (std::uint32_t r : comp.winners)
+        if (in.fold[r] == f && in.decoy[r]) v.push_back(score[r]);
+      if (v.empty()) throw std::invalid_argument("bulkNullQ: a fold has no decoy winners.");
+      std::sort(v.begin(), v.end());
+      const std::size_t m = v.size() / 2;
+      med[f] = v.size() % 2 ? v[m] : 0.5 * (v[m - 1] + v[m]);
+    }
+    std::vector<std::uint8_t> bulk(n, 0), label(n, 0);
+    for (std::uint32_t r : comp.winners)
+    {
+      bulk[r] = score[r] < med[in.fold[r]];
+      label[r] = !in.decoy[r];
+    }
+    const std::vector<double> unit(n, 1.0);
+    std::vector<double> w(n, 1.0);
+    std::string line = "Bulk-null q:";
+    for (std::uint8_t f = 0; f < n_folds; ++f)
+    {
+      std::vector<std::uint32_t> tr, va, dec;
+      double nt = 0.0, nd = 0.0;
+      for (std::uint32_t r : comp.winners)
+      {
+        if (in.fold[r] == f)
+        {
+          if (in.decoy[r]) dec.push_back(r);
+          continue;
+        }
+        if (!bulk[r]) continue;
+        (in.pair_hash[r] % 100 < 10 ? va : tr).push_back(r);
+        (in.decoy[r] ? nd : nt) += 1.0;
+      }
+      if (nt == 0.0 || nd == 0.0 || tr.empty()) throw std::invalid_argument("bulkNullQ: a fold's training bulk lacks targets or decoys.");
+      HistGBM model;
+      HistGBM::Options go;
+      go.threads = threads;
+      model.fit(in.features.data(), d, tr, va, label, unit, go);
+      const double prior = nd / nt;
+#pragma omp parallel for num_threads(threads) schedule(static)
+      for (std::ptrdiff_t i = 0; i < static_cast<std::ptrdiff_t>(dec.size()); ++i)
+      {
+        const std::uint32_t r = dec[i];
+        const double z = std::clamp(model.predict(in.features.data() + static_cast<std::size_t>(r) * d), -50.0, 50.0);
+        w[r] = std::clamp(std::exp(z) * prior, 0.2, 5.0);
+      }
+      double sum = 0.0, cnt = 0.0, tail_sum = 0.0, tail_cnt = 0.0;
+      for (std::uint32_t r : dec)
+      {
+        if (bulk[r]) { sum += w[r]; cnt += 1.0; }
+        else { tail_sum += w[r]; tail_cnt += 1.0; }
+      }
+      if (cnt == 0.0) throw std::invalid_argument("bulkNullQ: a fold has no bulk decoys.");
+      for (std::uint32_t r : dec) w[r] *= cnt / sum;
+      line += " f" + std::to_string(f) + " trees " + std::to_string(model.trees.size()) + " bulk t/d " + std::to_string(static_cast<std::size_t>(nt)) +
+              "/" + std::to_string(static_cast<std::size_t>(nd)) + " upper-half decoy mean w " +
+              std::to_string(tail_cnt > 0.0 ? tail_sum / tail_cnt * cnt / sum : 0.0);
+    }
+    if (log) log(line);
+    std::vector<double> qs(comp.ranked.size()), q(n, 1.0);
+    double targets = 0.0, decoys = 0.0;
+    for (std::size_t i = 0; i < comp.ranked.size(); ++i)
+    {
+      const std::uint32_t r = comp.ranked[i];
+      if (in.decoy[r]) decoys += w[r];
+      else targets += 1.0;
+      qs[i] = std::min(1.0, (decoys + 1.0) / std::max(targets, 1.0));
+    }
+    for (std::size_t i = qs.size(); i-- > 1;) qs[i - 1] = std::min(qs[i - 1], qs[i]);
+    for (std::size_t i = 0; i < comp.ranked.size(); ++i) q[comp.ranked[i]] = qs[i];
+    return q;
+  }
 }

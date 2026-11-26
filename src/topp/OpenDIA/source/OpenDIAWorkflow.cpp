@@ -1108,6 +1108,19 @@ namespace OpenMS::OpenDIA
       scored.score = std::move(gbm.score);
       scored.q_value = std::move(gbm.q_value);
     }
+    if (options_.bulk_null_q)
+    {
+      // FDR-20261126: same ranking, bulk-null weighted decoy count in q (opt-in).
+      std::size_t plain = 0, weighted = 0;
+      auto q = bulkNullQ(input, scored.score, options_.threads, say);
+      for (std::size_t i = 0; i < n; ++i)
+      {
+        plain += !input.decoy[i] && scored.q_value[i] <= 0.01;
+        weighted += !input.decoy[i] && q[i] <= 0.01;
+      }
+      say("Bulk-null q: target precursors at q <= 0.01: plain TDC " + std::to_string(plain) + ", bulk-null " + std::to_string(weighted));
+      scored.q_value = std::move(q);
+    }
     result.features = std::move(input.features);
     for (std::size_t i = 0; i < n; ++i)
     {

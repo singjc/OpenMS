@@ -324,6 +324,62 @@ int main()
     check(threw, "wrong-size use_feature throws");
   }
 
+  // (e) Bulk-null q (FDR-20261126) on synthetic winners with known truth. False targets are shifted against decoys in
+  // feature 1, which also enters the score, so plain TDC under-counts false targets. One row per precursor.
+  for (const float shift : {0.8f, 0.0f})
+  {
+    CrossFitScorer::Input in;
+    const std::size_t pairs = 60000, d = 4;
+    in.dimension = d;
+    std::mt19937_64 rng(11);
+    std::normal_distribution<float> nd(0.0f, 1.0f);
+    std::vector<float> s;
+    std::vector<std::uint8_t> truth;  // 1 = true target
+    for (std::uint32_t pr = 0; pr < pairs; ++pr)
+      for (int dec = 0; dec < 2; ++dec)
+      {
+        const bool real = !dec && pr % 10 == 0;
+        float f[4] = {nd(rng), nd(rng), nd(rng), nd(rng)};
+        if (real) f[0] += 4.0f;
+        if (!dec && !real) f[1] += shift;
+        for (float v : f) in.features.push_back(v);
+        in.precursor.push_back(2 * pr + dec);
+        in.pair.push_back(pr);
+        in.decoy.push_back(static_cast<std::uint8_t>(dec));
+        in.fold.push_back(static_cast<std::uint8_t>(pr % 3));
+        in.pair_hash.push_back(CrossFitScorer::fnv1a("b" + std::to_string(pr)));
+        s.push_back(f[0] + 0.5f * f[1]);
+        truth.push_back(real);
+      }
+    std::vector<std::uint32_t> all(in.rows());
+    std::iota(all.begin(), all.end(), 0u);
+    const auto comp = CrossFitScorer::pooledPairedTDC(in, s, all);
+    std::vector<double> plain(in.rows(), 1.0);
+    for (std::size_t i = 0; i < comp.ranked.size(); ++i) plain[comp.ranked[i]] = comp.q[i];
+    const auto q = bulkNullQ(in, s, 2, [](const std::string& l) { std::cout << l << '\n'; });
+    const auto fdp = [&](const std::vector<double>& qq, double at, std::size_t& acc)
+    {
+      std::size_t f = 0;
+      acc = 0;
+      for (std::size_t r = 0; r < qq.size(); ++r)
+        if (!in.decoy[r] && qq[r] <= at) { ++acc; f += !truth[r]; }
+      return acc ? static_cast<double>(f) / acc : 0.0;
+    };
+    std::size_t np = 0, nb = 0;
+    const double fp = fdp(plain, 0.05, np), fb = fdp(q, 0.05, nb);
+    std::cout << "bulkNullQ shift " << shift << ": at q<=0.05 plain N " << np << " FDP " << fp << ", bulk-null N " << nb << " FDP " << fb << '\n';
+    // Same ranking: along the plain TDC order the bulk-null q is non-decreasing.
+    bool mono = true;
+    for (std::size_t i = 1; i < comp.ranked.size(); ++i) mono = mono && q[comp.ranked[i]] >= q[comp.ranked[i - 1]];
+    check(mono, "bulkNullQ keeps the ranking");
+    if (shift > 0.0f)
+    {
+      check(fp > 0.06, "synthetic plain TDC is anti-conservative at 5 %");
+      check(fb < fp && std::abs(fb - 0.05) < std::abs(fp - 0.05), "bulkNullQ moves FDP towards the nominal 5 %");
+    }
+    else check(nb > 0.9 * np && nb < 1.1 * np, "bulkNullQ is near neutral for exchangeable decoys");
+  }
+
   // Optional timing run: OPENDIA_GBM_BENCH_ROWS=<rows> (49 features, OPENDIA_GBM_BENCH_THREADS threads, default 8).
   if (const char* env = std::getenv("OPENDIA_GBM_BENCH_ROWS"))
   {

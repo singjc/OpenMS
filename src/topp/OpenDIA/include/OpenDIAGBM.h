@@ -119,4 +119,19 @@ namespace OpenMS::OpenDIA
   */
   CrossFitScorer::Result blendScores(const CrossFitScorer::Input& input, const std::vector<float>& network, const std::vector<float>& gbm,
                                      double w);
+
+  /**
+    @brief Label-free bulk-null weighted target-decoy q-values (FDR-20261126, opt-in; CALIB section 9 ported to OpenDIA).
+
+    The ranking is the pooled paired TDC of @p score (kept rows, as pooledPairedTDC) and is not changed; only the decoy count
+    in q is reweighted. The bulk is every precursor winner whose score lies below its fold's median decoy-winner score, so it
+    is almost all false targets and decoys. Per fold f a HistGBM (default options) learns target versus decoy on the bulk
+    winners of the other folds (feature columns only, unit weights, validation rows by pair_hash % 100 < 10). Every decoy
+    winner of f gets w = exp(margin) * n_decoy / n_target of that model (the false-target / decoy density ratio), clipped to
+    [0.2, 5] and divided by the mean w of f's bulk decoys. Along the ranked list q = min(1, (sum of w over decoys + 1) /
+    targets) with a reverse cumulative minimum. Returns q per row (1 for rows outside the ranked list).
+    @throws std::invalid_argument With fewer than 2 folds or a fold without bulk targets or bulk decoys.
+  */
+  std::vector<double> bulkNullQ(const CrossFitScorer::Input& input, const std::vector<float>& score, int threads,
+                                const std::function<void(const std::string&)>& log = {});
 }

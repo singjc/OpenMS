@@ -92,6 +92,9 @@ protected:
     registerStringList_("gbm_monotone", "<name:+1|name:-1>", {}, "Advanced, experimental (FDR-20261125): monotone constraints of the hard-negative GBM per feature column", false, true);
     registerFlag_("gbm_fold_local", "Advanced, experimental (FDR-20261126): train the hard-negative GBM per outer fold on that fold's training rows only, "
                   "including positive selection, hard-negative mining and the rescoring between rounds (inner cross-fit)", true);
+    registerFlag_("bulk_null_q", "Advanced, experimental (FDR-20261126): report label-free bulk-null weighted target-decoy q-values. The ranking "
+                  "is unchanged; each decoy counts by a cross-fitted false-target/decoy density ratio learnt on winners below the "
+                  "median decoy score", true);
     registerIntOption_("trace_tensor_gb", "<GiB>", 64, "Advanced: hard cap on the 6-fragment trace tensor in GiB (about 6.1 KiB per candidate window with ion mobility); "
                        "raise it for very large libraries, memory permitting", false, true);
     setMinInt_("trace_tensor_gb", 1);
@@ -269,6 +272,7 @@ protected:
     options.gbm_exclude = getStringList_("gbm_exclude");
     options.gbm_monotone = getStringList_("gbm_monotone");
     options.gbm_fold_local = getFlag_("gbm_fold_local");
+    options.bulk_null_q = getFlag_("bulk_null_q");
     if (!(options.search_valley_fraction > 0.0))
     {
       writeLogError_("-valley_fraction must be in (0, 1].");
