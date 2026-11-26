@@ -129,7 +129,7 @@ namespace OpenMS::OpenDIA
 
   std::vector<float> InterferenceResolver::compute(const std::vector<Precursor>& precursors, const std::vector<Window>& windows,
                                                    double fragment_tolerance_ppm, double rt_bin_seconds, int threads, Statistics* stats,
-                                                   double im_link_width, const ClaimantFilter* filter)
+                                                   double im_link_width)
   {
     if (!std::isfinite(fragment_tolerance_ppm) || !(fragment_tolerance_ppm > 0.0) || !std::isfinite(rt_bin_seconds) ||
         !(rt_bin_seconds > 0.0) || threads < 1 || !std::isfinite(im_link_width) || im_link_width < 0.0)
@@ -142,8 +142,6 @@ namespace OpenMS::OpenDIA
     {
       if (w.precursor >= precursors.size()) throw std::invalid_argument("InterferenceResolver: window precursor index out of range.");
     }
-    if (filter && (filter->score.size() != n || filter->eligible.size() != n))
-      throw std::invalid_argument("InterferenceResolver: the claimant filter needs one score and one flag per window.");
     std::vector<SortedFragments> sorted(precursors.size());
     for (std::size_t p = 0; p < precursors.size(); ++p) sorted[p] = sortFragments(precursors[p]);
 
@@ -324,11 +322,6 @@ namespace OpenMS::OpenDIA
             {
               if (it->precursor == a.precursor || it->rt_end < a.rt_start) continue;
               if (test_im && it->im > 0.0 && std::abs(pa.im - it->im) > im_link_width) continue;
-              if (filter)
-              {
-                const std::uint32_t bw = order[it->pos];
-                if (!filter->eligible[bw] || !(filter->score[bw] > filter->score[ai])) continue;
-              }
               const std::uint32_t q = it->pos - static_cast<std::uint32_t>(g);
               if (seen[q]) continue;  // the same window found through another fragment
               seen[q] = 1;

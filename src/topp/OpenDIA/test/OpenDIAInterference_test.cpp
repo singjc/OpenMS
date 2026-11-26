@@ -258,35 +258,6 @@ namespace
       require(near(one[ai * 4 + 3], std::log1p(static_cast<double>(claimants)), 1e-5), "claimant count equals brute force");
     }
   }
-  /// Evidence sharing (FDR-20261125): only eligible, higher-scored windows claim; an all-eligible filter with a score
-  /// order reproduces the one-directional half of the plain result.
-  void testClaimantFilter()
-  {
-    auto pb = precursor(300.0, 0), pa = precursor(1300.0, 0);
-    pb.fragment_mz[0] = pa.fragment_mz[0] = 500.0;
-    const auto prof = gaussian(15.5, 2.0);
-    const std::vector<InterferenceResolver::Precursor> precursors{pb, pa};
-    const std::vector<InterferenceResolver::Window> windows{window(0, pb, 100.0, prof), window(1, pa, 10.0, prof)};
-    const auto plain = InterferenceResolver::compute(precursors, windows, 7.0, 30.0 / 32);
-    InterferenceResolver::ClaimantFilter filter{{2.0f, 1.0f}, {1, 1}};
-    auto f = InterferenceResolver::compute(precursors, windows, 7.0, 30.0 / 32, 1, nullptr, 0.0, &filter);
-    for (std::size_t k = 0; k < 4; ++k) require(f[4 + k] == plain[4 + k], "higher-scored eligible b claims a as before");
-    require(f[0] == 0.0f && f[3] == 0.0f, "lower-scored a does not claim b");
-    const auto alone = InterferenceResolver::compute({pb}, {windows[0]}, 7.0, 30.0 / 32);
-    require(f[1] == alone[1] && f[2] == 0.0f, "unclaimed b keeps its observed library cosine");
-    filter.eligible = {0, 1};
-    f = InterferenceResolver::compute(precursors, windows, 7.0, 30.0 / 32, 1, nullptr, 0.0, &filter);
-    require(f[4] == 0.0f && f[7] == 0.0f && f[0] == 0.0f, "ineligible b claims nothing");
-    filter.eligible = {1, 1};
-    filter.score = {1.0f, 1.0f};
-    f = InterferenceResolver::compute(precursors, windows, 7.0, 30.0 / 32, 1, nullptr, 0.0, &filter);
-    require(f[4] == 0.0f && f[0] == 0.0f, "equal scores: no claim");
-    filter.score = {1.0f};
-    bool threw = false;
-    try { InterferenceResolver::compute(precursors, windows, 7.0, 30.0 / 32, 1, nullptr, 0.0, &filter); }
-    catch (const std::invalid_argument&) { threw = true; }
-    require(threw, "wrong-size filter throws");
-  }
 }
 
 int main()
@@ -296,7 +267,6 @@ int main()
     testExplainedShare();
     testNoOverlapNoSharedNoUnshared();
     testRandomAgainstBruteForce();
-    testClaimantFilter();
   }
   catch (const std::exception& error)
   {

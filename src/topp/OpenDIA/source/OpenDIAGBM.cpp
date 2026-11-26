@@ -13,7 +13,6 @@
 #include <limits>
 #include <numeric>
 #include <stdexcept>
-#include <tuple>
 
 namespace OpenMS::OpenDIA
 {
@@ -42,16 +41,9 @@ namespace OpenMS::OpenDIA
       double g = 0.0, h = 0.0;
       std::vector<Bin> hist;           ///< d x 256.
       Split split;
-      double lo = -std::numeric_limits<double>::infinity();  ///< Weight bounds (monotone constraints only).
-      double hi = std::numeric_limits<double>::infinity();
-      double wl = 0.0, wr = 0.0;       ///< Bounded child weights of the chosen split (monotone constraints only).
     };
 
     double score(double g, double h, double l2) { return g * g / (h + l2 + EPS); }
-
-    /// Bounded leaf weight and its gain term -(2 g w + (h + l2) w^2) (equals score() when the bound is inactive).
-    double boundedWeight(double g, double h, double l2, double lo, double hi) { return std::clamp(-g / (h + l2 + EPS), lo, hi); }
-    double boundedScore(double g, double h, double l2, double w) { return -(2.0 * g * w + (h + l2 + EPS) * w * w); }
 
     std::uint64_t splitmix(std::uint64_t& state)
     {
@@ -163,22 +155,15 @@ namespace OpenMS::OpenDIA
         }
       }
     };
-    const bool restrict_features = !use_feature.empty();
-    const bool constrained = !monotone.empty();
-    if ((restrict_features && use_feature.size() != d) || (constrained && monotone.size() != d))
-      throw std::invalid_argument("HistGBM::fit: use_feature / monotone must have one entry per feature.");
     const auto findSplit = [&](Leaf& leaf)
     {
       std::vector<Split> per(d);
-      std::vector<std::pair<double, double>> per_w(constrained ? d : 0);
       const std::size_t count = leaf.end - leaf.begin;
-      const double parent = constrained ? boundedScore(leaf.g, leaf.h, o.l2, boundedWeight(leaf.g, leaf.h, o.l2, leaf.lo, leaf.hi))
-                                        : score(leaf.g, leaf.h, o.l2);
+      const double parent = score(leaf.g, leaf.h, o.l2);
 #pragma omp parallel for num_threads(threads) schedule(static)
       for (std::ptrdiff_t jj = 0; jj < static_cast<std::ptrdiff_t>(d); ++jj)
       {
         const std::size_t j = static_cast<std::size_t>(jj);
-        if (restrict_features && !use_feature[j]) continue;
         const Bin* hb = leaf.hist.data() + j * 256;
         const int nb = static_cast<int>(thresholds[j].size()) + 1;
         double gl = 0.0, hl = 0.0;
@@ -193,28 +178,13 @@ namespace OpenMS::OpenDIA
           if (nr < o.min_samples_leaf) break;
           const double hr = leaf.h - hl;
           if (hl < MIN_HESSIAN || hr < MIN_HESSIAN) continue;
-          if (!constrained)
-          {
-            const double gain = score(gl, hl, o.l2) + score(leaf.g - gl, hr, o.l2) - parent;
-            if (gain > per[j].gain) per[j] = {gain, static_cast<int>(j), b};
-            continue;
-          }
-          // Left holds the lower feature values: +1 needs w_left <= w_right, -1 needs w_left >= w_right.
-          const double wl = boundedWeight(gl, hl, o.l2, leaf.lo, leaf.hi);
-          const double wr = boundedWeight(leaf.g - gl, hr, o.l2, leaf.lo, leaf.hi);
-          if ((monotone[j] > 0 && wl > wr) || (monotone[j] < 0 && wl < wr)) continue;
-          const double gain = boundedScore(gl, hl, o.l2, wl) + boundedScore(leaf.g - gl, hr, o.l2, wr) - parent;
-          if (gain > per[j].gain)
-          {
-            per[j] = {gain, static_cast<int>(j), b};
-            per_w[j] = {wl, wr};
-          }
+          const double gain = score(gl, hl, o.l2) + score(leaf.g - gl, hr, o.l2) - parent;
+          if (gain > per[j].gain) per[j] = {gain, static_cast<int>(j), b};
         }
       }
       leaf.split = Split();
       for (const auto& s : per)
         if (s.feature >= 0 && s.gain > leaf.split.gain) leaf.split = s;
-      if (constrained && leaf.split.feature >= 0) std::tie(leaf.wl, leaf.wr) = per_w[static_cast<std::size_t>(leaf.split.feature)];
     };
 
     for (int it = 0; it < o.max_iter; ++it)
@@ -266,23 +236,6 @@ namespace OpenMS::OpenDIA
         }
         right.g = parent.g - left.g;
         right.h = parent.h - left.h;
-        left.lo = right.lo = parent.lo;
-        left.hi = right.hi = parent.hi;
-        if (constrained && monotone[static_cast<std::size_t>(j)] != 0)
-        {
-          // Children's bounds meet at the midpoint of their weights, so every later leaf keeps the order.
-          const double mid = 0.5 * (parent.wl + parent.wr);
-          if (monotone[static_cast<std::size_t>(j)] > 0)
-          {
-            left.hi = std::min(left.hi, mid);
-            right.lo = std::max(right.lo, mid);
-          }
-          else
-          {
-            left.lo = std::max(left.lo, mid);
-            right.hi = std::min(right.hi, mid);
-          }
-        }
         Leaf& small = nl <= nr ? left : right;
         Leaf& large = nl <= nr ? right : left;
         buildHist(small);
@@ -309,8 +262,7 @@ namespace OpenMS::OpenDIA
       }
       for (auto& leaf : leaves)
       {
-        const double v = constrained ? o.learning_rate * boundedWeight(leaf.g, leaf.h, o.l2, leaf.lo, leaf.hi)
-                                     : -o.learning_rate * leaf.g / (leaf.h + o.l2 + EPS);
+        const double v = -o.learning_rate * leaf.g / (leaf.h + o.l2 + EPS);
         tree[leaf.node].value = v;
         for (std::size_t k = leaf.begin; k < leaf.end; ++k) raw[idx[k]] += v;
       }
@@ -350,161 +302,12 @@ namespace OpenMS::OpenDIA
     return z;
   }
 
-  namespace
-  {
-    /// Hard-negative selection of one GBM round on @p rows only (the production rule restricted to a row subset).
-    void selectTraining(const CrossFitScorer::Input& in, const std::vector<float>& s, const std::vector<std::uint32_t>& rows,
-                        double hard_fraction, double positive_q, std::uint32_t n_precursors,
-                        std::vector<std::uint32_t>& pos, std::vector<std::uint32_t>& neg)
-    {
-      const auto comp = CrossFitScorer::pooledPairedTDC(in, s, rows);
-      pos.clear();
-      neg.clear();
-      for (std::size_t i = 0; i < comp.ranked.size(); ++i)
-        if (comp.q[i] <= positive_q && !in.decoy[comp.ranked[i]]) pos.push_back(comp.ranked[i]);
-      std::vector<std::uint32_t> dw;
-      for (std::uint32_t w : comp.winners)
-        if (in.decoy[w]) dw.push_back(w);
-      if (hard_fraction > 0.0)
-      {
-        std::sort(dw.begin(), dw.end(), [&](std::uint32_t a, std::uint32_t b) { return s[a] != s[b] ? s[a] > s[b] : a < b; });
-        const std::size_t take = std::min(dw.size(), std::max<std::size_t>(1, static_cast<std::size_t>(std::ceil(hard_fraction * dw.size()))));
-        std::vector<std::uint8_t> hard(n_precursors, 0);
-        for (std::size_t i = 0; i < take; ++i) hard[in.precursor[dw[i]]] = 1;
-        for (std::uint32_t r : rows)
-          if (in.decoy[r] && hard[in.precursor[r]]) neg.push_back(r);
-      }
-      else neg = dw;
-      std::sort(pos.begin(), pos.end());
-      std::sort(neg.begin(), neg.end());
-    }
-
-    /// Fit one HistGBM on the selected rows whose fold is in @p train_fold, then write its margin to every row whose fold
-    /// is @p predict_fold. Same weighting, negative cap and validation split as the pooled loop. Returns the tree count.
-    std::size_t fitPredict(const CrossFitScorer::Input& in, const std::vector<std::uint32_t>& pos, const std::vector<std::uint32_t>& neg,
-                           const std::vector<std::uint8_t>& train_fold, std::uint8_t predict_fold, const GBMVariant& variant,
-                           std::uint64_t subsample_state, int threads, std::vector<float>& out)
-    {
-      constexpr std::size_t MAX_NEG = 1500000;
-      const std::size_t n = in.rows(), d = in.dimension;
-      std::vector<std::uint32_t> fp, fn;
-      for (std::uint32_t r : pos)
-        if (train_fold[in.fold[r]]) fp.push_back(r);
-      for (std::uint32_t r : neg)
-        if (train_fold[in.fold[r]]) fn.push_back(r);
-      if (fn.size() > MAX_NEG)
-      {
-        std::uint64_t state = subsample_state;
-        for (std::size_t k = 0; k < MAX_NEG; ++k) std::swap(fn[k], fn[k + splitmix(state) % (fn.size() - k)]);
-        fn.resize(MAX_NEG);
-        std::sort(fn.begin(), fn.end());
-      }
-      const double wpos = fp.empty() ? 1.0 : static_cast<double>(fn.size()) / static_cast<double>(fp.size());
-      std::vector<std::uint32_t> rows;
-      rows.reserve(fp.size() + fn.size());
-      std::merge(fp.begin(), fp.end(), fn.begin(), fn.end(), std::back_inserter(rows));
-      std::vector<std::uint8_t> label(n, 0);
-      std::vector<double> weight(n, 1.0);
-      std::vector<std::uint32_t> tr, va;
-      for (std::uint32_t r : rows)
-      {
-        label[r] = !in.decoy[r];
-        weight[r] = label[r] ? wpos : 1.0;
-        (in.pair_hash[r] % 100 < 10 ? va : tr).push_back(r);
-      }
-      HistGBM model;
-      model.use_feature = variant.use_feature;
-      model.monotone = variant.monotone;
-      HistGBM::Options go;
-      go.threads = threads;
-      if (!fp.empty() && !fn.empty() && !tr.empty()) model.fit(in.features.data(), d, tr, va, label, weight, go);
-      else model.init = 0.0;
-#pragma omp parallel for num_threads(threads) schedule(static)
-      for (std::ptrdiff_t r = 0; r < static_cast<std::ptrdiff_t>(n); ++r)
-        if (in.fold[r] == predict_fold) out[r] = static_cast<float>(model.predict(in.features.data() + static_cast<std::size_t>(r) * d));
-      return model.trees.size();
-    }
-
-    /**
-      Fold-local GBM chains (GBMVariant::fold_local). For outer fold f the training rows are T = rows with fold != f. Each
-      round selects positives and hard negatives on T only; between rounds T is rescored by inner cross-fitting (each fold
-      g in T by a model trained on T without g). The last round's selection trains one model on all of T, which scores f.
-    */
-    std::vector<float> foldLocalScores(const CrossFitScorer::Input& in, const std::vector<float>& score, double hard_fraction,
-                                       std::uint64_t seed, int threads, const std::function<void(const std::string&)>& log,
-                                       int rounds, double positive_q, const GBMVariant& variant, std::uint8_t n_folds,
-                                       std::uint32_t n_precursors)
-    {
-      if (n_folds < 3) throw std::invalid_argument("gbmRescore: fold-local training needs at least 3 folds.");
-      const std::size_t n = in.rows();
-      std::vector<float> out(n, 0.0f);
-      for (std::uint8_t f = 0; f < n_folds; ++f)
-      {
-        std::vector<std::uint32_t> rows;
-        for (std::uint32_t r = 0; r < n; ++r)
-          if (in.fold[r] != f) rows.push_back(r);
-        std::vector<float> s = score, next = score;
-        std::vector<std::uint32_t> pos, neg, last_pos, last_neg;
-        std::string line = "GBM fold-local f" + std::to_string(f) + ":";
-        for (int round = 0; round < rounds; ++round)
-        {
-          try
-          {
-            selectTraining(in, s, rows, hard_fraction, positive_q, n_precursors, pos, neg);
-          }
-          catch (const std::invalid_argument& e)
-          {
-            if (round == 0) throw;
-            line += " r" + std::to_string(round + 1) + " stopped (" + e.what() + ")";
-            break;
-          }
-          if (pos.empty() || neg.empty())
-          {
-            // Same as the pooled loop: nothing to train on keeps the incoming score (here for fold f only).
-            line += " r" + std::to_string(round + 1) + " stopped (no positives or negatives)";
-            break;
-          }
-          last_pos = pos;
-          last_neg = neg;
-          line += " r" + std::to_string(round + 1) + " pos " + std::to_string(pos.size()) + " neg " + std::to_string(neg.size());
-          if (round + 1 == rounds) break;
-          // Inner cross-fit rescoring of the training rows for the next round's selection.
-          for (std::uint8_t g = 0; g < n_folds; ++g)
-          {
-            if (g == f) continue;
-            std::vector<std::uint8_t> train_fold(n_folds, 1);
-            train_fold[f] = 0;
-            train_fold[g] = 0;
-            const auto trees = fitPredict(in, pos, neg, train_fold, g, variant, seed + 100000 * (f + 1) + 1000 * (round + 1) + g, threads, next);
-            line += (g == (f == 0 ? 1 : 0) ? " trees " : "/") + std::to_string(trees);
-          }
-          s = next;
-        }
-        if (last_pos.empty() || last_neg.empty())
-        {
-          for (std::uint32_t r = 0; r < n; ++r)
-            if (in.fold[r] == f) out[r] = score[r];
-          if (log) log(line + " | kept the incoming score");
-          continue;
-        }
-        std::vector<std::uint8_t> train_fold(n_folds, 1);
-        train_fold[f] = 0;
-        const auto trees = fitPredict(in, last_pos, last_neg, train_fold, f, variant, seed + 100000 * (f + 1) + f, threads, out);
-        line += " | final trees " + std::to_string(trees);
-        if (log) log(line);
-      }
-      return out;
-    }
-  }
-
   CrossFitScorer::Result gbmRescore(const CrossFitScorer::Input& in, const std::vector<float>& score, double hard_fraction,
                                     std::uint64_t seed, int threads, const std::function<void(const std::string&)>& log,
-                                    int rounds, double positive_q, const GBMVariant& variant)
+                                    int rounds, double positive_q)
   {
     const std::size_t n = in.rows(), d = in.dimension;
     if (score.size() != n || in.features.size() != n * d) throw std::invalid_argument("gbmRescore: inconsistent input sizes.");
-    if ((!variant.use_feature.empty() && variant.use_feature.size() != d) || (!variant.monotone.empty() && variant.monotone.size() != d))
-      throw std::invalid_argument("gbmRescore: the GBM variant needs one entry per feature column.");
     if (rounds < 1 || !(positive_q > 0.0) || positive_q > 1.0) throw std::invalid_argument("gbmRescore: rounds must be >= 1 and positive_q in (0, 1].");
     threads = std::max(1, threads);
     constexpr std::size_t MAX_NEG = 1500000;
@@ -522,12 +325,6 @@ namespace OpenMS::OpenDIA
     go.threads = threads;
     const int ROUNDS = rounds;
     int round = 0;
-    if (variant.fold_local)
-    {
-      // FDR-20261126: fold-local training chains; skips the pooled loop and its final check below.
-      s = foldLocalScores(in, score, hard_fraction, seed, threads, log, rounds, positive_q, variant, n_folds, n_precursors);
-      round = ROUNDS + 1;
-    }
     for (; round < ROUNDS; ++round)
     {
       CrossFitScorer::Competition comp;
@@ -599,8 +396,6 @@ namespace OpenMS::OpenDIA
           (in.pair_hash[r] % 100 < 10 ? va : tr).push_back(r);
         }
         HistGBM model;
-        model.use_feature = variant.use_feature;
-        model.monotone = variant.monotone;
         if (!fp.empty() && !fn.empty() && !tr.empty()) model.fit(in.features.data(), d, tr, va, label, weight, go);
         else model.init = 0.0;
         line += (f ? "/" : "") + std::to_string(model.trees.size());
@@ -644,126 +439,5 @@ namespace OpenMS::OpenDIA
     const auto comp = CrossFitScorer::pooledPairedTDC(in, res.score, all);
     for (std::size_t i = 0; i < comp.ranked.size(); ++i) res.q_value[comp.ranked[i]] = comp.q[i];
     return res;
-  }
-
-  CrossFitScorer::Result blendScores(const CrossFitScorer::Input& in, const std::vector<float>& network, const std::vector<float>& gbm, double w)
-  {
-    const std::size_t n = in.rows();
-    if (network.size() != n || gbm.size() != n) throw std::invalid_argument("blendScores: inconsistent input sizes.");
-    if (!(w >= 0.0 && w <= 1.0)) throw std::invalid_argument("blendScores: w must lie in [0, 1].");
-    std::uint32_t n_precursors = 0;
-    for (std::uint32_t p : in.precursor) n_precursors = std::max(n_precursors, p + 1);
-    std::vector<double> net(n_precursors, 0.0);
-    std::vector<std::uint8_t> has(n_precursors, 0);
-    for (std::size_t r = 0; r < n; ++r)
-      if (network[r] > -1e29f)
-      {
-        net[in.precursor[r]] = network[r];
-        has[in.precursor[r]] = 1;
-      }
-    std::vector<float> blended(n, CrossFitScorer::NOT_KEPT);
-    for (std::size_t r = 0; r < n; ++r)
-    {
-      if (!(gbm[r] > -1e29f)) continue;
-      const std::uint32_t p = in.precursor[r];
-      blended[r] = has[p] ? static_cast<float>(w * net[p] + (1.0 - w) * static_cast<double>(gbm[r])) : gbm[r];
-    }
-    CrossFitScorer::Result res;
-    res.score = CrossFitScorer::calibrateTail(in, blended);
-    res.q_value.assign(n, 1.0);
-    std::vector<std::uint32_t> all(n);
-    std::iota(all.begin(), all.end(), 0u);
-    const auto comp = CrossFitScorer::pooledPairedTDC(in, res.score, all);
-    for (std::size_t i = 0; i < comp.ranked.size(); ++i) res.q_value[comp.ranked[i]] = comp.q[i];
-    return res;
-  }
-
-  std::vector<double> bulkNullQ(const CrossFitScorer::Input& in, const std::vector<float>& score, int threads,
-                                const std::function<void(const std::string&)>& log)
-  {
-    const std::size_t n = in.rows(), d = in.dimension;
-    if (score.size() != n) throw std::invalid_argument("bulkNullQ: inconsistent input sizes.");
-    std::vector<std::uint32_t> kept;
-    for (std::uint32_t r = 0; r < n; ++r)
-      if (score[r] > -1e29f) kept.push_back(r);
-    const auto comp = CrossFitScorer::pooledPairedTDC(in, score, kept);
-    std::uint8_t n_folds = 0;
-    for (std::uint32_t r : comp.winners) n_folds = std::max<std::uint8_t>(n_folds, in.fold[r] + 1);
-    if (n_folds < 2) throw std::invalid_argument("bulkNullQ: needs at least 2 folds.");
-
-    // Bulk: precursor winners below their fold's median decoy-winner score.
-    std::vector<double> med(n_folds, 0.0);
-    for (std::uint8_t f = 0; f < n_folds; ++f)
-    {
-      std::vector<double> v;
-      for (std::uint32_t r : comp.winners)
-        if (in.fold[r] == f && in.decoy[r]) v.push_back(score[r]);
-      if (v.empty()) throw std::invalid_argument("bulkNullQ: a fold has no decoy winners.");
-      std::sort(v.begin(), v.end());
-      const std::size_t m = v.size() / 2;
-      med[f] = v.size() % 2 ? v[m] : 0.5 * (v[m - 1] + v[m]);
-    }
-    std::vector<std::uint8_t> bulk(n, 0), label(n, 0);
-    for (std::uint32_t r : comp.winners)
-    {
-      bulk[r] = score[r] < med[in.fold[r]];
-      label[r] = !in.decoy[r];
-    }
-    const std::vector<double> unit(n, 1.0);
-    std::vector<double> w(n, 1.0);
-    std::string line = "Bulk-null q:";
-    for (std::uint8_t f = 0; f < n_folds; ++f)
-    {
-      std::vector<std::uint32_t> tr, va, dec;
-      double nt = 0.0, nd = 0.0;
-      for (std::uint32_t r : comp.winners)
-      {
-        if (in.fold[r] == f)
-        {
-          if (in.decoy[r]) dec.push_back(r);
-          continue;
-        }
-        if (!bulk[r]) continue;
-        (in.pair_hash[r] % 100 < 10 ? va : tr).push_back(r);
-        (in.decoy[r] ? nd : nt) += 1.0;
-      }
-      if (nt == 0.0 || nd == 0.0 || tr.empty()) throw std::invalid_argument("bulkNullQ: a fold's training bulk lacks targets or decoys.");
-      HistGBM model;
-      HistGBM::Options go;
-      go.threads = threads;
-      model.fit(in.features.data(), d, tr, va, label, unit, go);
-      const double prior = nd / nt;
-#pragma omp parallel for num_threads(threads) schedule(static)
-      for (std::ptrdiff_t i = 0; i < static_cast<std::ptrdiff_t>(dec.size()); ++i)
-      {
-        const std::uint32_t r = dec[i];
-        const double z = std::clamp(model.predict(in.features.data() + static_cast<std::size_t>(r) * d), -50.0, 50.0);
-        w[r] = std::clamp(std::exp(z) * prior, 0.2, 5.0);
-      }
-      double sum = 0.0, cnt = 0.0, tail_sum = 0.0, tail_cnt = 0.0;
-      for (std::uint32_t r : dec)
-      {
-        if (bulk[r]) { sum += w[r]; cnt += 1.0; }
-        else { tail_sum += w[r]; tail_cnt += 1.0; }
-      }
-      if (cnt == 0.0) throw std::invalid_argument("bulkNullQ: a fold has no bulk decoys.");
-      for (std::uint32_t r : dec) w[r] *= cnt / sum;
-      line += " f" + std::to_string(f) + " trees " + std::to_string(model.trees.size()) + " bulk t/d " + std::to_string(static_cast<std::size_t>(nt)) +
-              "/" + std::to_string(static_cast<std::size_t>(nd)) + " upper-half decoy mean w " +
-              std::to_string(tail_cnt > 0.0 ? tail_sum / tail_cnt * cnt / sum : 0.0);
-    }
-    if (log) log(line);
-    std::vector<double> qs(comp.ranked.size()), q(n, 1.0);
-    double targets = 0.0, decoys = 0.0;
-    for (std::size_t i = 0; i < comp.ranked.size(); ++i)
-    {
-      const std::uint32_t r = comp.ranked[i];
-      if (in.decoy[r]) decoys += w[r];
-      else targets += 1.0;
-      qs[i] = std::min(1.0, (decoys + 1.0) / std::max(targets, 1.0));
-    }
-    for (std::size_t i = qs.size(); i-- > 1;) qs[i - 1] = std::min(qs[i - 1], qs[i]);
-    for (std::size_t i = 0; i < comp.ranked.size(); ++i) q[comp.ranked[i]] = qs[i];
-    return q;
   }
 }
