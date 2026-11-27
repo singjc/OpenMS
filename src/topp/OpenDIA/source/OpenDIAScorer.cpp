@@ -9,10 +9,13 @@
 #include <OpenDIAScorer.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
+#include <exception>
 #include <limits>
 #include <numeric>
 #include <stdexcept>
+#include <thread>
 
 namespace OpenMS::OpenDIA
 {
@@ -643,10 +646,19 @@ namespace OpenMS::OpenDIA
       res.log.push_back(line);
       if (log) log(line);
     };
-    std::vector<float> raw(n, 0.0f), linear(n, 0.0f), round_score(n, 0.0f);
-    std::vector<float> z(n * d);
-    for (std::uint8_t k = 0; k < n_folds; ++k)
+    std::vector<float> raw(n, 0.0f), linear(n, 0.0f);
+    // Folds are independent: each standardises by its own training rows into its own z, draws from its own seed and
+    // writes raw/linear only for its own test rows. They run concurrently, each on an equal share of the threads; every
+    // fold computes the same values as when run alone (all kernels are thread-count invariant), and the log lines are
+    // emitted in fold order afterwards.
+    const int fold_workers = std::min<int>(n_folds, o.threads);
+    std::vector<std::string> fold_lines(n_folds);
+    std::vector<std::exception_ptr> fold_errors(n_folds);
+    const auto runFold = [&](std::uint8_t k, int threads)
     {
+      CrossFitScorer::Options fo = o;
+      fo.threads = threads;
+      std::vector<float> z(n * d), round_score(n, 0.0f);
       std::vector<std::uint32_t> train, test;
       for (std::uint32_t r = 0; r < n; ++r) (in.fold[r] == k ? test : train).push_back(r);
       // Standardise by the training folds (population SD; constant columns keep SD 1).
@@ -665,7 +677,7 @@ namespace OpenMS::OpenDIA
         v = std::sqrt(v / static_cast<double>(train.size()));
         if (v == 0.0) v = 1.0;
       }
-#pragma omp parallel for num_threads(o.threads) schedule(static)
+#pragma omp parallel for num_threads(threads) schedule(static)
       for (std::ptrdiff_t r = 0; r < static_cast<std::ptrdiff_t>(n); ++r)
         for (std::size_t j = 0; j < d; ++j) z[r * d + j] = static_cast<float>((in.features[r * d + j] - mu[j]) / sd[j]);
 
@@ -680,12 +692,12 @@ namespace OpenMS::OpenDIA
         label.push_back(s.positive);
         valid.push_back(s.group_hash % 100 < o.validation_percent);
       }
-      Fit model = fit(z, d, rows, label, valid, o.seed + 100 + k, o);
+      Fit model = fit(z, d, rows, label, valid, o.seed + 100 + k, fo);
       std::string line = "fold " + std::to_string(k) + ": r0 " + std::to_string(rows.size()) + " " + std::to_string(model.epochs) +
                          " ep crit " + std::to_string(model.criterion);
       for (std::size_t r = 0; r < o.self_q.size(); ++r)
       {
-        scoreRows(model, z, d, train, round_score, nullptr, o.threads);
+        scoreRows(model, z, d, train, round_score, nullptr, threads);
         const auto comp = pooledPairedTDC(in, round_score, train);
         rows.clear();
         label.clear();
@@ -704,12 +716,41 @@ namespace OpenMS::OpenDIA
         label.assign(rows.size(), 0);
         std::fill(label.begin(), label.begin() + positives, 1);
         for (std::uint32_t row : rows) valid.push_back(in.pair_hash[row] % 100 < o.validation_percent);
-        model = fit(z, d, rows, label, valid, o.seed + 200 + 10 * k + r + 1, o);
+        model = fit(z, d, rows, label, valid, o.seed + 200 + 10 * k + r + 1, fo);
         line += " | r" + std::to_string(r + 1) + " pos " + std::to_string(positives) + " neg " + std::to_string(rows.size() - positives) +
                 " " + std::to_string(model.epochs) + " ep crit " + std::to_string(model.criterion);
       }
-      scoreRows(model, z, d, test, raw, &linear, o.threads);
-      say(line);
+      scoreRows(model, z, d, test, raw, &linear, threads);
+      fold_lines[k] = std::move(line);
+    };
+    {
+      std::vector<std::thread> workers;
+      std::atomic<int> next_fold{0};
+      for (int w = 0; w < fold_workers; ++w)
+      {
+        // Threads split as evenly as possible; a worker keeps its share for every fold it takes.
+        const int share = o.threads / fold_workers + (w < o.threads % fold_workers ? 1 : 0);
+        workers.emplace_back([&, share]()
+        {
+          for (int k; (k = next_fold.fetch_add(1)) < n_folds;)
+          {
+            try
+            {
+              runFold(static_cast<std::uint8_t>(k), share);
+            }
+            catch (...)
+            {
+              fold_errors[k] = std::current_exception();
+            }
+          }
+        });
+      }
+      for (auto& t : workers) t.join();
+    }
+    for (std::uint8_t k = 0; k < n_folds; ++k)
+    {
+      if (fold_errors[k]) std::rethrow_exception(fold_errors[k]);
+      say(fold_lines[k]);
     }
 
     // W rule: per precursor the window with the largest linear part (ties: lower row) keeps its full score.
