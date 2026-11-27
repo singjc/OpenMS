@@ -1,0 +1,5 @@
+labels: corrected; entrapment precursors relabelled as human: 2912
+library: targets 1390163, r = 6.9176; DIA-NN report precursors 84276, not matched to the library 0
+DIA-NN: q<=0.01 N 41649, E 340, lower 0.0082 (90 % 0.0074-0.0089), combined 0.0093 (90 % 0.0085-0.0102); N@FDP_c 1 % 41835
+  at q<=0.005: N 40047, E 163, lower 0.0041, combined 0.0047
+  at q<=0.02: N 43432, E 715, lower 0.0165, combined 0.0188

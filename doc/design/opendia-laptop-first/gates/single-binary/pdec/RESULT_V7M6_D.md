@@ -1,5 +1,7 @@
 # RESULT_V7M6_D: PLAN_V7M6 fails on D at r ≈ 7, on wall time only (23 Nov 2026)
 
+> Label correction, 27 Nov 2026: see [corrected evaluation](../relabel-20261127/RESULT_RELABEL.md). Historical numbers and frozen timing verdict below are preserved.
+
 The plan is `PLAN_V7M6.md`, frozen and pushed in docs `b7c772816c` before any plan job ran (sha256 `ad3dc855`).
 
 - **Runs:** `entlib-v7m6-20261123/runs/D_{cur,v7m6}_s{0..4}`. All 10 exited 0.

@@ -1,5 +1,7 @@
 # RESULT_RTR_H: PLAN_RTR on held-out H (21 Nov 2026, reported, no criteria)
 
+> Label correction, 27 Nov 2026: see [corrected evaluation](../relabel-20261127/RESULT_RELABEL.md). Historical numbers below are preserved.
+
 H (22474.d) was submitted at 07:32:10Z, after the D verdict was committed in docs `09285d4462` at 07:32:08Z. It used the same container, library, evaluator and arms as D. The CUR arm's `precursors.tsv` is byte-identical to the PLAN_MT `mt` arm on all 5 H seeds.
 
 ## Per seed

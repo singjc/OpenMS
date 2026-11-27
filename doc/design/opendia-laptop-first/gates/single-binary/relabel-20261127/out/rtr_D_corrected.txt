@@ -1,0 +1,15 @@
+labels: corrected; entrapment precursors relabelled as human: 2912
+library: target precursors 1390163, r = 6.9176, targets with a paired decoy 1388026 (0.9985)
+arm  seed  N_q01  E_q01  lower  combined  N_at_FDPc1
+cur     0  15320    147 0.0096    0.0110       15224
+cur     1  15732    159 0.0101    0.0116       15458
+cur     2  15423    157 0.0102    0.0117       15213
+cur     3  15670    158 0.0101    0.0115       15419
+cur     4  15363    148 0.0096    0.0110       15239
+rtr     0  16034    147 0.0092    0.0105       15972
+rtr     1  15877    138 0.0087    0.0099       15880
+rtr     2  15475    139 0.0090    0.0103       15366
+rtr     3  16091    158 0.0098    0.0112       15878
+rtr     4  15662    138 0.0088    0.0101       15640
+cur: pooled q<=0.01 lower 0.0099 (90 % 0.0093-0.0105), combined 0.0114 (90 % 0.0107-0.0121); E 769, N 77508; median N@FDP_c 1 % 15239 (15213-15458); P(entrapment beats own decoy | best q<=0.05) 0.523 (n 8057, 90 % +-0.009)
+rtr: pooled q<=0.01 lower 0.0091 (90 % 0.0085-0.0097), combined 0.0104 (90 % 0.0098-0.0111); E 720, N 79139; median N@FDP_c 1 % 15878 (15366-15972); P(entrapment beats own decoy | best q<=0.05) 0.516 (n 8055, 90 % +-0.009)

@@ -1,5 +1,7 @@
 # RESULT_BLEND: the network/GBM blend fixes Astral's own q but costs about 5 % of HeLa IDs (25 Nov 2026, FAIL)
 
+> Label correction, 27 Nov 2026: HeLa B5 rows are re-derived in the [corrected evaluation](../relabel-20261127/RESULT_RELABEL.md). Historical numbers and frozen verdict below are preserved. Astral rows are unchanged.
+
 - **Plan:** `PRECHECK_BLEND.md`, frozen and pushed in docs `02caf9aa13` before the container build or any remote run. The submission is in `SUBMITTED_BLEND.md`.
 - **Code:** OpenMS `b3391c92e8`.
 - **Container:** `opendia-blend-20261125.sif`, sha256 `8ba71d01…`.

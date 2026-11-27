@@ -1,5 +1,7 @@
 # RESULT_PDEC_H and RESULT_ODP_H: held-out HeLa H (reported only, no criteria)
 
+> Label correction, 27 Nov 2026: the ODP r~7 rows are re-derived in the [corrected evaluation](../relabel-20261127/RESULT_RELABEL.md). Earlier PDEC rows are outside that scope. Historical values below are preserved.
+
 - **Run:** H is HeLa 200 ng diaPASEF (21 min) on the r ≈ 7 foreign entrapment library, seeds 0-4, CUR and NEW.
 - **Setup:** both sets ran with amendment 1: container `opendia-pd3-bc4e4f8d9b.sif`, `-trace_tensor_gb 96`, 192 GB.
 - **Order:** both were submitted after the D verdicts were committed. PDEC H was submitted at 01:48Z, after 1f393c2184 and

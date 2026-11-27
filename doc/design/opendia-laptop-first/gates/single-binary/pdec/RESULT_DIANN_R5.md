@@ -1,5 +1,7 @@
 # DIA-NN 2.2 on the r ≈ 7 entrapment library (19 Nov 2026)
 
+> Label correction, 27 Nov 2026: historical values below use the old labels. Corrected N@FDP_c 1% is D 26,391 and H 41,835. See [corrected evaluation](../relabel-20261127/RESULT_RELABEL.md). Original records are preserved.
+
 This is a descriptive reference, not a frozen plan. The user asked how OpenDIA compares with DIA-NN on the same entrapment
 library.
 

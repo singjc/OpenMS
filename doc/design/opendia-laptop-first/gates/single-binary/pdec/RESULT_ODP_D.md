@@ -1,5 +1,7 @@
 # RESULT_ODP_D: OpenDIA's built-in predicted decoys calibrate like DIALibGen's at r ≈ 7. PLAN_ODP fails criteria 1 and 2
 
+> Label correction, 27 Nov 2026: see the [corrected evaluation](../relabel-20261127/RESULT_RELABEL.md) and full old/corrected table. Historical numbers and frozen verdict below are preserved, not retroactively re-decided.
+
 - **Plan:** PLAN_ODP, frozen c3e71db6a9 at 2026-11-18T23:45:29Z.
 - **Runs:** D seeds 0-4, CUR (`-decoys predict`) and NEW (`-decoys predict -pg_scores`). Codon `entlib-odp5-20261118`,
   container `opendia-pd2-01d5ded04a.sif`.

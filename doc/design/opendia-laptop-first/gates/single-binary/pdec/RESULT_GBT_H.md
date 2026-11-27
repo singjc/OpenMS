@@ -1,5 +1,7 @@
 # RESULT_GBT_H: PLAN_GBT on held-out H (22 Nov 2026, reported, no criteria)
 
+> Label correction, 27 Nov 2026: corrected current-default N@FDP_c 1% is 37,897. See [corrected evaluation](../relabel-20261127/RESULT_RELABEL.md). Historical numbers below are preserved.
+
 H (22474.d) was submitted after the D verdict was committed in docs `1362c68d5a`. It used the same container, library, evaluator and arms as D. The CUR arm's `precursors.tsv` is byte-identical to `entlib-sib-20261121/runs/H_sib_s<seed>`, the adopted default, on all 5 seeds. All 10 runs exited 0. Full output is in `EVAL_PLAN_GBT_H.txt`.
 
 ## Per seed

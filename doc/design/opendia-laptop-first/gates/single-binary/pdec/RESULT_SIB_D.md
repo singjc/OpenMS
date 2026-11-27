@@ -1,5 +1,7 @@
 # RESULT_SIB_D: PLAN_SIB passes on D at r ≈ 7 (21 Nov 2026)
 
+> Label correction, 27 Nov 2026: see [corrected evaluation](../relabel-20261127/RESULT_RELABEL.md). Historical numbers and frozen verdict below are preserved.
+
 The plan is `PLAN_SIB.md`, frozen and pushed in docs `1d5a75bf06` before any r ≈ 7 job ran.
 
 - **Runs:** `entlib-sib-20261121/runs/D_{cur,sib}_s{0..4}`. All 10 exited 0.

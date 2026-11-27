@@ -1,5 +1,7 @@
 # RESULT_RTR_D: PLAN_RTR on D (21 Nov 2026)
 
+> Label correction, 27 Nov 2026: see [corrected evaluation](../relabel-20261127/RESULT_RELABEL.md). Historical numbers and frozen verdict below are preserved.
+
 ## Verdict
 
 **PASS, all four criteria, criterion 1 narrowly.** `-rt_refine` raises the median N at FDP_c 1 % from 14,895 to 15,369 (+3.2 %), against a frozen bar of +3.0 % (15,342). Unlike the earlier feature blocks, **the own-q calibration improves**: the pooled lower bound falls from 1.20 % to 1.12 %, and the combined bound from 1.37 % to 1.27 %.

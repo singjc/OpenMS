@@ -1,5 +1,7 @@
 # RESULT_GBT_D: PLAN_GBT passes on D at r ≈ 7 (22 Nov 2026)
 
+> Label correction, 27 Nov 2026: corrected current-default N@FDP_c 1% is 21,805. See [corrected evaluation](../relabel-20261127/RESULT_RELABEL.md). Historical numbers and frozen verdict below are preserved.
+
 The plan is `PLAN_GBT.md`, frozen and pushed in docs `9e54ff5e2f` before any r ≈ 7 job ran.
 
 - **Runs:** `entlib-gbt-20261122/runs/D_{cur,gbt}_s{0..4}`. All 10 exited 0.

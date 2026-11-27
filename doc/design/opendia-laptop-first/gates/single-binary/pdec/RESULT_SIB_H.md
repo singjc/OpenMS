@@ -1,5 +1,7 @@
 # RESULT_SIB_H: PLAN_SIB on held-out H (22 Nov 2026, reported, no criteria)
 
+> Label correction, 27 Nov 2026: see [corrected evaluation](../relabel-20261127/RESULT_RELABEL.md). Historical numbers below are preserved.
+
 H (22474.d) was submitted after the D verdict was committed in docs `896fbeff9f`. It used the same container, library, evaluator and arms as D. The CUR arm's `precursors.tsv` is byte-identical to `entlib-rtr-20261121/runs/H_rtr_s<seed>`, the adopted default, on all 5 seeds. All 10 runs exited 0. Full output is in `EVAL_PLAN_SIB_H.txt`.
 
 ## Per seed
