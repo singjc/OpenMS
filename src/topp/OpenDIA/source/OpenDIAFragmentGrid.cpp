@@ -322,11 +322,9 @@ namespace OpenMS::OpenDIA
     reached_.clear();
     for (const OpenMS::Precursor& precursor : spectrum.getPrecursors())
     {
-      const double centre = precursor.getMZ();
-      const double lower = precursor.getIsolationWindowLowerOffset();
-      const double upper = precursor.getIsolationWindowUpperOffset();
-      if (!std::isfinite(centre) || !std::isfinite(lower) || !std::isfinite(upper) || lower < 0.0 || upper < 0.0 || !(lower + upper > 0.0)) continue;
-      Lane& lane = lane_(centre - lower, centre + upper);
+      std::pair<double, double> key;
+      if (!isolationKey(precursor.getMZ(), precursor.getIsolationWindowLowerOffset(), precursor.getIsolationWindowUpperOffset(), key)) continue;
+      Lane& lane = lane_(key.first, key.second);
       while (lane.cursor < lane.precursors.size() && rt_low_[lane.precursors[lane.cursor]] < rt) lane.active.push_back(lane.precursors[lane.cursor++]);
       std::size_t kept = 0;
       for (const std::uint32_t p : lane.active)
@@ -408,14 +406,33 @@ namespace OpenMS::OpenDIA
     std::vector<std::int32_t>().swap(free_);
   }
 
+  bool FragmentGridCollector::isolationKey(double centre, double lower, double upper, std::pair<double, double>& key)
+  {
+    if (!std::isfinite(centre) || !std::isfinite(lower) || !std::isfinite(upper) || lower < 0.0 || upper < 0.0 || !(lower + upper > 0.0)) return false;
+    key = {centre - lower, centre + upper};
+    return true;
+  }
+
   std::vector<std::int32_t> FragmentGridCollector::isolationIndices() const
+  {
+    std::vector<double> mz(precursors_.size());
+    for (std::size_t p = 0; p < precursors_.size(); ++p) mz[p] = precursors_[p].mz;
+    return isolationIndices(isolationKeys(), mz);
+  }
+
+  std::vector<std::pair<double, double>> FragmentGridCollector::isolationKeys() const
   {
     std::vector<std::pair<double, double>> iso;
     for (const auto& [key, lane] : lanes_) iso.push_back(key);
-    std::vector<std::int32_t> out(precursors_.size(), -1);
-    for (std::size_t p = 0; p < precursors_.size(); ++p)
+    return iso;
+  }
+
+  std::vector<std::int32_t> FragmentGridCollector::isolationIndices(const std::vector<std::pair<double, double>>& iso, const std::vector<double>& mzs)
+  {
+    std::vector<std::int32_t> out(mzs.size(), -1);
+    for (std::size_t p = 0; p < mzs.size(); ++p)
     {
-      const double mz = precursors_[p].mz;
+      const double mz = mzs[p];
       auto it = std::upper_bound(iso.begin(), iso.end(), mz, [](double v, const std::pair<double, double>& w) { return v < w.first; });
       if (it == iso.begin()) continue;
       --it;

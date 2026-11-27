@@ -152,6 +152,28 @@ int main()
       for (std::size_t i = 0; i < kept.size(); ++i) same(input[kept[i]], both.spectra[i], "replay " + std::to_string(i));
       same(input[1], ms2.spectra[0], "ms2 0");
       same(input[4], ms2.spectra[2], "ms2 2");
+      // Filtered replay keeps the order of the records it passes.
+      Collect odd;
+      cache.replay(odd, {1, 2}, prefetch, [](const OpenDIA::SpectrumCache::Entry& e) { return e.level == 1 || e.peaks == 0; });
+      require(odd.spectra.size() == 3, "filtered replay count");
+      same(input[0], odd.spectra[0], "filtered 0");
+      same(input[2], odd.spectra[1], "filtered 1");
+      same(input[5], odd.spectra[2], "filtered 2");
+    }
+    // The index lists every record's precursors as stored.
+    for (std::size_t r = 0; r < cache.index().size(); ++r)
+    {
+      const auto& e = cache.index()[r];
+      const std::vector<std::size_t> kept{0, 1, 2, 4, 5};
+      const auto& s = input[kept[r]];
+      require(e.peaks == s.size() && e.precursor_count == s.getPrecursors().size(), "index peaks and precursors " + std::to_string(r));
+      for (std::size_t k = 0; k < e.precursor_count; ++k)
+      {
+        const auto& v = cache.precursors()[e.precursor_begin + k];
+        const auto& p = s.getPrecursors()[k];
+        require(v[0] == p.getMZ() && v[1] == p.getIsolationWindowLowerOffset() && v[2] == p.getIsolationWindowUpperOffset(),
+                "index precursor " + std::to_string(r));
+      }
     }
     Thrower t;
     bool threw = false;

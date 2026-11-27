@@ -133,6 +133,19 @@ namespace OpenMS::OpenDIA
     const std::vector<std::array<float, FragmentGrid::EVIDENCE>>& evidence() const { return evidence_; }
     /// Isolation window index per precursor (-1 none).
     std::vector<std::int32_t> isolationIndices() const;
+    /// Distinct isolation windows [lo, hi] seen so far, sorted.
+    std::vector<std::pair<double, double>> isolationKeys() const;
+    /**
+      @brief The isolation window [lo, hi] of one spectrum precursor, as consumeSpectrum() opens its lane.
+      @return false if the precursor never isolates (non-finite values, a negative offset or zero width).
+    */
+    static bool isolationKey(double centre, double lower, double upper, std::pair<double, double>& key);
+    /**
+      @brief isolationIndices() for precursor m/z @p mz given the distinct isolation windows @p windows of a run, sorted.
+      @return Per m/z, the index in @p windows of the window with the largest lower bound <= m/z, if m/z is below its
+              upper bound; else -1.
+    */
+    static std::vector<std::int32_t> isolationIndices(const std::vector<std::pair<double, double>>& windows, const std::vector<double>& mz);
     std::size_t isolationWindowCount() const { return lanes_.size(); }
     /// Largest number of grids held at once.
     std::size_t peakOpenGrids() const { return peak_open_; }

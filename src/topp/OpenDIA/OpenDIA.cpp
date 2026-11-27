@@ -93,6 +93,12 @@ protected:
                   "directory (outputs are identical either way; the cache needs about 12 bytes per peak of free disk space)", true);
     registerStringOption_("spectrum_cache_dir", "<dir>", "", "Advanced: parent directory of the temporary spectrum cache (default: out_dir); "
                           "a fast local disk is best. The cache is removed after each run", false, true);
+    registerIntOption_("extraction_groups", "<n>", 0, "Advanced: with the spectrum cache, extract features in this many precursor m/z groups, "
+                       "each replaying only the spectra that can isolate its precursors (outputs are identical; fewer windows are held at "
+                       "once). 0 = auto (16)", false, true);
+    setMinInt_("extraction_groups", 0);
+    registerIntOption_("extraction_parallel", "<n>", 0, "Advanced: extraction groups run concurrently, sharing -threads (0 = auto, threads / 4)", false, true);
+    setMinInt_("extraction_parallel", 0);
     registerStringOption_("decoys", "<mode>", "library",
                           "library: use the library's decoys. predict: replace them by pseudo-reversed decoys predicted like the "
                           "targets (own RT, ion mobility and fragment intensities, PeptDeep; DESIGN_OPENDIA_DECOYS), written to "
@@ -278,6 +284,8 @@ protected:
       const std::string cache_dir = getStringOption_("spectrum_cache_dir");
       options.spectrum_cache_dir = cache_dir.empty() ? out_dir : cache_dir;
     }
+    options.extraction_groups = static_cast<std::size_t>(getIntOption_("extraction_groups"));
+    options.extraction_parallel = static_cast<std::size_t>(getIntOption_("extraction_parallel"));
 
     // Best (calibrated) score of each precursor per run, for the global q-value.
     struct Hit

@@ -25,14 +25,18 @@
 #include <OpenMS/SYSTEM/SysInfo.h>
 
 #include <algorithm>
+#include <atomic>
 #include <charconv>
 #include <chrono>
 #include <cmath>
 #include <fstream>
 #include <map>
+#include <mutex>
 #include <numeric>
 #include <optional>
+#include <set>
 #include <sstream>
+#include <thread>
 #include <unordered_set>
 
 namespace OpenMS::OpenDIA
@@ -826,12 +830,6 @@ namespace OpenMS::OpenDIA
       }
     }
     std::vector<InterferenceResolver::Window> grid_windows(n);
-    // Collectors live only until the features are assembled (step 5); they are reset there, with grid_windows, so their
-    // per-window state is not held through scoring.
-    std::optional<FragmentGridCollector> grids_holder;
-    std::optional<TraceCollector> traces_holder;
-    std::vector<double> trace_apex(n);
-    std::vector<std::uint32_t> trace_precursor_of(n);
     std::vector<TracePrecursor> trace_precursors(local_precursors.size());
     for (std::size_t l = 0; l < local_precursors.size(); ++l)
     {
@@ -854,6 +852,7 @@ namespace OpenMS::OpenDIA
             !std::isfinite(fragment.library_intensity) || fragment.library_intensity < 0.0)
           invalid("Invalid or inconsistent library fragment", std::string(p.id));
       }
+      // The 6-fragment tensor uses calibrated m/z and precursor 1/K0, resolved here without a Library copy.
       topFragments(lib, pi, factor, t.fragment_mz, t.library_intensity);
     }
     for (std::size_t i = 0; i < n; ++i)
@@ -863,20 +862,10 @@ namespace OpenMS::OpenDIA
       grid_windows[i].rt_start = w.peak.rt_start;
       grid_windows[i].rt_apex = w.peak.rt_apex;
       grid_windows[i].rt_end = w.peak.rt_end;
-      trace_apex[i] = w.peak.rt_apex;
-      trace_precursor_of[i] = local_of[w.precursor];
     }
-    FragmentGridCollector& grids =
-        grids_holder.emplace(grid_precursors, grid_windows, options_.grid_half_width_s, options_.grid_extraction_ppm);
-    // With a mobility calibration the 12-fragment grid (and with it the interference inputs) is extracted within the
-    // calibrated 1/K0 tolerance of each precursor, as the search is; without one it pools all points as before.
-    if (cal.has_im && cal.im_tolerance > 0.0) grids.enableIonMobility(cal.im_tolerance, options_.im_array_as_vssc);
-    grids.setThreads(options_.threads);
-    // The 6-fragment tensor uses calibrated m/z and precursor 1/K0, resolved above without a Library copy.
     // Streaming tensors: a window's 6-fragment tensor is held only while its RT range is being read. The tensor-derived
     // features are computed when the window closes and the tensor is released, so tensor memory follows the windows
     // co-eluting at one time.
-    // Every feature is computed from the same tensor values as before (byte-identical).
     PeakFeatureOptions feature_options;
     feature_options.rt_half_width = options_.grid_half_width_s;
     feature_options.core_half_width = options_.core_half_width_s;
@@ -884,50 +873,275 @@ namespace OpenMS::OpenDIA
     std::vector<float> boundary(n * BOUNDARY_FEATURES, 0.0f);
     std::vector<float> evidence_block(n * EVIDENCE_FEATURES, 0.0f);
     std::vector<float> mf_block(n * MATCHED_FILTER_FEATURES, 0.0f);
+    std::vector<std::array<std::uint16_t, 2>> byions(n);
+    std::vector<std::array<float, FragmentGrid::EVIDENCE>> grid_evidence(n);
     const int threads = options_.threads;
-    TraceCollector::CloseCallback on_close = [&, threads](const std::vector<std::uint32_t>& closed, const TraceCollector& tc)
+
+    // Extraction groups: precursors contiguous in m/z with about equal window counts. Every per-window value depends only
+    // on the spectra whose isolation windows contain the window's precursor m/z (traces, MS1 evidence, b/y ions and the
+    // 12-fragment grid), so a group that receives all MS1 spectra and every MS2 spectrum with an isolation window
+    // overlapping its m/z range computes exactly the values of a single pass, and several groups run concurrently.
+    // Collector memory follows the groups in flight. Groups need the cache (one replay each); without it, one group.
+    const bool partition = cache_ && cache_->complete();
+    std::size_t group_count = partition ? (options_.extraction_groups == 0 ? 16 : options_.extraction_groups) : 1;
+    group_count = std::clamp<std::size_t>(group_count, 1, std::max<std::size_t>(1, local_precursors.size()));
+    std::vector<std::vector<std::uint32_t>> group_members;      // global window indices, ascending
+    std::vector<std::pair<double, double>> group_mz;            // precursor m/z range of each group
     {
-#pragma omp parallel num_threads(threads)
+      std::vector<std::uint32_t> by_mz(local_precursors.size());
+      std::iota(by_mz.begin(), by_mz.end(), 0u);
+      std::sort(by_mz.begin(), by_mz.end(), [&](std::uint32_t x, std::uint32_t y)
       {
-        std::array<float, TraceCollector::SAMPLE_SIZE> view;
-#pragma omp for schedule(dynamic, 256)
-        for (std::ptrdiff_t c = 0; c < static_cast<std::ptrdiff_t>(closed.size()); ++c)
+        const double mx = lib.precursors[local_precursors[x]].mz, my = lib.precursors[local_precursors[y]].mz;
+        return mx != my ? mx < my : x < y;
+      });
+      std::vector<std::uint32_t> windows_of(local_precursors.size(), 0);
+      for (const auto& gw : grid_windows) ++windows_of[gw.precursor];
+      std::vector<std::uint32_t> group_of(local_precursors.size(), 0);
+      std::size_t acc = 0, g = 0;
+      for (const std::uint32_t l : by_mz)
+      {
+        if (g + 1 < group_count && acc * group_count >= (g + 1) * n) ++g;
+        group_of[l] = static_cast<std::uint32_t>(g);
+        acc += windows_of[l];
+      }
+      group_count = local_precursors.empty() ? 1 : g + 1;
+      group_members.assign(group_count, {});
+      group_mz.assign(group_count, {std::numeric_limits<double>::infinity(), -std::numeric_limits<double>::infinity()});
+      for (std::uint32_t i = 0; i < n; ++i)
+      {
+        const auto l = grid_windows[i].precursor;
+        group_members[group_of[l]].push_back(i);
+        auto& r = group_mz[group_of[l]];
+        r.first = std::min(r.first, lib.precursors[local_precursors[l]].mz);
+        r.second = std::max(r.second, lib.precursors[local_precursors[l]].mz);
+      }
+    }
+    std::size_t parallel = 1;
+    if (partition)
+    {
+      parallel = options_.extraction_parallel == 0 ? static_cast<std::size_t>(std::max(1, threads / 4)) : options_.extraction_parallel;
+      parallel = std::clamp<std::size_t>(parallel, 1, group_count);
+    }
+    const int group_threads = std::max(1, threads / static_cast<int>(parallel));
+
+    struct GroupStats
+    {
+      std::size_t peak_open = 0, peak_held = 0, spectra = 0, peaks = 0;
+      double consume_s = 0.0;
+      std::string io;
+      std::vector<std::pair<double, double>> isolation;  ///< Isolation windows seen (single group only).
+    };
+    std::vector<GroupStats> group_stats(group_count);
+    std::mutex byion_setup;
+    const auto extract_group = [&](std::size_t gi, GroupStats& st)
+    {
+      const auto& members = group_members[gi];
+      // Group-local precursors, first seen in window order.
+      std::vector<std::uint32_t> group_local(local_precursors.size(), UINT32_MAX), group_precursors;
+      for (const auto i : members)
+      {
+        const auto l = grid_windows[i].precursor;
+        if (group_local[l] == UINT32_MAX)
         {
-          const std::size_t i = closed[static_cast<std::size_t>(c)];
-          const float* tensor = tc.windowTensor(i, view);
-          const auto b = boundaryFeatures(tensor, tc.libraryIntensities(i), tc.fragmentMZ(i), tc.evidence(i), feature_options);
-          for (std::size_t k = 0; k < BOUNDARY_FEATURES; ++k) boundary[i * BOUNDARY_FEATURES + k] = static_cast<float>(b[k]);
-          const auto x = evidenceFeatures(tensor, tc.libraryIntensities(i), tc.fragmentMZ(i), tc.evidence(i), feature_options);
-          for (std::size_t k = 0; k < EVIDENCE_FEATURES; ++k) evidence_block[i * EVIDENCE_FEATURES + k] = static_cast<float>(x[k]);
-          const auto m = matchedFilterFeatures(tensor, tc.libraryIntensities(i), tc.fragmentMZ(i), tc.evidence(i), feature_options);
-          for (std::size_t k = 0; k < MATCHED_FILTER_FEATURES; ++k) mf_block[i * MATCHED_FILTER_FEATURES + k] = static_cast<float>(m[k]);
+          group_local[l] = static_cast<std::uint32_t>(group_precursors.size());
+          group_precursors.push_back(l);
         }
       }
+      std::vector<FragmentGridCollector::Precursor> gp(group_precursors.size());
+      std::vector<TracePrecursor> tp(group_precursors.size());
+      for (std::size_t k = 0; k < group_precursors.size(); ++k)
+      {
+        gp[k] = grid_precursors[group_precursors[k]];
+        tp[k] = trace_precursors[group_precursors[k]];
+      }
+      std::vector<InterferenceResolver::Window> gw(members.size());
+      std::vector<double> apex(members.size());
+      std::vector<std::uint32_t> precursor_of(members.size());
+      for (std::size_t j = 0; j < members.size(); ++j)
+      {
+        const auto& src = grid_windows[members[j]];
+        gw[j].precursor = group_local[src.precursor];
+        gw[j].rt_start = src.rt_start;
+        gw[j].rt_apex = src.rt_apex;
+        gw[j].rt_end = src.rt_end;
+        apex[j] = src.rt_apex;
+        precursor_of[j] = gw[j].precursor;
+      }
+      std::vector<std::uint32_t>().swap(group_local);
+      FragmentGridCollector grids(gp, gw, options_.grid_half_width_s, options_.grid_extraction_ppm);
+      // With a mobility calibration the 12-fragment grid (and with it the interference inputs) is extracted within the
+      // calibrated 1/K0 tolerance of each precursor, as the search is; without one it pools all points.
+      if (cal.has_im && cal.im_tolerance > 0.0) grids.enableIonMobility(cal.im_tolerance, options_.im_array_as_vssc);
+      grids.setThreads(group_threads);
+      TraceCollector::CloseCallback on_close = [&](const std::vector<std::uint32_t>& closed, const TraceCollector& tc)
+      {
+#pragma omp parallel num_threads(group_threads)
+        {
+          std::array<float, TraceCollector::SAMPLE_SIZE> view;
+#pragma omp for schedule(dynamic, 256)
+          for (std::ptrdiff_t c = 0; c < static_cast<std::ptrdiff_t>(closed.size()); ++c)
+          {
+            const std::size_t j = closed[static_cast<std::size_t>(c)];
+            const std::size_t i = members[j];
+            const float* tensor = tc.windowTensor(j, view);
+            const auto b = boundaryFeatures(tensor, tc.libraryIntensities(j), tc.fragmentMZ(j), tc.evidence(j), feature_options);
+            for (std::size_t k = 0; k < BOUNDARY_FEATURES; ++k) boundary[i * BOUNDARY_FEATURES + k] = static_cast<float>(b[k]);
+            const auto x = evidenceFeatures(tensor, tc.libraryIntensities(j), tc.fragmentMZ(j), tc.evidence(j), feature_options);
+            for (std::size_t k = 0; k < EVIDENCE_FEATURES; ++k) evidence_block[i * EVIDENCE_FEATURES + k] = static_cast<float>(x[k]);
+            const auto m = matchedFilterFeatures(tensor, tc.libraryIntensities(j), tc.fragmentMZ(j), tc.evidence(j), feature_options);
+            for (std::size_t k = 0; k < MATCHED_FILTER_FEATURES; ++k) mf_block[i * MATCHED_FILTER_FEATURES + k] = static_cast<float>(m[k]);
+          }
+        }
+      };
+      TraceCollector traces(apex, precursor_of, tp, 0.02, options_.grid_half_width_s, TRACE_IM_HALF_WIDTH, members.size(),
+                            options_.trace_tensor_gb << 30, on_close);
+      std::vector<double>().swap(apex);
+      std::vector<std::uint32_t>().swap(precursor_of);
+      std::vector<TracePrecursor>().swap(tp);
+      traces.setIonMobilityArrayAsVSSC(options_.im_array_as_vssc);
+      traces.setFragmentTolerancePpm(options_.trace_tolerance_ppm);
+      traces.setThreads(group_threads);
+      traces.enableEvidence(20.0, options_.core_half_width_s);
+      {
+        // Sequence parsing reaches the shared residue and modification databases; set up one group at a time.
+        std::lock_guard<std::mutex> lock(byion_setup);
+        traces.enableByIonCounts([&](std::size_t j) -> const std::string& { return lib.precursors[windows[members[j]].precursor].sequence; },
+                                 [&](std::size_t j) -> std::uint64_t { return windows[members[j]].precursor; },
+                                 options_.byion_ppm, options_.byion_intensity_min);
+      }
+      {
+        TeeConsumer both(grids, traces);
+        if (partition)
+        {
+          // MS1 always; MS2 when one of its isolation windows (as the trace and grid collectors test them) overlaps
+          // the group's precursor m/z range.
+          const double lo = group_mz[gi].first, hi = group_mz[gi].second;
+          const auto& isolation = cache_->precursors();
+          TimedConsumer timed(both);
+          cache_->replay(timed, {1, 2}, 64, [&](const SpectrumCache::Entry& e)
+          {
+            if (e.level != 2) return true;
+            for (std::size_t k = e.precursor_begin; k < std::size_t{e.precursor_begin} + e.precursor_count; ++k)
+            {
+              const auto& v = isolation[k];
+              if (!(v[1] >= 0.0 && v[2] >= 0.0 && v[1] + v[2] > 0.0)) continue;
+              if (v[0] - v[1] <= hi && v[0] + v[2] >= lo) return true;
+            }
+            return false;
+          });
+          st.consume_s = timed.consume_s;
+          st.spectra = timed.spectra;
+          st.peaks = timed.peaks;
+        }
+        else
+        {
+          st.io = readSpectra(path, both, {1, 2}, cache_.get());
+        }
+      }
+      traces.finish();
+      grids.finish();
+      for (std::size_t j = 0; j < members.size(); ++j)
+      {
+        const std::size_t i = members[j];
+        grid_windows[i].core_area = gw[j].core_area;
+        grid_windows[i].profile = gw[j].profile;
+        grid_evidence[i] = grids.evidence()[j];
+        byions[i] = traces.byIonCounts(j);
+      }
+      st.peak_open = grids.peakOpenGrids();
+      st.peak_held = traces.peakHeldTensors();
+      if (!partition) st.isolation = grids.isolationKeys();
     };
-    TraceCollector& traces = traces_holder.emplace(trace_apex, trace_precursor_of, trace_precursors, 0.02, options_.grid_half_width_s,
-                                                   TRACE_IM_HALF_WIDTH, n, options_.trace_tensor_gb << 30, on_close);
-    std::vector<double>().swap(trace_apex);
-    std::vector<std::uint32_t>().swap(trace_precursor_of);
-    std::vector<TracePrecursor>().swap(trace_precursors);
-    traces.setIonMobilityArrayAsVSSC(options_.im_array_as_vssc);
-    traces.setFragmentTolerancePpm(options_.trace_tolerance_ppm);
-    traces.setThreads(options_.threads);
-    traces.enableEvidence(20.0, options_.core_half_width_s);
-    traces.enableByIonCounts([&](std::size_t i) -> const std::string& { return lib.precursors[windows[i].precursor].sequence; },
-                             [&](std::size_t i) -> std::uint64_t { return windows[i].precursor; },
-                             options_.byion_ppm, options_.byion_intensity_min);
-    std::string extract_io;
     {
-      TeeConsumer both(grids, traces);
-      extract_io = readSpectra(path, both, {1, 2}, cache_.get());
+      std::vector<std::exception_ptr> errors(group_count);
+      std::atomic<std::size_t> next{0};
+      std::atomic<bool> failed{false};
+      const auto worker = [&]()
+      {
+        for (std::size_t g; !failed && (g = next++) < group_count;)
+        {
+          try
+          {
+            extract_group(g, group_stats[g]);
+          }
+          catch (...)
+          {
+            errors[g] = std::current_exception();
+            failed = true;
+          }
+        }
+      };
+      if (parallel == 1)
+      {
+        worker();
+      }
+      else
+      {
+        std::vector<std::thread> pool;
+        for (std::size_t t = 0; t < parallel; ++t) pool.emplace_back(worker);
+        for (auto& t : pool) t.join();
+      }
+      for (const auto& e : errors)
+        if (e) std::rethrow_exception(e);
     }
-    traces.finish();
-    grids.finish();
-    const auto isolation = grids.isolationIndices();
-    for (std::size_t l = 0; l < resolver_precursors.size(); ++l) resolver_precursors[l].isolation = isolation[l];
+    std::vector<TracePrecursor>().swap(trace_precursors);
+    // Isolation windows of the run, as the 12-fragment grid keys them: every valid isolation window of a non-empty MS2
+    // spectrum with a finite RT (from the cache index when the groups did not see every spectrum).
+    std::vector<std::pair<double, double>> isolation_keys;
+    if (partition)
+    {
+      std::set<std::pair<double, double>> keys;
+      const auto& isolation = cache_->precursors();
+      for (const auto& e : cache_->index())
+      {
+        if (e.level != 2 || e.peaks == 0 || !std::isfinite(e.rt)) continue;
+        for (std::size_t k = e.precursor_begin; k < std::size_t{e.precursor_begin} + e.precursor_count; ++k)
+        {
+          std::pair<double, double> key;
+          if (FragmentGridCollector::isolationKey(isolation[k][0], isolation[k][1], isolation[k][2], key)) keys.insert(key);
+        }
+      }
+      isolation_keys.assign(keys.begin(), keys.end());
+    }
+    else
+    {
+      isolation_keys = std::move(group_stats[0].isolation);
+    }
+    {
+      std::vector<double> mz(local_precursors.size());
+      for (std::size_t l = 0; l < local_precursors.size(); ++l) mz[l] = lib.precursors[local_precursors[l]].mz;
+      const auto isolation = FragmentGridCollector::isolationIndices(isolation_keys, mz);
+      for (std::size_t l = 0; l < resolver_precursors.size(); ++l) resolver_precursors[l].isolation = isolation[l];
+    }
+    std::string extract_io;
+    std::size_t peak_open = 0, peak_held = 0;
+    for (const auto& st : group_stats)
+    {
+      peak_open = std::max(peak_open, st.peak_open);
+      peak_held = std::max(peak_held, st.peak_held);
+    }
+    if (partition)
+    {
+      double consume_s = 0.0;
+      std::size_t spectra = 0, peaks = 0;
+      for (const auto& st : group_stats)
+      {
+        consume_s += st.consume_s;
+        spectra += st.spectra;
+        peaks += st.peaks;
+      }
+      extract_io = " groups=" + std::to_string(group_count) + " parallel=" + std::to_string(parallel) + " group_threads=" +
+                   std::to_string(group_threads) + " consume_s_sum=" + std::to_string(consume_s) + " spectra_sum=" + std::to_string(spectra) +
+                   " peaks_sum=" + std::to_string(peaks) + " source=cache";
+    }
+    else
+    {
+      extract_io = group_stats[0].io;
+    }
     say("Extraction: windows=" + std::to_string(n) + " precursors=" + std::to_string(local_precursors.size()) +
-        " isolation_windows=" + std::to_string(grids.isolationWindowCount()) + " peak_open_grids=" + std::to_string(grids.peakOpenGrids()) +
-        " peak_held_tensors=" + std::to_string(traces.peakHeldTensors()) +
+        " isolation_windows=" + std::to_string(isolation_keys.size()) + " peak_open_grids=" + std::to_string(peak_open) +
+        " peak_held_tensors=" + std::to_string(peak_held) + " (max per group)" +
         " seconds=" + std::to_string(seconds(t_extract)) + extract_io);
 
     // 5. Features.
@@ -961,8 +1175,8 @@ namespace OpenMS::OpenDIA
         peak.abs_rt_error_seconds = lib.precursors[w.precursor].has_library_rt ? std::abs(w.peak.apex_rt_error_seconds) : 0.0;
         for (double v : searchFeatures(peak)) f[o++] = static_cast<float>(v);
         for (std::size_t k = 0; k < BOUNDARY_FEATURES; ++k) f[o++] = boundary[i * BOUNDARY_FEATURES + k];
-        for (const auto v : traces.byIonCounts(i)) f[o++] = static_cast<float>(static_cast<double>(v));
-        for (float v : grids.evidence()[i]) f[o++] = v;
+        for (const auto v : byions[i]) f[o++] = static_cast<float>(static_cast<double>(v));
+        for (float v : grid_evidence[i]) f[o++] = v;
         const auto& gp = grid_precursors[grid_windows[i].precursor];
         for (float v : FragmentGrid::deficit(grid_windows[i].core_area, gp.library, gp.search, noise)) f[o++] = v;
         for (std::size_t k = 0; k < InterferenceResolver::FEATURES; ++k) f[o++] = interference[i * InterferenceResolver::FEATURES + k];
@@ -974,8 +1188,8 @@ namespace OpenMS::OpenDIA
         " interference_seconds=" + std::to_string(interference_s));
     // Everything below reads only result.features, windows and the library. Release the extraction state now (about
     // 384 bytes per window for grid_windows alone) instead of holding it through scoring.
-    traces_holder.reset();
-    grids_holder.reset();
+    std::vector<std::array<std::uint16_t, 2>>().swap(byions);
+    std::vector<std::array<float, FragmentGrid::EVIDENCE>>().swap(grid_evidence);
     std::vector<InterferenceResolver::Window>().swap(grid_windows);
     std::vector<FragmentGridCollector::Precursor>().swap(grid_precursors);
     std::vector<InterferenceResolver::Precursor>().swap(resolver_precursors);

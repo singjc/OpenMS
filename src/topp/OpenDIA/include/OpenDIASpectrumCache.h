@@ -11,8 +11,10 @@
 #include <OpenMS/INTERFACES/IMSDataConsumer.h>
 #include <OpenMS/KERNEL/MSSpectrum.h>
 
+#include <array>
 #include <cstdint>
 #include <fstream>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -41,8 +43,13 @@ namespace OpenMS::OpenDIA
       double rt = 0.0;
       double isolation_low = 0.0;    ///< Lowest isolation window bound over the precursors (MS2; 0 for MS1).
       double isolation_high = 0.0;   ///< Highest isolation window bound over the precursors (MS2; 0 for MS1).
+      std::uint32_t peaks = 0;
+      std::uint32_t precursor_begin = 0; ///< First entry in precursors() of this record.
+      std::uint16_t precursor_count = 0;
       std::uint8_t level = 0;
     };
+    /// Precursor m/z and isolation window lower/upper offsets, as stored for one record.
+    using Isolation = std::array<double, 3>;
 
     /// Creates @p directory (and parents). @throws std::runtime_error if it cannot be created or the file not opened.
     explicit SpectrumCache(std::string directory);
@@ -60,6 +67,8 @@ namespace OpenMS::OpenDIA
     bool complete() const { return complete_; }
     bool usable() const { return !discarded_; }
     const std::vector<Entry>& index() const { return index_; }
+    /// Precursors of all records (Entry::precursor_begin / precursor_count).
+    const std::vector<Isolation>& precursors() const { return precursors_; }
     std::uint64_t bytes() const { return bytes_; }
     std::uint64_t peaks() const { return peaks_; }
     const std::string& directory() const { return directory_; }
@@ -67,9 +76,11 @@ namespace OpenMS::OpenDIA
     /**
       @brief Feed the cached spectra whose MS level is in @p levels to @p consumer, in their original order.
       @param[in] prefetch Records decoded ahead on a separate thread (0 decodes on the calling thread).
+      @param[in] keep If set, only records for which it returns true are fed (the order is kept).
       @throws std::logic_error if the cache is not complete; consumer exceptions are rethrown.
     */
-    void replay(Interfaces::IMSDataConsumer& consumer, const std::vector<int>& levels, std::size_t prefetch = 64) const;
+    void replay(Interfaces::IMSDataConsumer& consumer, const std::vector<int>& levels, std::size_t prefetch = 64,
+                const std::function<bool(const Entry&)>& keep = {}) const;
 
   private:
     void read_(std::ifstream& in, const Entry& entry, MSSpectrum& out) const;
@@ -78,6 +89,7 @@ namespace OpenMS::OpenDIA
     std::unique_ptr<std::ofstream> out_;
     std::vector<char> out_buffer_;
     std::vector<Entry> index_;
+    std::vector<Isolation> precursors_;
     std::vector<std::string> im_names_;
     std::vector<double> scratch_mz_;
     std::vector<float> scratch_intensity_;

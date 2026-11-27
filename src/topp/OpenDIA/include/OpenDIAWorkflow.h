@@ -150,6 +150,12 @@ namespace OpenMS::OpenDIA
     /// Parent directory of a run-local spectrum cache: the first raw read writes MS1/MS2 there and the later passes
     /// replay it (same spectra, same order; outputs unchanged). Removed after the run. Empty = read the raw file each pass.
     std::string spectrum_cache_dir;
+    /// Extraction with a spectrum cache runs per group of precursors (contiguous in m/z, about equal windows each); each
+    /// group replays only the cached spectra that can isolate its precursors. Per-window results are unchanged, and
+    /// extraction memory follows the groups in flight. 0 = auto (16). Without a cache extraction is one group.
+    std::size_t extraction_groups = 0;
+    /// Groups extracted concurrently, each with threads / this many threads. 0 = auto (threads / 4, at least 1).
+    std::size_t extraction_parallel = 0;
   };
 
   /// One scored candidate window of the run (the population), with its features and result.

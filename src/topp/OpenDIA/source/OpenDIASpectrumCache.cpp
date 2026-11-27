@@ -112,6 +112,9 @@ namespace OpenMS::OpenDIA
     e.offset = bytes_;
     e.rt = h.rt;
     e.level = h.level;
+    e.peaks = h.peaks;
+    e.precursor_begin = static_cast<std::uint32_t>(precursors_.size());
+    e.precursor_count = h.precursors;
     double low = std::numeric_limits<double>::infinity(), high = -low;
     out_buffer_.clear();
     put(out_buffer_, &h, 1);
@@ -119,6 +122,7 @@ namespace OpenMS::OpenDIA
     {
       const double v[3] = {p.getMZ(), p.getIsolationWindowLowerOffset(), p.getIsolationWindowUpperOffset()};
       put(out_buffer_, v, 3);
+      precursors_.push_back({v[0], v[1], v[2]});
       low = std::min(low, v[0] - v[1]);
       high = std::max(high, v[0] + v[2]);
     }
@@ -162,6 +166,7 @@ namespace OpenMS::OpenDIA
     complete_ = false;
     out_.reset();
     index_.clear();
+    precursors_.clear();
     std::error_code ec;
     std::filesystem::remove(file_, ec);
   }
@@ -207,12 +212,13 @@ namespace OpenMS::OpenDIA
     }
   }
 
-  void SpectrumCache::replay(Interfaces::IMSDataConsumer& consumer, const std::vector<int>& levels, std::size_t prefetch) const
+  void SpectrumCache::replay(Interfaces::IMSDataConsumer& consumer, const std::vector<int>& levels, std::size_t prefetch,
+                             const std::function<bool(const Entry&)>& keep) const
   {
     if (!complete_) throw std::logic_error("SpectrumCache: replay() before finishWriting().");
     std::vector<const Entry*> selected;
     for (const auto& e : index_)
-      if (std::find(levels.begin(), levels.end(), static_cast<int>(e.level)) != levels.end()) selected.push_back(&e);
+      if (std::find(levels.begin(), levels.end(), static_cast<int>(e.level)) != levels.end() && (!keep || keep(e))) selected.push_back(&e);
     consumer.setExpectedSize(selected.size(), 0);
     std::ifstream in(file_, std::ios::binary);
     if (!in) throw std::runtime_error("SpectrumCache: cannot open " + file_);
