@@ -13,6 +13,7 @@
 #include <OpenDIAInterference.h>
 #include <OpenDIARTRefine.h>
 #include <OpenDIAPeakFeatures.h>
+#include <OpenDIASpectrumCache.h>
 #include <OpenDIATraces.h>
 
 #include <OpenMS/CHEMISTRY/AASequence.h>
@@ -20,6 +21,7 @@
 #include <OpenMS/DATASTRUCTURES/StringUtils.h>
 #include <OpenMS/FORMAT/FileHandler.h>
 #include <OpenMS/FORMAT/OPTIONS/PeakFileOptions.h>
+#include <OpenMS/SYSTEM/File.h>
 #include <OpenMS/SYSTEM/SysInfo.h>
 
 #include <algorithm>
@@ -232,18 +234,66 @@ namespace OpenMS::OpenDIA
     };
 
     /// Stream a run into @p consumer; returns " read_s=.. consume_s=.. spectra=.. peaks=.." for the stage log.
-    std::string readSpectra(const std::string& path, Interfaces::IMSDataConsumer& consumer, std::vector<Int> levels)
+    /// With a spectrum cache, the first call reads MS1 and MS2 from the run once and writes them to the cache (spectra
+    /// of the other levels are not passed on); later calls replay the cache. Both deliver the same spectra in the same
+    /// order as a direct read of @p levels.
+    std::string readSpectra(const std::string& path, Interfaces::IMSDataConsumer& consumer, std::vector<Int> levels,
+                            SpectrumCache* cache = nullptr)
     {
       const auto t = std::chrono::steady_clock::now();
       TimedConsumer timed(consumer);
-      FileHandler reader;
-      PeakFileOptions options;
-      options.setMSLevels(levels);
-      reader.setOptions(options);
-      reader.transformExperiment(path, &timed, {}, ProgressLogger::NONE);
+      std::string source = "";
+      if (cache != nullptr && cache->complete())
+      {
+        cache->replay(timed, std::vector<int>(levels.begin(), levels.end()));
+        source = " source=cache";
+      }
+      else
+      {
+        FileHandler reader;
+        PeakFileOptions options;
+        if (cache != nullptr && cache->usable())
+        {
+          // Write-through: every MS1/MS2 spectrum is cached as read; only the requested levels reach the consumer.
+          struct WriteThrough final : Interfaces::IMSDataConsumer
+          {
+            WriteThrough(SpectrumCache& c, Interfaces::IMSDataConsumer& i, std::vector<Int> l) : cache(c), inner(i), levels(std::move(l)) {}
+            void consumeSpectrum(MSSpectrum& s) override
+            {
+              cache.append(s);
+              if (std::find(levels.begin(), levels.end(), static_cast<Int>(s.getMSLevel())) != levels.end()) inner.consumeSpectrum(s);
+            }
+            void consumeChromatogram(MSChromatogram& c) override { inner.consumeChromatogram(c); }
+            void setExpectedSize(Size s, Size c) override { inner.setExpectedSize(s, c); }
+            void setExperimentalSettings(const ExperimentalSettings& e) override { inner.setExperimentalSettings(e); }
+            SpectrumCache& cache;
+            Interfaces::IMSDataConsumer& inner;
+            std::vector<Int> levels;
+          } through(*cache, timed, levels);
+          options.setMSLevels({1, 2});
+          reader.setOptions(options);
+          try
+          {
+            reader.transformExperiment(path, &through, {}, ProgressLogger::NONE);
+            cache->finishWriting();
+          }
+          catch (...)
+          {
+            cache->discard();
+            throw;
+          }
+          source = " source=raw+cache_write cache_mb=" + std::to_string(cache->bytes() >> 20);
+        }
+        else
+        {
+          options.setMSLevels(levels);
+          reader.setOptions(options);
+          reader.transformExperiment(path, &timed, {}, ProgressLogger::NONE);
+        }
+      }
       const double total = std::chrono::duration<double>(std::chrono::steady_clock::now() - t).count();
       return " read_s=" + std::to_string(total - timed.consume_s) + " consume_s=" + std::to_string(timed.consume_s) +
-             " spectra=" + std::to_string(timed.spectra) + " peaks=" + std::to_string(timed.peaks);
+             " spectra=" + std::to_string(timed.spectra) + " peaks=" + std::to_string(timed.peaks) + source;
     }
   }
 
@@ -513,6 +563,19 @@ namespace OpenMS::OpenDIA
     };
     auto& lib = library_;
     const auto t_run = std::chrono::steady_clock::now();
+    // Run-local spectrum cache (RunOptions::spectrum_cache_dir): written during the first read, replayed by the later
+    // passes, removed when the run ends (also on an exception).
+    struct CacheScope
+    {
+      std::unique_ptr<SpectrumCache>& cache;
+      ~CacheScope() { cache.reset(); }
+    } cache_scope{cache_};
+    if (!options_.spectrum_cache_dir.empty())
+    {
+      const std::string dir = options_.spectrum_cache_dir + "/opendia_cache_" + File::getUniqueName(false);
+      cache_ = std::make_unique<SpectrumCache>(dir);
+      say("Spectrum cache: " + dir);
+    }
 
     // 1. Calibration (uncalibrated library).
     const auto describe = [&lib](std::uint32_t pi, CalibrationPrecursor& out)
@@ -538,7 +601,7 @@ namespace OpenMS::OpenDIA
         CalibrationCollector collector(lib.calibration_pairs, describe, copt, window);
         collector.setThreads(options_.threads);
         collector.setIonMobilityArrayAsVSSC(options_.im_array_as_vssc);
-        const std::string io = readSpectra(path, collector, {2});
+        const std::string io = readSpectra(path, collector, {2}, cache_.get());
         ++passes;
         say("Calibration: pass " + std::to_string(passes) + " collected panel=" + std::to_string(collector.panelSize()) + io);
         std::optional<CalibrationWindow> retry_window;
@@ -689,7 +752,7 @@ namespace OpenMS::OpenDIA
       so.min_transitions = options_.min_transitions;
       // Candidates are kept in memory.
       StreamSearch search(makeQueries(lib, cal, rt_correction), so);
-      search_io = readSpectra(path, search, {2});
+      search_io = readSpectra(path, search, {2}, cache_.get());
       const auto t_finish = std::chrono::steady_clock::now();
       search.finish();
       search_io += " finish_s=" + std::to_string(seconds(t_finish));
@@ -856,7 +919,7 @@ namespace OpenMS::OpenDIA
     std::string extract_io;
     {
       TeeConsumer both(grids, traces);
-      extract_io = readSpectra(path, both, {1, 2});
+      extract_io = readSpectra(path, both, {1, 2}, cache_.get());
     }
     traces.finish();
     grids.finish();

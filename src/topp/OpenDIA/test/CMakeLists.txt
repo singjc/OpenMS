@@ -30,6 +30,10 @@ add_executable(OpenDIAPeakFeatures_test OpenDIAPeakFeatures_test.cpp)
 target_link_libraries(OpenDIAPeakFeatures_test PRIVATE OpenDIA_impl)
 add_test(NAME OpenDIAPeakFeatures_test COMMAND OpenDIAPeakFeatures_test)
 
+add_executable(OpenDIASpectrumCache_test OpenDIASpectrumCache_test.cpp)
+target_link_libraries(OpenDIASpectrumCache_test PRIVATE OpenDIA_impl)
+add_test(NAME OpenDIASpectrumCache_test COMMAND OpenDIASpectrumCache_test)
+
 add_executable(OpenDIAPeakPicker_test OpenDIAPeakPicker_test.cpp)
 target_link_libraries(OpenDIAPeakPicker_test PRIVATE OpenDIA_impl)
 add_test(NAME OpenDIAPeakPicker_test COMMAND OpenDIAPeakPicker_test)

@@ -89,6 +89,10 @@ protected:
     registerFlag_("no_rt_refine", "Advanced: skip the per-run RT refinement (PLAN_RTR): by default a ridge RT correction on sequence composition is fitted from the run's own q<=0.01 IDs after a first pass, then search, extraction and scoring run again with corrected RTs and a narrower RT window (about 1.8-1.9x wall time)", true);
     registerIntOption_("rt_refine_min_ids", "<n>", 500, "Advanced: skip the RT refinement with fewer training IDs", false, true);
     setMinInt_("rt_refine_min_ids", 1);
+    registerFlag_("no_spectrum_cache", "Advanced: read the run file on every pass instead of caching its MS1/MS2 spectra once in a temporary "
+                  "directory (outputs are identical either way; the cache needs about 12 bytes per peak of free disk space)", true);
+    registerStringOption_("spectrum_cache_dir", "<dir>", "", "Advanced: parent directory of the temporary spectrum cache (default: out_dir); "
+                          "a fast local disk is best. The cache is removed after each run", false, true);
     registerStringOption_("decoys", "<mode>", "library",
                           "library: use the library's decoys. predict: replace them by pseudo-reversed decoys predicted like the "
                           "targets (own RT, ion mobility and fragment intensities, PeptDeep; DESIGN_OPENDIA_DECOYS), written to "
@@ -269,6 +273,11 @@ protected:
     options.rt_refine = !getFlag_("no_rt_refine");
     options.rt_refine_min_ids = static_cast<std::size_t>(getIntOption_("rt_refine_min_ids"));
     options.calibration.panel_targets = 40000;
+    if (!getFlag_("no_spectrum_cache"))
+    {
+      const std::string cache_dir = getStringOption_("spectrum_cache_dir");
+      options.spectrum_cache_dir = cache_dir.empty() ? out_dir : cache_dir;
+    }
 
     // Best (calibrated) score of each precursor per run, for the global q-value.
     struct Hit

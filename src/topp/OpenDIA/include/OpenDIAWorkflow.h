@@ -13,12 +13,14 @@
 #include <OpenDIASearch.h>
 
 #include <OpenDIALibrary.h>
+#include <OpenDIASpectrumCache.h>
 
 #include <array>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -145,6 +147,9 @@ namespace OpenMS::OpenDIA
     /// Per-run ridge RT correction and a second search/extract/score pass (PLAN_RTR D pass; -no_rt_refine turns it off).
     bool rt_refine = true;
     std::size_t rt_refine_min_ids = 500;  ///< Fewer training IDs skip the refinement.
+    /// Parent directory of a run-local spectrum cache: the first raw read writes MS1/MS2 there and the later passes
+    /// replay it (same spectra, same order; outputs unchanged). Removed after the run. Empty = read the raw file each pass.
+    std::string spectrum_cache_dir;
   };
 
   /// One scored candidate window of the run (the population), with its features and result.
@@ -211,6 +216,7 @@ namespace OpenMS::OpenDIA
     AnalysisLibrary& library_;
     RunOptions options_;
     Log log_;
+    std::unique_ptr<SpectrumCache> cache_; ///< Only during run().
   };
 
   /// Feature names of RunAnalysis before the sibling block, in column order.

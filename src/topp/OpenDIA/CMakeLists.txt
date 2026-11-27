@@ -21,6 +21,7 @@ add_library(OpenDIA_impl STATIC
   source/OpenDIACalibration.cpp
   source/OpenDIAPeakFeatures.cpp
   source/OpenDIAPeakPicker.cpp
+  source/OpenDIASpectrumCache.cpp
   source/OpenDIAInterference.cpp
   source/OpenDIAScorer.cpp
   source/OpenDIAGBM.cpp
@@ -37,6 +38,7 @@ add_library(OpenDIA_impl STATIC
   include/OpenDIACalibration.h
   include/OpenDIAPeakFeatures.h
   include/OpenDIAPeakPicker.h
+  include/OpenDIASpectrumCache.h
   include/OpenDIAInterference.h
   include/OpenDIAScorer.h
   include/OpenDIAGBM.h
