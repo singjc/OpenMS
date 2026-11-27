@@ -171,16 +171,18 @@ std::vector<double> MultipleTesting::qValue(const std::vector<double>& p_values,
   return qvals_out;
 }
 
-// helper percentile: simple empirical percentile (nearest-rank)
-static double percentile(const std::vector<double>& a, double p)
+// Matches numpy.percentile(a, percent) with its default linear interpolation.
+// percent is in [0, 100], as in numpy, not a fraction.
+static double percentile(const std::vector<double>& a, double percent)
 {
   if (a.empty()) return std::numeric_limits<double>::quiet_NaN();
   std::vector<double> cp = a;
   std::sort(cp.begin(), cp.end());
-  double pos = p * (static_cast<double>(cp.size()) - 1.0);
-  std::size_t idx = static_cast<std::size_t>(std::floor(pos + 0.5));
-  if (idx >= cp.size()) idx = cp.size() - 1;
-  return cp[idx];
+  const double pos = percent / 100.0 * (static_cast<double>(cp.size()) - 1.0);
+  const std::size_t lo = static_cast<std::size_t>(std::floor(pos));
+  const std::size_t hi = std::min(lo + 1, cp.size() - 1);
+  const double frac = pos - static_cast<double>(lo);
+  return cp[lo] + frac * (cp[hi] - cp[lo]);
 }
 
 Pi0Result MultipleTesting::pi0Est(const std::vector<double>& p_values, const std::vector<double>& lambda_, Pi0Method method, int smooth_df, bool smooth_log_pi0)
@@ -305,6 +307,7 @@ Pi0Result MultipleTesting::pi0Est(const std::vector<double>& p_values, const std
   else if (method == Pi0Method::Bootstrap)
   {
     // bootstrap variant as used by pyprophet/qvalue
+    // PyProphet/qvalue: np.percentile(pi0, 0.1), the 0.1th percentile.
     double minpi0 = percentile(pi0s, 0.1);
     std::vector<double> W;
     W.reserve(ll);

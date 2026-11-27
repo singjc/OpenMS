@@ -160,6 +160,21 @@ namespace
       {"DECOY_P1;P2", {"P1", "P2"}, true, 0, {{0, 5, 0, 0, true}}},
       {"MISSING", {}, false, 0, {{1, 3, 0, 0, false}}}
     };
+    // Distinct contexts make accidental relabeling and cross-level gating observable.
+    quantification.peptides[0].id = "PEPM(Oxidation)IDE";
+    auto& peptide_evidence = quantification.peptides[0].runs[0];
+    peptide_evidence.p_value = 0;
+    peptide_evidence.pep = 0.12345678901234567;
+    peptide_evidence.experiment_q_value = 0.5;
+    peptide_evidence.experiment_p_value = 0.25;
+    peptide_evidence.experiment_pep = 0;
+    quantification.peptides[0].global_p_value = 0;
+    quantification.peptides[0].global_pep = 0.125;
+    quantification.peptides[1].runs[0].q_value = 0.5;
+    quantification.peptides[1].runs[1].q_value = 0.5;
+    quantification.peptides[1].runs[0].experiment_q_value = 0.01;
+    quantification.peptides[4].runs[0].experiment_q_value = 0;
+    quantification.protein_groups[0].runs[0].experiment_q_value = 0.02;
     const GeneAnnotations genes{{"p0", "GENE\t\"quoted\"\nsecond line"}, {"p1", "NA"}};
     const ReportingOptions options{0.01, 0.02, 0.03};
     const auto both = root / "both";
@@ -185,14 +200,47 @@ namespace
     require(matrix.size() == 2 && matrix[1][0] == "p0", "matrix excludes decoys and rows without eligible cells");
     require(matrix[1][column(matrix[0], "runA")] == "0" && matrix[1][column(matrix[0], "runB")] == "NA", "real zero versus absent TSV");
     auto peptide = tsv(both / "peptide_matrix.tsv");
-    require(peptide.size() == 3 && peptide[1][0] == "PEPMIDE" && peptide[2][0] == "OTHER", "peptide input entity order and level-specific gate");
-    require(peptide[1][2] == "0" && peptide[1][3] == "NA" && std::stod(peptide[2][2]) == precise, "use provided entity area and has_area");
+    require(peptide.size() == 2 && peptide[1][0] == "PEPM(Oxidation)IDE", "peptide input entity order and level-specific gate");
+    require(peptide[1][2] == "0" && peptide[1][3] == "NA", "use provided entity area and has_area");
     auto protein = tsv(both / "protein_group_matrix.tsv");
     require(protein.size() == 2 && protein[1][0] == "P1;P2" && protein[1][1] == "P1;P2", "complete protein group membership");
     require(protein[1][2] == "0" && protein[1][3] == "NA", "protein independent threshold");
     auto long_peptide = tsv(both / "peptides.tsv");
     require(long_peptide.size() == 8, "entity long table retains failed and decoy observations");
     require(long_peptide[2][column(long_peptide[0], "area")] == "NA", "missing entity area not fabricated");
+
+    auto context_options = options;
+    context_options.inference_context = "experiment-wide";
+    const auto context_output = root / "experiment_context";
+    writeReports(context_output.string(), library, runs, quantification, genes, context_options, "both");
+    const auto context_precursors = tsv(context_output / "precursors.tsv");
+    require(context_precursors[1][column(context_precursors[0], "pass_peptide")] == "false", "experiment q gates peptide flag");
+    require(context_precursors[1][column(context_precursors[0], "pass_protein_group")] == "true", "protein is not gated by peptide experiment q");
+    require(context_precursors[1][column(context_precursors[0], "inference_context")] == "experiment-wide", "selected context explicit");
+    require(context_precursors[1][column(context_precursors[0], "peptide_run_q_value")] == precursor[1][column(precursor[0], "peptide_run_q_value")], "run q never relabeled");
+    const auto context_entities = tsv(context_output / "peptides.tsv");
+    require(context_entities.back()[column(context_entities[0], "pass")] == "false", "global entity cut still applies in experiment context");
+    const auto context_matrix = tsv(context_output / "peptide_matrix.tsv");
+    require(context_matrix.size() == 2 && context_matrix[1][0] == "OTHER", "experiment context selects divergent peptide evidence");
+    require(tsv(context_output / "precursor_matrix.tsv") == matrix, "precursor matrix context invariant");
+    require(tsv(context_output / "protein_group_matrix.tsv") == protein, "protein matrix independent of peptide context failure");
+    const auto entity_table = readParquet(both / "peptides.parquet");
+    const auto precursor_table = readParquet(both / "precursors.parquet");
+    for (const auto& entry : std::vector<std::pair<std::string, double>>{{"run_p_value", 0}, {"run_pep", 0.12345678901234567}, {"experiment_q_value", 0.5}, {"experiment_p_value", 0.25}, {"experiment_pep", 0}, {"global_p_value", 0}, {"global_pep", 0.125}})
+    {
+      require(doubles(entity_table, entry.first)->Value(0) == entry.second, "exact entity Parquet statistic " + entry.first);
+      require(doubles(precursor_table, "peptide_" + entry.first)->Value(0) == entry.second, "exact precursor Parquet statistic " + entry.first);
+      require(std::stod(long_peptide[1][column(long_peptide[0], entry.first)]) == entry.second, "exact TSV statistic " + entry.first);
+    }
+    require(doubles(entity_table, "run_p_value")->IsNull(1), "unavailable p stays Parquet null");
+    require(long_peptide[2][column(long_peptide[0], "run_p_value")] == "NA", "unavailable p stays TSV NA");
+
+    auto invalid_context = options;
+    invalid_context.inference_context = "global";
+    bool context_failed = false;
+    try { writeReports((root / "bad_context").string(), library, runs, quantification, {}, invalid_context, "both"); }
+    catch (const std::invalid_argument&) { context_failed = true; }
+    require(context_failed && !fs::exists(root / "bad_context"), "invalid context rejected before output");
 
     auto pm = readParquet(both / "precursor_matrix.parquet");
     require(pm->num_rows() == 1, "Parquet matrix row count");
@@ -320,7 +368,7 @@ namespace
     require(meta->num_rows() == 8200 && meta->num_row_groups() >= 3, "multiple bounded row groups");
     for (int i = 0; i < meta->num_row_groups(); ++i) require(meta->RowGroup(i)->num_rows() <= 4096, "row group cap");
     const auto wide = readParquet(bounded / "peptide_matrix.parquet");
-    require(strings(wide, "unmodified_sequence")->GetString(8199) == "PEPTIDE_8199" && doubles(wide, "runA")->Value(8199) == 8199, "multi-batch row order and numeric round trip");
+    require(strings(wide, "modified_sequence")->GetString(8199) == "PEPTIDE_8199" && doubles(wide, "runA")->Value(8199) == 8199, "multi-batch row order and numeric round trip");
     noPartials(bounded);
   }
 }

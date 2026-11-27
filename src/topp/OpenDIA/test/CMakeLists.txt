@@ -6,7 +6,7 @@
 # --------------------------------------------------------------------------
 
 # Output contracts are tested through both native readers and direct Parquet inspection.
-foreach(_output_test IN ITEMS Quantification QpxExport ReportExport PeakMapExport Annotations)
+foreach(_output_test IN ITEMS Quantification EntityInferenceParity QpxExport ReportExport PeakMapExport Annotations)
   add_executable(OpenDIA${_output_test}_test ${_output_test}_test.cpp)
   target_link_libraries(OpenDIA${_output_test}_test PRIVATE OpenDIA_impl)
   add_test(NAME OpenDIA${_output_test}_test COMMAND OpenDIA${_output_test}_test ${CMAKE_CURRENT_BINARY_DIR}/OpenDIA${_output_test}_test_data)
@@ -86,7 +86,7 @@ if(EXISTS "${CMAKE_SOURCE_DIR}/src/tests/topp/TargetedFileConverter_10_input.pqp
   add_test(NAME OpenDIALibraryParquet_test COMMAND OpenDIALibraryParquet_test ${CMAKE_CURRENT_BINARY_DIR}
     ${CMAKE_SOURCE_DIR}/src/tests/topp/TargetedFileConverter_10_input.pqp)
 endif()
-# Design rule: no OpenSWATH code in the OpenDIA core library.
+# Design rule: no OpenSWATH extraction/workflow code, except shared level/context statistics.
 add_test(NAME OpenDIA_no_openswath
   COMMAND ${CMAKE_COMMAND} -DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/.. -P ${CMAKE_CURRENT_SOURCE_DIR}/no_openswath.cmake)
 

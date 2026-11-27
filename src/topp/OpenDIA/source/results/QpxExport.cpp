@@ -136,7 +136,7 @@ namespace
     return {
       {"qpx_view", view},
       {"opendia_schema_version", "1"},
-      {"opendia_algorithm", "OpenDIA cross-fit scoring; pooled paired target-decoy competition; level-specific picked target-decoy quantification"},
+      {"opendia_algorithm", "OpenDIA precursor scoring; pooled paired precursor competition; PyProphet-adapted level-context inference"},
       {"opendia_peakgroup_fdr", QPXDatasetExport::formatNumber(options.peakgroup_fdr)},
       {"opendia_peptide_fdr", QPXDatasetExport::formatNumber(options.peptide_fdr)},
       {"opendia_protein_fdr", QPXDatasetExport::formatNumber(options.protein_fdr)},
@@ -147,7 +147,13 @@ namespace
       {"opendia_openms_revision", VersionInfo::getRevision()},
       {"opendia_canonical_extension_encoding",
        "nullable x_opendia_* strings; shortest round-trip decimals preserve source binary64; typed candidate companion retains scorer binary32"},
-      {"opendia_entity_estimator_status", "experimental picked target-decoy reporting estimator; not an empirical FDR calibration claim"},
+      {"opendia_entity_estimator_status", "shared LevelContextInference; empirical calibration remains dataset-dependent"},
+      {"opendia_entity_inference_reference", "10.1038/nmeth.4398"},
+      {"opendia_entity_inference_context", options.inference_context},
+      {"opendia_entity_inference_contexts", "run-specific,experiment-wide,global"},
+      {"opendia_peptide_identity", "canonical modified sequence and target/decoy class; charge collapsed"},
+      {"opendia_protein_identity", "supplied accession and target/decoy class; only uniquely mapped modified peptides"},
+      {"opendia_entity_error_model", "empirical p-values; bootstrap pi0; lambda=0.1,0.15,0.2,0.25,0.3,0.35,0.4,0.45; FDR; probit local FDR adj=1.5 eps=1e-8"},
       {"opendia_area_semantics", "raw MS2 precursor area; not LFQ"}};
   }
 
@@ -320,9 +326,12 @@ namespace
   }
   std::string decoyPrefix(const Quantification& quant)
   {
-    std::set<std::string> targets;
+    std::set<std::string> targets, reserved;
     for (const auto& group : quant.protein_groups)
+    {
+      reserved.insert(group.proteins.begin(), group.proteins.end());
       if (! group.decoy) targets.insert(group.proteins.begin(), group.proteins.end());
+    }
     std::string prefix = "DECOY_";
     for (;;)
     {
@@ -330,17 +339,18 @@ namespace
       for (const auto& group : quant.protein_groups)
         if (group.decoy)
           for (const auto& protein : group.proteins)
-            if (targets.contains(prefix + protein)) collision = true;
+            if (targets.contains(protein) && reserved.contains(prefix + protein)) collision = true;
       if (! collision) return prefix;
       prefix += "DECOY_";
     }
   }
-  std::vector<std::string> groupAccessions(const QuantifiedEntity& group, const std::string& prefix)
+  std::vector<std::string> groupAccessions(const QuantifiedEntity& group, const std::string& prefix,
+                                         const std::set<std::string>& targets)
   {
     auto proteins = group.proteins;
     if (group.decoy)
       for (auto& protein : proteins)
-        protein = prefix + protein;
+        if (targets.contains(protein)) protein = prefix + protein;
     return proteins;
   }
   std::vector<std::string> geneNames(const std::string& raw)
@@ -414,6 +424,21 @@ void writeQpxDataset(const std::string& directory,
                      const GeneAnnotations& genes,
                      const ReportingOptions& options)
 {
+  std::set<std::string> target_accessions;
+  for (const auto& group : quant.protein_groups)
+    if (!group.decoy) target_accessions.insert(group.proteins.begin(), group.proteins.end());
+  const auto datasetMetadata = [&](const std::string& view) {
+    auto result = metadata(options, view);
+    std::string warnings;
+    for (const auto& warning : quant.inference_warnings)
+    {
+      if (!warnings.empty()) warnings += "\n";
+      warnings += warning;
+    }
+    result["opendia_entity_inference_warnings"] = warnings;
+    result["opendia_decoy_accession_policy"] = "source accessions preserved; target/decoy collisions only are prefixed";
+    return result;
+  };
   auto fields = QPXFeatureSchema::schema()->fields();
   for (auto& field : fields)
   {
@@ -427,9 +452,11 @@ void writeQpxDataset(const std::string& directory,
     fields.push_back(arrow::field(name, arrow::float64()));
   fields.push_back(arrow::field("x_opendia_peptide_global_qvalue", arrow::utf8()));
   fields.push_back(arrow::field("x_opendia_pg_qvalue", arrow::utf8()));
+  fields.push_back(arrow::field("x_opendia_peptide_experiment_qvalue", arrow::utf8()));
+  fields.push_back(arrow::field("x_opendia_pg_experiment_qvalue", arrow::utf8()));
   fields.push_back(arrow::field("pg_ids", arrow::list(arrow::int64())));
   const auto decoy_prefix = decoyPrefix(quant);
-  auto feature_metadata = metadata(options, "feature");
+  auto feature_metadata = datasetMetadata("feature");
   feature_metadata["opendia_decoy_accession_prefix"] = decoy_prefix;
   Writer feature(std::filesystem::path(directory) / "opendia.feature.parquet", arrow::schema(fields), "feature", feature_metadata);
   std::unordered_set<std::int64_t> ids;
@@ -472,7 +499,11 @@ void writeQpxDataset(const std::string& directory,
       {
         const auto& peptide = quant.peptides[quant.precursor_peptide[w.precursor]];
         row["peptide_global_qvalue"] = real(peptide.global_q_value);
-        if (const auto* evidence = entityRun(peptide, r)) row["peptide_qvalue"] = real(evidence->q_value);
+        if (const auto* evidence = entityRun(peptide, r))
+        {
+          row["peptide_qvalue"] = real(evidence->q_value);
+          row["opendia_peptide_experiment_qvalue"] = real(evidence->experiment_q_value);
+        }
       }
       if (w.precursor < quant.precursor_protein_group.size() && quant.precursor_protein_group[w.precursor] < quant.protein_groups.size())
       {
@@ -480,7 +511,7 @@ void writeQpxDataset(const std::string& directory,
         std::vector<Scalar> accessions;
         auto type = QPXFeatureSchema::pgAccessionsType();
         auto item = type->field(0)->type();
-        const auto proteins = groupAccessions(group, decoy_prefix);
+        const auto proteins = groupAccessions(group, decoy_prefix, target_accessions);
         for (const auto& protein : proteins)
           accessions.push_back(structure(item, {text(protein), arrow::MakeNullScalar(arrow::int32()), arrow::MakeNullScalar(arrow::int32()),
                                                 arrow::MakeNullScalar(arrow::utf8()), arrow::MakeNullScalar(arrow::utf8())}));
@@ -490,6 +521,7 @@ void writeQpxDataset(const std::string& directory,
         if (const auto* evidence = entityRun(group, r))
         {
           row["pg_qvalue"] = real(evidence->q_value);
+          row["opendia_pg_experiment_qvalue"] = real(evidence->experiment_q_value);
           const auto pg_id = QPXIdentity::pgId(proteins, {runName(run.run)}, std::string("LFQ"));
           row["pg_ids"] = list(arrow::list(arrow::int64()), {integer(pg_id)});
         }
@@ -506,7 +538,8 @@ void writeQpxDataset(const std::string& directory,
   pg_fields.push_back(arrow::field("x_opendia_decoy_class", arrow::utf8()));
   pg_fields.push_back(arrow::field("x_opendia_area", arrow::utf8()));
   pg_fields.push_back(arrow::field("x_opendia_score", arrow::utf8()));
-  auto pg_metadata = metadata(options, "pg");
+  pg_fields.push_back(arrow::field("x_opendia_experiment_qvalue", arrow::utf8()));
+  auto pg_metadata = datasetMetadata("pg");
   pg_metadata["opendia_decoy_accession_prefix"] = decoy_prefix;
   Writer pg(std::filesystem::path(directory) / "opendia.pg.parquet", arrow::schema(pg_fields), "pg", pg_metadata);
   ids.clear();
@@ -518,7 +551,7 @@ void writeQpxDataset(const std::string& directory,
       if (evidence.run >= runs.size()) throw std::runtime_error("OpenDIA QPX: protein group run index out of range");
       const std::vector<std::string> grouped_runs {runName(runs[evidence.run].run)};
       const std::string decoy_class = group.decoy ? "decoy" : "target";
-      const auto proteins = groupAccessions(group, decoy_prefix);
+      const auto proteins = groupAccessions(group, decoy_prefix, target_accessions);
       const auto id = QPXIdentity::pgId(proteins, grouped_runs, std::string("LFQ"));
       if (! ids.insert(id).second) throw std::runtime_error("OpenDIA QPX: duplicate/colliding pg_id");
       Row row {{"pg_id", integer(id)},
@@ -531,6 +564,7 @@ void writeQpxDataset(const std::string& directory,
                {"label", text("LFQ")},
                {"is_decoy", boolean(group.decoy)},
                {"opendia_score", real(evidence.score)},
+               {"opendia_experiment_qvalue", real(evidence.experiment_q_value)},
                {"peptides", list(QPXPgSchema::peptidesType(), {})}};
       if (evidence.has_area)
       {
@@ -541,6 +575,52 @@ void writeQpxDataset(const std::string& directory,
     }
   }
   pg.close();
+
+  // Producer companion keeps every context's full-precision statistics without duplicating
+  // them across millions of candidate features. A null run denotes the global context.
+  Writer inference(std::filesystem::path(directory) / "opendia" / "inference.parquet",
+                   arrow::schema({arrow::field("level", arrow::utf8(), false),
+                                  arrow::field("entity_id", arrow::utf8(), false),
+                                  arrow::field("is_decoy", arrow::boolean(), false),
+                                  arrow::field("run_file_name", arrow::utf8()),
+                                  arrow::field("context", arrow::utf8(), false),
+                                  arrow::field("score", arrow::float64()),
+                                  arrow::field("p_value", arrow::float64()),
+                                  arrow::field("q_value", arrow::float64()),
+                                  arrow::field("pep", arrow::float64())}),
+                   "inference", datasetMetadata("opendia_inference"));
+  const auto appendInference = [&](const std::vector<QuantifiedEntity>& entities, const std::string& level) {
+    for (const auto& entity : entities)
+    {
+      double best = -std::numeric_limits<double>::infinity();
+      for (const auto& evidence : entity.runs)
+      {
+        if (evidence.run >= runs.size()) throw std::runtime_error("OpenDIA QPX: entity run index out of range");
+        best = std::max(best, evidence.score);
+        const Row base{{"level", text(level)}, {"entity_id", text(entity.id)}, {"is_decoy", boolean(entity.decoy)},
+                       {"run_file_name", text(runName(runs[evidence.run].run))}, {"score", real(evidence.score)}};
+        auto row = base;
+        row["context"] = text("run-specific");
+        row["p_value"] = real(evidence.p_value);
+        row["q_value"] = real(evidence.q_value);
+        row["pep"] = real(evidence.pep);
+        inference.append(row);
+        row = base;
+        row["context"] = text("experiment-wide");
+        row["p_value"] = real(evidence.experiment_p_value);
+        row["q_value"] = real(evidence.experiment_q_value);
+        row["pep"] = real(evidence.experiment_pep);
+        inference.append(row);
+      }
+      if (!entity.runs.empty())
+        inference.append({{"level", text(level)}, {"entity_id", text(entity.id)}, {"is_decoy", boolean(entity.decoy)},
+                          {"context", text("global")}, {"score", real(best)}, {"p_value", real(entity.global_p_value)},
+                          {"q_value", real(entity.global_q_value)}, {"pep", real(entity.global_pep)}});
+    }
+  };
+  appendInference(quant.peptides, "peptide");
+  appendInference(quant.protein_groups, "protein");
+  inference.close();
 
   std::vector<QPXDatasetExport::Run> run_rows;
   std::vector<QPXDatasetExport::Sample> sample_rows;
@@ -575,16 +655,16 @@ void writeQpxDataset(const std::string& directory,
   step.name = "opendia";
   step.tool = "OpenDIA";
   step.output_views = {"feature", "pg", "run", "sample"};
-  for (const auto& [key, value] : metadata(options, "provenance"))
+  for (const auto& [key, value] : datasetMetadata("provenance"))
     step.parameters.emplace_back(key, value);
-  auto run_metadata = metadata(options, "run");
+  auto run_metadata = datasetMetadata("run");
   run_metadata["opendia_sample_accession_source"] = "producer-generated technical run identifier; biological sample unknown";
   Writer run_writer(std::filesystem::path(directory) / "opendia.run.parquet", run_table->schema(), "run", run_metadata);
   run_writer.appendTable(run_table);
   run_writer.close();
   auto sample_table = QPXDatasetExport::sampleView(sample_rows);
   if (! sample_table) throw std::runtime_error("OpenDIA QPX: cannot create sample view");
-  auto sample_metadata = metadata(options, "sample");
+  auto sample_metadata = datasetMetadata("sample");
   sample_metadata["opendia_sample_accession_source"] = "producer-generated technical run identifier; biological sample unknown";
   Writer sample_writer(std::filesystem::path(directory) / "opendia.sample.parquet", sample_table->schema(), "sample", sample_metadata);
   sample_writer.appendTable(sample_table);
@@ -592,7 +672,7 @@ void writeQpxDataset(const std::string& directory,
   auto provenance_table = QPXDatasetExport::provenanceView({step});
   if (! provenance_table) throw std::runtime_error("OpenDIA QPX: cannot create provenance view");
   Writer provenance_writer(std::filesystem::path(directory) / "opendia.provenance.parquet", provenance_table->schema(), "provenance",
-                           metadata(options, "provenance"));
+                           datasetMetadata("provenance"));
   provenance_writer.appendTable(provenance_table);
   provenance_writer.close();
 }

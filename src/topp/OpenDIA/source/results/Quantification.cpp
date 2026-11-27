@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: BSD-3-Clause
 // $Maintainer: Justin Sing $
 
+#include <OpenMS/ANALYSIS/OPENSWATH/LevelContextInference.h>
 #include <OpenMS/CHEMISTRY/AASequence.h>
 #include <OpenMS/CONCEPT/Exception.h>
+#include <OpenMS/MATH/STATISTICS/MultipleTesting.h>
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -35,69 +37,131 @@ namespace
     return result;
   }
 
-  // Experimental reporting estimator, not an empirical calibration claim. A missing observed
-  // counterpart has no estimable q (NaN), rather than being counted as a target victory.
-  // Adjacent entities are the target and its library-derived decoy. Equal-score blocks share
-  // their terminal (D+1)/T estimate before reverse cumulative minima are applied.
-  std::vector<double> picked(const std::vector<double>& scores)
+  void estimate(std::vector<QuantifiedEntity>& entities, std::size_t run_count, InferenceLevel level, std::vector<std::string>& warnings)
   {
-    std::vector<double> q(scores.size(), na);
-    std::vector<std::size_t> ranked;
-    for (std::size_t i = 0; i + 1 < scores.size(); i += 2)
-    {
-      if (! std::isfinite(scores[i]) || ! std::isfinite(scores[i + 1])) continue;
-      q[i] = q[i + 1] = 1.0;
-      ranked.push_back(scores[i] > scores[i + 1] ? i : i + 1);
-    }
-    std::sort(ranked.begin(), ranked.end(), [&](auto a, auto b) { return scores[a] != scores[b] ? scores[a] > scores[b] : a < b; });
-    double targets = 0, decoys = 0;
-    std::vector<double> estimates(ranked.size());
-    for (std::size_t begin = 0; begin < ranked.size();)
-    {
-      auto end = begin;
-      while (end < ranked.size() && scores[ranked[end]] == scores[ranked[begin]])
-      {
-        (ranked[end] % 2 ? decoys : targets) += 1;
-        ++end;
-      }
-      const auto estimate = std::min(1.0, (decoys + 1.0) / std::max(targets, 1.0));
-      std::fill(estimates.begin() + begin, estimates.begin() + end, estimate);
-      begin = end;
-    }
-    double minimum = 1.0;
-    for (std::size_t i = ranked.size(); i-- > 0;)
-    {
-      minimum = std::min(minimum, estimates[i]);
-      q[ranked[i]] = minimum;
-    }
-    return q;
-  }
-
-  void estimate(std::vector<QuantifiedEntity>& entities, std::size_t run_count)
-  {
-    std::vector<double> best(entities.size(), absent);
-    std::vector<std::map<std::size_t, std::size_t>> observed(run_count);
+    std::vector<LevelContextInputRow> all, global;
+    std::vector<std::vector<LevelContextInputRow>> by_run(run_count);
     for (std::size_t e = 0; e < entities.size(); ++e)
     {
-      for (std::size_t i = 0; i < entities[e].runs.size(); ++i)
+      double best = absent;
+      for (const auto& r : entities[e].runs)
       {
-        const auto& r = entities[e].runs[i];
-        best[e] = std::max(best[e], r.score);
-        observed[r.run].emplace(e, i);
+        LevelContextInputRow row;
+        row.run_id = static_cast<Int64>(r.run);
+        row.entity_id = static_cast<Int64>(e);
+        row.group_id = std::to_string(r.run) + ":" + std::to_string(e);
+        row.decoy = entities[e].decoy;
+        row.score = r.score;
+        all.push_back(row);
+        by_run[r.run].push_back(row);
+        best = std::max(best, r.score);
       }
+      if (! std::isfinite(best)) continue;
+      LevelContextInputRow row;
+      row.entity_id = static_cast<Int64>(e);
+      row.group_id = std::to_string(e);
+      row.decoy = entities[e].decoy;
+      row.score = best;
+      global.push_back(row);
     }
-    const auto global = picked(best);
-    for (std::size_t e = 0; e < entities.size(); ++e)
-      entities[e].global_q_value = global[e];
+    // Run calls are isolated so an unestimable run cannot discard successful runs.
+    auto infer = [&](std::vector<LevelContextInputRow> rows, InferenceContext context, const std::string& label) {
+      if (rows.empty()) return;
+      LevelContextInferenceConfig config;
+      config.level = level;
+      config.context = context;
+      for (auto& row : rows)
+        row.context = context;
+      std::vector<LevelContextResultRow> results;
+      auto warn = [&](const std::string& reason) { warnings.push_back(toString(level) + " " + label + ": native inference unavailable: " + reason); };
+      // The native local-FDR KDE requires at least two target p-values. With one,
+      // its zero bandwidth produces a degenerate spline instead of an estimate.
+      if (std::count_if(rows.begin(), rows.end(), [](const auto& row) { return ! row.decoy; }) < 2)
+      {
+        warn("fewer than two target observations for native local-FDR KDE");
+        return;
+      }
+      try
+      {
+        // Upstream PyProphet pi0est rejects pi0 <= 0 (e.g. all-tie or fully separated scores).
+        // Native estimation continues with q/PEP of zero, so replay its own p/pi0 steps and reject.
+        std::vector<double> targets, decoys;
+        for (const auto& row : rows)
+        {
+          if (std::isfinite(row.score)) (row.decoy ? decoys : targets).push_back(row.score);
+        }
+        std::sort(targets.begin(), targets.end());
+        std::sort(decoys.begin(), decoys.end());
+        if (! targets.empty() && ! decoys.empty())
+        {
+          const auto& error = config.error;
+          const auto p = error.parametric ? Math::MultipleTesting::pNorm(targets, decoys) : Math::MultipleTesting::pEmp(targets, decoys);
+          const auto pi0 = Math::MultipleTesting::pi0Est(p, error.pi0_lambda, Math::MultipleTesting::toPi0Method(error.pi0_method),
+                                                         error.pi0_smooth_df, error.pi0_smooth_log_pi0)
+                             .pi0;
+          if (! (pi0 > 0))
+          {
+            warn("estimated pi0 <= 0");
+            return;
+          }
+        }
+        results = LevelContextInference::infer(rows, config);
+      }
+      catch (const Exception::Precondition& error)
+      {
+        const std::string message = error.getMessage();
+        if (message.find("score distribution is empty.") == std::string::npos
+            && message.find("score distribution only contained NaN values.") == std::string::npos)
+          throw;
+        warn(message);
+        return;
+      }
+      catch (const std::invalid_argument& error)
+      {
+        // Native statistical routines report unestimable p-value/KDE inputs this way.
+        const std::string message = error.what();
+        if (message != "pi0Est: no finite p-values provided" && message != "qValue: pi0 not in [0,1]" && message != "lfdr: pi0 not in [0,1]"
+            && message != "linBin: xmax must be > xmin")
+          throw;
+        warn(message);
+        return;
+      }
+      if (std::any_of(results.begin(), results.end(),
+                      [](const auto& row) { return ! std::isfinite(row.pvalue) || ! std::isfinite(row.qvalue) || ! std::isfinite(row.pep); }))
+      {
+        warn("non-finite native error statistics");
+        return;
+      }
+      for (const auto& row : results)
+      {
+        auto& entity = entities.at(static_cast<std::size_t>(row.entity_id));
+        if (context == InferenceContext::Global)
+        {
+          entity.global_q_value = row.qvalue;
+          entity.global_p_value = row.pvalue;
+          entity.global_pep = row.pep;
+          continue;
+        }
+        auto& run
+          = *std::find_if(entity.runs.begin(), entity.runs.end(), [&](const auto& r) { return r.run == static_cast<std::size_t>(*row.run_id); });
+        if (context == InferenceContext::RunSpecific)
+        {
+          run.q_value = row.qvalue;
+          run.p_value = row.pvalue;
+          run.pep = row.pep;
+        }
+        else
+        {
+          run.experiment_q_value = row.qvalue;
+          run.experiment_p_value = row.pvalue;
+          run.experiment_pep = row.pep;
+        }
+      }
+    };
+    infer(global, InferenceContext::Global, "global");
+    infer(all, InferenceContext::ExperimentWide, "experiment-wide");
     for (std::size_t r = 0; r < run_count; ++r)
-    {
-      std::vector<double> scores(entities.size(), absent);
-      for (const auto& [e, i] : observed[r])
-        scores[e] = entities[e].runs[i].score;
-      const auto q = picked(scores);
-      for (const auto& [e, i] : observed[r])
-        entities[e].runs[i].q_value = q[e];
-    }
+      infer(by_run[r], InferenceContext::RunSpecific, "run-specific run " + std::to_string(r));
   }
 
   void evidence(QuantifiedEntity& entity, std::size_t run, double score)
@@ -112,22 +176,22 @@ Quantification quantify(const AnalysisLibrary& library, const std::vector<RunRes
 {
   for (auto cut : {options.peakgroup_fdr, options.peptide_fdr, options.protein_fdr})
     if (! std::isfinite(cut) || cut < 0 || cut > 1) throw std::invalid_argument("Reporting FDR must be finite and in [0,1]");
+  if (options.inference_context != "run-specific" && options.inference_context != "experiment-wide")
+    throw std::invalid_argument("Inference context must be run-specific or experiment-wide");
   Quantification out;
   const auto n = library.precursors.size();
   out.precursor_peptide.assign(n, missing);
   out.precursor_protein_group.assign(n, missing);
-  std::map<std::uint32_t, std::uint32_t> parents;
-  std::map<std::string, std::uint32_t> families;
+  std::map<std::pair<bool, std::string>, std::uint32_t> families;
   std::vector<std::set<std::string>> family_proteins;
   for (std::uint32_t p = 0; p < n; ++p)
   {
     const auto& precursor = library.precursors[p];
     if (precursor.pair >= library.pairs) throw std::invalid_argument("Precursor pair outside library");
-    if (precursor.decoy) continue;
     std::string sequence;
     try
     {
-      sequence = AASequence::fromString(precursor.sequence).toUnmodifiedString();
+      sequence = AASequence::fromString(precursor.sequence).toString();
     }
     catch (const Exception::BaseException&)
     {
@@ -135,73 +199,60 @@ Quantification quantify(const AnalysisLibrary& library, const std::vector<RunRes
       continue;
     }
     if (sequence.empty()) continue;
-    auto [it, added] = families.emplace(sequence, static_cast<std::uint32_t>(out.peptides.size()));
+    auto [it, added] = families.emplace(std::make_pair(precursor.decoy, sequence), static_cast<std::uint32_t>(out.peptides.size()));
     if (added)
     {
-      out.peptides.push_back({sequence, {}, false, na, {}});
-      out.peptides.push_back({"DECOY_" + sequence, {}, true, na, {}});
+      out.peptides.push_back({sequence, {}, precursor.decoy, na, {}});
       family_proteins.emplace_back();
     }
     out.precursor_peptide[p] = it->second;
-    const auto [parent, inserted] = parents.emplace(precursor.pair, it->second);
-    if (! inserted && parent->second != it->second) throw std::invalid_argument("Pair has conflicting target peptide families");
     if (precursor.proteins >= library.protein_sets.size()) throw std::invalid_argument("Protein set outside library");
     const auto names = proteins(library.protein_sets[precursor.proteins]);
-    family_proteins[it->second / 2].insert(names.begin(), names.end());
+    family_proteins[it->second].insert(names.begin(), names.end());
   }
-  for (std::size_t p = 0; p < n; ++p)
-    if (library.precursors[p].decoy)
-    {
-      const auto parent = parents.find(library.precursors[p].pair);
-      if (parent != parents.end()) out.precursor_peptide[p] = parent->second + 1;
-    }
-
-  // Infer indistinguishable proteins from ALL library target evidence, never from identified hits.
-  std::map<std::string, std::set<std::size_t>> protein_evidence;
+  // Mapping is the union across every library entry of this modified peptide and class.
+  std::map<std::pair<bool, std::string>, std::uint32_t> protein_ids;
+  std::vector<std::uint32_t> family_group(family_proteins.size(), missing);
   for (std::size_t f = 0; f < family_proteins.size(); ++f)
   {
+    out.peptides[f].proteins.assign(family_proteins[f].begin(), family_proteins[f].end());
     for (const auto& name : family_proteins[f])
-      protein_evidence[name].insert(f);
-    for (auto e : {2 * f, 2 * f + 1})
-      out.peptides[e].proteins.assign(family_proteins[f].begin(), family_proteins[f].end());
-  }
-  std::map<std::set<std::size_t>, std::vector<std::string>> groups;
-  for (const auto& [name, evidence_set] : protein_evidence)
-    groups[evidence_set].push_back(name);
-  std::vector<std::set<std::uint32_t>> family_groups(family_proteins.size());
-  std::set<std::string> reserved_group_ids;
-  for (const auto& [evidence_set, names] : groups)
-  {
-    std::string id;
-    for (const auto& name : names)
     {
-      if (! id.empty()) id += ';';
-      id += name;
+      const auto decoy = out.peptides[f].decoy;
+      auto [it, added] = protein_ids.emplace(std::make_pair(decoy, name), static_cast<std::uint32_t>(out.protein_groups.size()));
+      if (added) out.protein_groups.push_back({name, {name}, decoy, na, {}});
+      if (family_proteins[f].size() == 1) family_group[f] = it->second;
     }
-    reserved_group_ids.insert(std::move(id));
   }
-  for (const auto& [evidence_set, names] : groups)
-  {
-    const auto g = static_cast<std::uint32_t>(out.protein_groups.size());
-    std::string id;
-    for (const auto& name : names)
+  // Public IDs must remain unique even for a literal accession/sequence in both classes.
+  // Reserve all actual names first so generated IDs cannot steal a real accession.
+  auto unique_ids = [](auto& entities) {
+    std::set<std::string> reserved, used;
+    for (const auto& entity : entities)
+      reserved.insert(entity.id);
+    for (auto& entity : entities)
     {
-      if (! id.empty()) id += ';';
-      id += name;
+      if (! entity.decoy) used.insert(entity.id);
     }
-    out.protein_groups.push_back({id, names, false, na, {}});
-    std::string decoy_id = "DECOY_" + id;
-    while (reserved_group_ids.count(decoy_id))
-      decoy_id = "DECOY_" + decoy_id;
-    reserved_group_ids.insert(decoy_id);
-    out.protein_groups.push_back({decoy_id, names, true, na, {}});
-    for (auto f : evidence_set)
-      family_groups[f].insert(g);
-  }
+    for (auto& entity : entities)
+    {
+      if (! entity.decoy) continue;
+      if (used.count(entity.id))
+      {
+        std::string id = "DECOY_" + entity.id;
+        while (reserved.count(id) || used.count(id))
+          id = "DECOY_" + id;
+        entity.id = std::move(id);
+      }
+      used.insert(entity.id);
+    }
+  };
+  unique_ids(out.peptides);
+  unique_ids(out.protein_groups);
   for (std::size_t p = 0; p < n; ++p)
   {
     const auto e = out.precursor_peptide[p];
-    if (e != missing && family_groups[e / 2].size() == 1) out.precursor_protein_group[p] = *family_groups[e / 2].begin() + e % 2;
+    if (e != missing) out.precursor_protein_group[p] = family_group[e];
   }
 
   std::vector<double> best(n, absent);
@@ -256,8 +307,8 @@ Quantification quantify(const AnalysisLibrary& library, const std::vector<RunRes
       if (e != missing) evidence(out.peptides[e], r, w->score);
       if (g != missing) evidence(out.protein_groups[g], r, w->score);
     }
-  estimate(out.peptides, runs.size());
-  estimate(out.protein_groups, runs.size());
+  estimate(out.peptides, runs.size(), InferenceLevel::Peptide, out.inference_warnings);
+  estimate(out.protein_groups, runs.size(), InferenceLevel::Protein, out.inference_warnings);
   for (std::size_t r = 0; r < runs.size(); ++r)
     for (const auto& [p, w] : winners[r])
     {

@@ -144,6 +144,13 @@ int main(int argc, char** argv)
     peptide.id = "PEPMIDEK";
     peptide.global_q_value = 0.345;
     peptide.runs.push_back({0, 10, 0.456, 0, false});
+    peptide.global_p_value = 0.123456789012345;
+    peptide.global_pep = 0.234567890123456;
+    peptide.runs[0].p_value = 0.345678901234567;
+    peptide.runs[0].pep = 0.456789012345678;
+    peptide.runs[0].experiment_q_value = 0.567890123456789;
+    peptide.runs[0].experiment_p_value = 0.678901234567890;
+    peptide.runs[0].experiment_pep = 0.789012345678901;
     quant.peptides.push_back(peptide);
     QuantifiedEntity group;
     group.id = "P1;P2";
@@ -184,6 +191,19 @@ int main(int argc, char** argv)
     require(exact(extensionNumber(features, "mz", 0), lib.precursors[0].mz), "mz exact double");
     require(exact(extensionNumber(features, "rt_start", 0), sample.windows[0].peak.rt_start), "boundary exact double");
     require(exact(extensionNumber(features, "rt_end", 0), sample.windows[0].peak.rt_end), "end exact double");
+    require(extensionNumber(features, "peptide_experiment_qvalue", 0) == peptide.runs[0].experiment_q_value,
+            "experiment-wide peptide q is distinct from run q");
+    auto inference = read(output / "opendia/inference.parquet");
+    require(inference->num_rows() == 6, "two entity levels, three contexts each");
+    const auto contexts = column<arrow::StringArray>(inference, "context");
+    require(contexts->GetString(0) == "run-specific" && contexts->GetString(1) == "experiment-wide"
+              && contexts->GetString(2) == "global", "explicit context identities");
+    require(column<arrow::StringArray>(inference, "run_file_name")->IsNull(2), "global inference has no run");
+    require(exact(column<arrow::DoubleArray>(inference, "p_value")->Value(0), peptide.runs[0].p_value), "inference run p-value exact");
+    require(exact(column<arrow::DoubleArray>(inference, "pep")->Value(1), peptide.runs[0].experiment_pep), "inference experiment PEP exact");
+    require(exact(column<arrow::DoubleArray>(inference, "p_value")->Value(2), peptide.global_p_value), "inference global p-value exact");
+    require(column<arrow::DoubleArray>(inference, "p_value")->IsNull(3), "unavailable inference is null");
+    require(take(feature_footer->Get("opendia_entity_inference_reference")) == "10.1038/nmeth.4398", "published method metadata");
     auto pg = read(output / "opendia.pg.parquet");
     require(pg->num_rows() == 1 && column<arrow::FloatArray>(pg, "intensity")->IsNull(0), "PG missing area is null");
     require(column<arrow::DoubleArray>(pg, "global_qvalue")->Value(0) == 0.567 && column<arrow::DoubleArray>(pg, "pg_qvalue")->Value(0) == 0.678,
@@ -224,6 +244,13 @@ int main(int argc, char** argv)
     require(column<arrow::DoubleArray>(paired_pg, "global_qvalue")->IsNull(1) && column<arrow::DoubleArray>(paired_pg, "pg_qvalue")->IsNull(1),
             "unestimable q values are null, not NaN");
 
+    // Actual source decoy accessions are not prefixed a second time.
+    auto source_decoys = paired;
+    source_decoys.protein_groups[1].proteins = {"DECOY_REAL"};
+    writeQpxDataset((output / "source_decoys").string(), lib, {sample}, source_decoys, {}, {});
+    auto source_pg = read(output / "source_decoys/opendia.pg.parquet");
+    require(column<arrow::StringArray>(source_pg, "anchor_protein")->GetString(1) == "DECOY_REAL", "actual decoy accession preserved");
+
     // A positive-quantity, fully resolved target/decoy fixture for the unmodified Python conformance gate.
     auto conformant = paired;
     conformant.protein_groups.pop_back();
@@ -249,6 +276,7 @@ int main(int argc, char** argv)
     writeQpxDataset((output / "empty").string(), lib, {empty}, {}, {}, {});
     require(read(output / "empty/opendia.feature.parquet")->num_rows() == 0, "empty canonical schema");
     require(read(output / "empty/opendia.pg.parquet")->num_rows() == 0, "empty PG schema");
+    require(read(output / "empty/opendia/inference.parquet")->num_rows() == 0, "empty inference schema");
     require(read(output / "empty/opendia/empty.candidates.parquet")->num_rows() == 0, "empty scorer schema");
 
     writeQpxDataset((output / "no_runs").string(), lib, {}, {}, {}, {});

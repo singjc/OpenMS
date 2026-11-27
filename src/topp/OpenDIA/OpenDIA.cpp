@@ -171,12 +171,14 @@ protected:
     registerDoubleOption_("q", "<q>", 0.01, "Run and global peak-group q-value cut for quantification matrices", false);
     setMinFloat_("q", 0.0);
     setMaxFloat_("q", 1.0);
-    registerDoubleOption_("peptide_q", "<q>", 0.01, "Run and global peptide q-value cut for the peptide matrix", false);
+    registerDoubleOption_("peptide_q", "<q>", 0.01, "Selected-context and global peptide q-value cut for the peptide matrix", false);
     setMinFloat_("peptide_q", 0.0);
     setMaxFloat_("peptide_q", 1.0);
-    registerDoubleOption_("protein_q", "<q>", 0.01, "Run and global protein-group q-value cut for the protein-group matrix", false);
+    registerDoubleOption_("protein_q", "<q>", 0.01, "Selected-context and global protein q-value cut for the protein matrix", false);
     setMinFloat_("protein_q", 0.0);
     setMaxFloat_("protein_q", 1.0);
+    registerStringOption_("inference_context", "<context>", "run-specific", "Peptide/protein reporting context, combined with their global q-value cuts; all contexts are exported", false);
+    setValidStrings_("inference_context", {"run-specific", "experiment-wide"});
     registerStringOption_("output_format", "<format>", "tsv", "High-level tables and matrix format (canonical QPX is always Parquet)", false);
     setValidStrings_("output_format", {"tsv", "parquet", "both"});
     registerFlag_("legacy_outputs", "Also write the original byte-compatible precursor TSVs in legacy/");
@@ -396,7 +398,7 @@ protected:
                   " rss_mb=" + std::to_string(library_rss / 1024));
 
     const auto genes = OpenDIA::readGeneAnnotations(lib_path);
-    const OpenDIA::ReportingOptions reporting{q_cut, getDoubleOption_("peptide_q"), getDoubleOption_("protein_q")};
+    const OpenDIA::ReportingOptions reporting{q_cut, getDoubleOption_("peptide_q"), getDoubleOption_("protein_q"), getStringOption_("inference_context")};
     const bool legacy_outputs = getFlag_("legacy_outputs");
     const std::string legacy_dir = out_dir + "/legacy";
     const std::string qpx_dir = out_dir + "/qpx";
@@ -485,6 +487,8 @@ protected:
 
     const auto reporting_start = std::chrono::steady_clock::now();
     const auto quantification = OpenDIA::quantify(library, results, reporting);
+    for (const auto& warning : quantification.inference_warnings)
+      writeLogInfo_("WARNING: entity inference unavailable: " + warning);
     const auto& global_q = quantification.global_precursor_q;
     OpenDIA::writeQpxDataset(qpx_dir, library, results, quantification, genes, reporting);
     OpenDIA::writeReports(out_dir, library, results, quantification, genes, reporting, getStringOption_("output_format"));

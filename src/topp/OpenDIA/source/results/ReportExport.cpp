@@ -202,6 +202,33 @@ namespace OpenMS::OpenDIA
       return nullptr;
     }
 
+    double selectedQ(const EntityRun& run, const ReportingOptions& options)
+    {
+      return options.inference_context == "experiment-wide" ? run.experiment_q_value : run.q_value;
+    }
+
+    void appendStatistics(Row& row, const QuantifiedEntity* entity, const EntityRun* run)
+    {
+      for (double value : {run ? run->q_value : na, run ? run->p_value : na, run ? run->pep : na,
+                           run ? run->experiment_q_value : na, run ? run->experiment_p_value : na,
+                           run ? run->experiment_pep : na, entity ? entity->global_q_value : na,
+                           entity ? entity->global_p_value : na, entity ? entity->global_pep : na})
+      {
+        row.push_back(number(value));
+      }
+    }
+
+    void appendStatisticFields(std::vector<std::shared_ptr<arrow::Field>>& fields, const std::string& prefix)
+    {
+      for (const std::string context : {"run", "experiment", "global"})
+      {
+        for (const std::string statistic : {"q_value", "p_value", "pep"})
+        {
+          fields.push_back(arrow::field(prefix + context + "_" + statistic, arrow::float64()));
+        }
+      }
+    }
+
     std::string membership(const std::vector<std::string>& proteins)
     {
       std::string result;
@@ -241,13 +268,15 @@ namespace OpenMS::OpenDIA
     if (format != "tsv" && format != "parquet" && format != "both") throw std::invalid_argument("Report format must be tsv, parquet, or both");
     for (const double threshold : {options.peakgroup_fdr, options.peptide_fdr, options.protein_fdr})
       if (!std::isfinite(threshold) || threshold < 0 || threshold > 1) throw std::invalid_argument("Report FDR thresholds must be in [0,1]");
+    if (options.inference_context != "run-specific" && options.inference_context != "experiment-wide")
+      throw std::invalid_argument("Report inference context must be run-specific or experiment-wide");
     std::vector<std::string> run_names;
     for (const auto& run : runs)
     {
       const auto name = ArrowIOHelpers::qpxRunFileName(run.run);
       if (name.empty() || std::find(run_names.begin(), run_names.end(), name) != run_names.end())
         throw std::invalid_argument("Report run stems must be nonempty and unique");
-      for (const char* reserved : {"precursor_id", "sequence", "unmodified_sequence", "charge", "proteins", "genes", "protein_group"})
+      for (const char* reserved : {"precursor_id", "sequence", "unmodified_sequence", "charge", "proteins", "genes", "protein_group", "modified_sequence"})
       {
         if (name == reserved) throw std::invalid_argument("Report run stem collides with matrix metadata column: " + name);
       }
@@ -275,10 +304,11 @@ namespace OpenMS::OpenDIA
     const std::vector<std::shared_ptr<arrow::Field>> tail{
       realField("rt_apex"), realField("rt_start"), realField("rt_end"), realField("area"), textField("quantity_type"),
       realField("discriminant_score"), realField("run_q_value"), realField("global_q_value"), boolField("decoy"),
-      realField("peptide_run_q_value"), realField("peptide_global_q_value"),
-      realField("protein_group_run_q_value"), realField("protein_group_global_q_value"),
-      boolField("pass_peakgroup"), boolField("pass_peptide"), boolField("pass_protein_group")};
+      textField("inference_context")};
     long_fields.insert(long_fields.end(), tail.begin(), tail.end());
+    appendStatisticFields(long_fields, "peptide_");
+    appendStatisticFields(long_fields, "protein_group_");
+    long_fields.insert(long_fields.end(), {boolField("pass_peakgroup"), boolField("pass_peptide"), boolField("pass_protein_group")});
     Table precursors(publication, fs::path(directory) / "precursors", long_fields, tsv, parquet);
     auto matrix_fields = metadata;
     for (const auto& name : run_names) matrix_fields.push_back(realField(name));
@@ -300,9 +330,9 @@ namespace OpenMS::OpenDIA
         const auto* pg = evidence(group, r);
         const bool pass_peak = !precursor.decoy && passes(window->q_value, global, options.peakgroup_fdr);
         const bool pass_peptide = pass_peak && peptide && !peptide->decoy && pe
-                               && passes(pe->q_value, peptide->global_q_value, options.peptide_fdr);
+                               && passes(selectedQ(*pe, options), peptide->global_q_value, options.peptide_fdr);
         const bool pass_group = pass_peak && group && !group->decoy && pg
-                             && passes(pg->q_value, group->global_q_value, options.protein_fdr);
+                             && passes(selectedQ(*pg, options), group->global_q_value, options.protein_fdr);
         const auto feature_id = outputFeatureId(runs[r].run, std::string(precursor.id), window->candidate);
         if (!feature_ids.insert(feature_id).second)
         {
@@ -312,9 +342,12 @@ namespace OpenMS::OpenDIA
         row.insert(row.end(), values.begin(), values.end());
         const Row rest{number(window->peak.rt_apex), number(window->peak.rt_start), number(window->peak.rt_end),
                        number(window->peak.area), std::string("raw_ms2_area"), number(window->score), number(window->q_value),
-                       number(global), precursor.decoy, pe ? number(pe->q_value) : Cell{}, peptide ? number(peptide->global_q_value) : Cell{},
-                       pg ? number(pg->q_value) : Cell{}, group ? number(group->global_q_value) : Cell{}, pass_peak, pass_peptide, pass_group};
+                       number(global), precursor.decoy, options.inference_context};
         row.insert(row.end(), rest.begin(), rest.end());
+        // Preserve native context statistics even when another context supplies the gate.
+        appendStatistics(row, peptide, pe);
+        appendStatistics(row, group, pg);
+        row.insert(row.end(), {pass_peak, pass_peptide, pass_group});
         precursors.append(row);
         if (pass_peak && std::isfinite(window->peak.area))
         {
@@ -327,17 +360,18 @@ namespace OpenMS::OpenDIA
     precursors.close();
     precursor_matrix.close();
 
-    // Entity areas are supplied by Quantification. Their level-specific gates are deliberately
-    // independent of precursor gates and are never reconstructed from already filtered rows.
+    // Quantification supplies areas after precursor run/global cuts. Apply only the selected
+    // entity context and global entity cuts here, without cross-gating peptide and protein levels.
     const auto write_entities = [&](const std::vector<QuantifiedEntity>& entities, const std::string& stem,
                                     const std::string& id_column, double threshold)
     {
       std::vector<std::shared_ptr<arrow::Field>> fields{textField(id_column), textField("proteins")};
       auto wide_fields = fields;
       for (const auto& name : run_names) wide_fields.push_back(realField(name));
-      fields.insert(fields.end(), {textField("run"), realField("discriminant_score"), realField("run_q_value"),
-                                  realField("global_q_value"), boolField("decoy"), realField("area"),
-                                  textField("quantity_type"), boolField("pass")});
+      fields.insert(fields.end(), {textField("run"), realField("discriminant_score")});
+      appendStatisticFields(fields, "");
+      fields.insert(fields.end(), {boolField("decoy"), realField("area"),
+                                  textField("quantity_type"), textField("inference_context"), boolField("pass")});
       Table long_table(publication, fs::path(directory) / (stem == "peptide" ? "peptides" : "protein_groups"), fields, tsv, parquet);
       Table matrix(publication, fs::path(directory) / (stem + "_matrix"), wide_fields, tsv, parquet);
       for (const auto& e : entities)
@@ -349,10 +383,12 @@ namespace OpenMS::OpenDIA
         for (const auto& r : e.runs)
         {
           if (r.run >= runs.size()) throw std::out_of_range("Report entity run index");
-          const bool pass = !e.decoy && passes(r.q_value, e.global_q_value, threshold);
+          const bool pass = !e.decoy && passes(selectedQ(r, options), e.global_q_value, threshold);
           const Cell area = r.has_area ? number(r.area) : Cell{};
-          long_table.append({e.id, proteins, run_names[r.run], number(r.score), number(r.q_value), number(e.global_q_value),
-                             e.decoy, area, std::string("raw_ms2_area"), pass});
+          Row row{e.id, proteins, run_names[r.run], number(r.score)};
+          appendStatistics(row, &e, &r);
+          row.insert(row.end(), {e.decoy, area, std::string("raw_ms2_area"), options.inference_context, pass});
+          long_table.append(row);
           if (pass && !std::holds_alternative<std::monostate>(area))
           {
             wide[2 + r.run] = area;
@@ -364,7 +400,7 @@ namespace OpenMS::OpenDIA
       long_table.close();
       matrix.close();
     };
-    write_entities(quantification.peptides, "peptide", "unmodified_sequence", options.peptide_fdr);
+    write_entities(quantification.peptides, "peptide", "modified_sequence", options.peptide_fdr);
     write_entities(quantification.protein_groups, "protein_group", "protein_group", options.protein_fdr);
     publication.publish();
   }

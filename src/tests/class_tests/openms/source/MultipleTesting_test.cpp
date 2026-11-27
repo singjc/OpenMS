@@ -350,6 +350,19 @@ START_SECTION(Pi0Result pi0Est(const std::vector<double>&, const std::vector<dou
 }
 END_SECTION
 
+START_SECTION("bootstrap pi0 minpi0 matches PyProphet np.percentile(pi0, 0.1)")
+{
+  // Reference: pinned PyProphet 4344e2b pi0est(p, np.arange(0.1, 0.5, 0.05), pi0_method="bootstrap").
+  // The former nearest-rank 10% quantile selected 0.5 instead.
+  const std::vector<double> p = {0.236068, 0.013156, 0.623059, 0.105245, 0.000733, 0.355202, 0.034722, 0.84196,
+                                 0.177794, 0.005865, 0.508884, 0.072203, 4.1e-05,  0.277775, 0.019795, 0.701514,
+                                 0.129999, 0.001935, 0.409586, 0.046921, 0.937491, 0.212507, 0.009908, 0.577626};
+  const std::vector<double> lambda = {0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45};
+  auto res = pi0Est(p, lambda, "bootstrap");
+  TEST_REAL_SIMILAR(res.pi0, 0.4761904761904762)
+}
+END_SECTION
+
 START_SECTION("R reference qvalue CSV matches C++ implementation")
 {
   // load CSV

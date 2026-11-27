@@ -70,9 +70,10 @@ areas are unchanged by the export layer.
 | `qpx/opendia.pg.parquet` | Run-level target and decoy protein-group evidence, quantities and independent protein-group q-values |
 | `qpx/opendia.run.parquet`, `qpx/opendia.sample.parquet`, `qpx/opendia.provenance.parquet` | Run/channel bindings, unannotated injection sample identifiers, calibration and processing/threshold metadata |
 | `qpx/opendia/<run>.candidates.parquet` | All candidate scorer features and full-precision diagnostic values, linked by `feature_id` |
+| `qpx/opendia/inference.parquet` | Full-precision peptide/protein best scores, p-values, q-values and PEPs in all three contexts |
 | `precursors.tsv` | Every retained precursor winner across all runs, including decoys and rows failing reporting cuts |
 | `precursor_matrix.tsv` | Target precursor raw MS2 areas passing both run and global peak-group cuts |
-| `peptides.tsv`, `peptide_matrix.tsv` | Unmodified-sequence evidence and target peptide quantities |
+| `peptides.tsv`, `peptide_matrix.tsv` | Modified-sequence evidence and target peptide quantities, with charge states collapsed |
 | `protein_groups.tsv`, `protein_group_matrix.tsv` | Protein-group evidence and target protein-group quantities |
 | `<run>.calibration.json` | Full calibration sidecar |
 | `parameters.ini` | Effective CLI parameters, including libraries, seed, threads and reporting cuts |
@@ -83,25 +84,31 @@ areas are unchanged by the export layer.
 `-output_format tsv|parquet|both` chooses the high-level table/matrix formats. The default is TSV. QPX and XIPM
 remain Parquet regardless of this option. The precursor table includes original precursor ID, modified and
 unmodified sequence, charge, proteins, available genes, RT apex/start/end in seconds, raw MS2 area, discriminant
-score, decoy status, run/global precursor and peptide/protein-group q-values, and reporting pass flags. Missing
+score, decoy status, run/global precursor q-values, all-context peptide/protein q-values, p-values and PEPs, and reporting pass flags. Missing
 annotations and unestimable level q-values are `NA` in TSV or null in Parquet, not invented values.
 
 ### Configurable reporting filters
 
-`-q 0.01`, `-peptide_q 0.01` and `-protein_q 0.01` are the defaults. Both run-level and global q-values must pass
-the corresponding cut. These options filter reports and quantities, not the underlying candidate evidence.
+`-q 0.01`, `-peptide_q 0.01` and `-protein_q 0.01` are the defaults. Precursor quantities require both run-level
+and global precursor cuts. Peptide/protein quantities require their selected-context and global cuts in addition.
+`-inference_context run-specific|experiment-wide` selects the reporting context (default `run-specific`). All three
+contexts remain exported, and explicit run-specific columns never change meaning with this option. These options
+filter reports and quantities, not the underlying candidate evidence.
 
-- Precursor quantities require the peak-group cuts.
-- Peptide quantities additionally require peptide cuts. A peptide is an **unmodified sequence**, summed across its
-  accepted charge states and modifications.
-- Protein-group quantities require the peak-group and protein-group cuts, independently of the peptide reporting cut.
-  Indistinguishable groups are defined by identical
-  target-peptide evidence in the input library. Peptides shared across distinct groups do not contribute to protein
-  scoring or area, avoiding double counting.
-- Peptide and protein-group q-values are separate picked target-decoy reporting estimates, computed from the best
-  eligible entity score before report filtering. They are not copied from precursor q-values. Missing observed
-  target/decoy counterparts have no level estimate. These new level estimators are experimental, not an empirical
-  guarantee of the stated true FDR on every dataset.
+- Peptide quantities additionally require peptide cuts. A peptide is a **canonical modified sequence**, summed across
+  accepted charge states. Different modifications remain separate analytes, consistent with PQP peptide identities.
+- Protein quantities require the peak-group and protein cuts, independently of the peptide reporting cut. Only
+  modified peptides mapping to exactly one supplied protein accession contribute protein scores and areas. The
+  `protein_groups` files contain singleton supplied accessions, not inferred indistinguishable groups.
+- Peptide and protein inference reuse the native **LevelContextInference** statistics also used by OpenSwathInfer,
+  adapted from PyProphet and Rosenberger et al. (2017), DOI `10.1038/nmeth.4398`. Best entity scores are selected
+  before report filtering. Target and decoy classes remain separate, actual decoy sequences/accessions are retained,
+  and no matched target/decoy counterpart is required.
+- Run-specific statistics use separate distributions per run. Experiment-wide statistics pool entity/run best scores.
+  Global statistics use the best score per entity over all runs. Native defaults use empirical p-values, bootstrap
+  pi0 estimation and probit local-FDR estimation. Unestimable contexts are null with explicit warnings, without a
+  substitute estimator. Successful contexts/runs remain available. Reusing the established method is not an empirical
+  guarantee of true FDR calibration on every OpenDIA dataset.
 - Quantities are **raw integrated MS2 areas summed without normalization, imputation or MaxLFQ**. Missing matrix
   cells are `NA`/null. A genuinely measured zero stays zero. Matrices contain targets only.
 
