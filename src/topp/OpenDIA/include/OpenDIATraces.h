@@ -153,10 +153,8 @@ namespace OpenMS::OpenDIA
     const float* windowTensor(std::size_t i, std::array<float, SAMPLE_SIZE>& buffer) const;
     /// Whether sample i contains compatible, library-centred mobility measurements.
     bool hasIM(std::size_t i) const { return samples_.at(i).has_im; }
-    /// Candidate identity and explicit seed label, never network inputs. Unavailable after releaseWindowIds().
+    /// Candidate identity and explicit seed label, never network inputs.
     const TraceWindow& window(std::size_t i) const { return windows_.at(i); }
-    /// Free the candidate identities (window() then throws); enableByIonCounts() must already have been called if used.
-    void releaseWindowIds() { std::vector<TraceWindow>().swap(windows_); }
     /// Library decoy status, used only for validating seed labels.
     bool isDecoy(std::size_t i) const { return samples_.at(i).is_decoy; }
     /// Unnormalized library fragment intensities in tensor channel order.
@@ -179,8 +177,6 @@ namespace OpenMS::OpenDIA
       @param[in] core_half_width_s Half width around the apex used for the mass errors and the isotope.
     */
     void enableEvidence(double ms1_ppm, double core_half_width_s);
-    /// Whether enableEvidence() was called.
-    bool evidenceEnabled() const { return evidence_on_; }
     /**
       @brief Also count matched b and y ions (fragment charge 1) in the isolating MS2 spectrum nearest each window apex.
 
@@ -196,7 +192,7 @@ namespace OpenMS::OpenDIA
     */
     void enableByIonCounts(const OpenDIA::Library& library, double ppm, double intensity_min);
     /**
-      @brief Evidence of sample i; requires evidenceEnabled().
+      @brief Evidence of sample i; requires enableEvidence().
 
       In streaming mode evidence is held only while the window is open (as its tensor), so this is valid inside the
       close callback; afterwards use byIonCounts().
@@ -221,7 +217,7 @@ namespace OpenMS::OpenDIA
       std::array<double, FRAGMENTS> library_intensity{};
     };
     std::vector<Sample> samples_;
-    std::vector<TraceWindow> windows_;  ///< Candidate identities by sample, until releaseWindowIds().
+    std::vector<TraceWindow> windows_;  ///< Candidate identities by sample (Library constructor only).
     std::vector<std::size_t> by_rt_;
     /// Samples by precursor m/z bucket (MZ_BUCKET_TH wide, from mz_bucket_origin_), each bucket in by_rt_ order.
     static constexpr double MZ_BUCKET_TH = 1.0;
