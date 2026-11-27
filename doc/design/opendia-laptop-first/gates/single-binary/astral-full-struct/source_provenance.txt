@@ -1,0 +1,23 @@
+Source repository: singjc/OpenMS
+Source branch: feature/opendia-clean-rewrite
+Source commit: a251c23b40cc511781710909759e79b0bd156151
+Source working tree clean at container construction: yes
+Source pushed before container construction: yes
+Frozen plan commit: e9ae73e920
+Container construction: 2026-11-27 16:58 to 16:59 UTC, before the plan push (17:01 UTC). The plan does not order these, no remote action for this experiment had started, and the container holds the committed binary unchanged.
+Container filename: opendia-struct-20261127.sif
+Container SHA256: 7b2ceba837e75f67d3d7cfd53ee864e7f0c5c974fe340b02de12815d21be3033
+Codon path: /nfs/research/juan/singj/opendia/part-20261127/opendia-struct-20261127.sif (uploaded 17:03 UTC, hash verified)
+Local, Docker image and SIF OpenDIA SHA256: 6e8f7d02ef9fbc8a18f2809950f73307b9cd823c598a934ef68f10d98371361f
+Docker image: opendia-struct-20261127:tools (FROM opendia-evshare-20261126:tools, replacing OpenDIA, libOpenMS.so, libOpenMS_CLI.so, libOpenSwathAlgo.so and five test binaries)
+Build flags: -O3 -std=gnu++23 -ffp-contract=off
+Local executable: /home/singjc/Documents/github/OpenMS-r1-full-ninja-build/bin/OpenDIA (the binary of the codon HeLa cal_check, jobs 44865425/6)
+Actual Docker and SIF OpenDIA --help exit: 0
+Container-native OpenDIAWorkflow_test: passed
+Container-native OpenDIALibraryParquet_test: passed
+Container-native OpenDIAScorer_test: passed
+Container-native OpenDIASpectrumCache_test: passed
+Container-native OpenDIACalibration_test: passed
+Local OpenDIA CTest: 20/20 passed
+Local raw01 seed0 output identity: 3/3 (runtime-round-20261127/evidence/cal2)
+Container construction and smoke evidence: container-evidence/
