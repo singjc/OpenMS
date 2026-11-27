@@ -6,7 +6,7 @@
 // $Authors: Justin Sing $
 // --------------------------------------------------------------------------
 
-#include "OpenDIAStage2.h"
+#include "OpenDIAPeakFeatures.h"
 #include "OpenDIAPeakPicker.h"
 
 #include <algorithm>
@@ -85,11 +85,11 @@ namespace OpenMS::OpenDIA
     }
   }
 
-  std::array<double, STAGE2_FEATURES> stage2Features(const float* tensor, const std::array<double, 6>& library_intensities,
+  std::array<double, CORE_FEATURES> coreFeatures(const float* tensor, const std::array<double, 6>& library_intensities,
                                                      const std::array<double, 6>& fragment_mz, const TraceEvidence& evidence,
-                                                     const Stage2ExtractionOptions& options)
+                                                     const PeakFeatureOptions& options)
   {
-    std::array<double, STAGE2_FEATURES> f{};
+    std::array<double, CORE_FEATURES> f{};
     const double width = 2.0 * options.rt_half_width / RT_BINS;
     // Core bins that received an MS2 scan isolating the precursor (zeros elsewhere mean no scan, not no signal).
     std::vector<std::size_t> ms2_bins, ms1_bins;
@@ -184,36 +184,36 @@ namespace OpenMS::OpenDIA
     return f;
   }
 
-  const std::array<std::string, STAGE2_SEARCH_FEATURES>& stage2SearchFeatureNames()
+  const std::array<std::string, SEARCH_FEATURES>& searchFeatureNames()
   {
-    static const std::array<std::string, STAGE2_SEARCH_FEATURES> names = {
+    static const std::array<std::string, SEARCH_FEATURES> names = {
       "transition_support", "log_matched_scans", "log_peak_width", "abs_library_rt_error"};
     return names;
   }
 
-  const std::array<std::string, STAGE2_BYION_FEATURES>& stage2ByIonFeatureNames()
+  const std::array<std::string, BYION_FEATURES>& byIonFeatureNames()
   {
-    static const std::array<std::string, STAGE2_BYION_FEATURES> names = {"byion_b", "byion_y"};
+    static const std::array<std::string, BYION_FEATURES> names = {"byion_b", "byion_y"};
     return names;
   }
 
-  std::array<double, STAGE2_BYION_FEATURES> stage2ByIonFeatures(const TraceEvidence& evidence)
+  std::array<double, BYION_FEATURES> byIonFeatures(const TraceEvidence& evidence)
   {
     return {static_cast<double>(evidence.byion_b), static_cast<double>(evidence.byion_y)};
   }
 
-  const std::array<std::string, STAGE2_BOUNDARY_FEATURES>& stage2BoundaryFeatureNames()
+  const std::array<std::string, BOUNDARY_FEATURES>& boundaryFeatureNames()
   {
-    static const std::array<std::string, STAGE2_BOUNDARY_FEATURES> names = {
+    static const std::array<std::string, BOUNDARY_FEATURES> names = {
       "boundary_log_fwhm", "boundary_log_width", "boundary_coelution", "boundary_library_correlation", "boundary_apex_agreement"};
     return names;
   }
 
-  std::array<double, STAGE2_BOUNDARY_FEATURES> stage2BoundaryFeatures(const float* tensor, const std::array<double, 6>& library_intensities,
+  std::array<double, BOUNDARY_FEATURES> boundaryFeatures(const float* tensor, const std::array<double, 6>& library_intensities,
                                                                       const std::array<double, 6>& fragment_mz, const TraceEvidence& evidence,
-                                                                      const Stage2ExtractionOptions& options)
+                                                                      const PeakFeatureOptions& options)
   {
-    std::array<double, STAGE2_BOUNDARY_FEATURES> f{};
+    std::array<double, BOUNDARY_FEATURES> f{};
     const PickedWindow picked = pickWindow(tensor, fragment_mz, evidence);
     if (!picked.peak.found) return f;
     const std::size_t n = picked.n;
@@ -256,20 +256,20 @@ namespace OpenMS::OpenDIA
     return f;
   }
 
-  const std::array<std::string, STAGE2_EXTRA_FEATURES>& stage2ExtraFeatureNames()
+  const std::array<std::string, EVIDENCE_FEATURES>& evidenceFeatureNames()
   {
-    static const std::array<std::string, STAGE2_EXTRA_FEATURES> names = {
+    static const std::array<std::string, EVIDENCE_FEATURES> names = {
       "x_fragment_fraction", "x_fragment_coelution", "x_library_correlation", "x_ms2_abs_ppm", "x_ms1_abs_ppm", "x_ms1_coelution",
       "x_ms1_isotope", "x_ms1_log_area", "x_ms2_log_area", "x_im_centroid_offset", "x_im_coelution", "x_im_central_share"};
     return names;
   }
 
-  std::array<double, STAGE2_EXTRA_FEATURES> stage2ExtraFeatures(const float* tensor, const std::array<double, 6>& library_intensities,
+  std::array<double, EVIDENCE_FEATURES> evidenceFeatures(const float* tensor, const std::array<double, 6>& library_intensities,
                                                                 const std::array<double, 6>& fragment_mz, const TraceEvidence& evidence,
-                                                                const Stage2ExtractionOptions& options)
+                                                                const PeakFeatureOptions& options)
   {
-    std::array<double, STAGE2_EXTRA_FEATURES> f{};
-    const auto base = stage2Features(tensor, library_intensities, fragment_mz, evidence, options);
+    std::array<double, EVIDENCE_FEATURES> f{};
+    const auto base = coreFeatures(tensor, library_intensities, fragment_mz, evidence, options);
     for (std::size_t k = 0; k < 7; ++k) f[k] = base[k + 1];
     const double width = 2.0 * options.rt_half_width / RT_BINS;
     double ms1 = 0.0, ms2 = 0.0;
@@ -365,7 +365,7 @@ namespace OpenMS::OpenDIA
     double mfSlog(double x) { return (x < 0.0 ? -1.0 : 1.0) * std::log1p(std::abs(x)); }
   }
 
-  double stage2RobustZ(const std::vector<double>& x, std::size_t centre, std::size_t a, std::size_t b)
+  double robustZ(const std::vector<double>& x, std::size_t centre, std::size_t a, std::size_t b)
   {
     const std::size_t n = x.size();
     std::vector<double> s(n, 0.0);
@@ -385,21 +385,21 @@ namespace OpenMS::OpenDIA
     return (s[centre] - med) / (1.4826 * mad + std::sqrt(std::max(med, 0.0)) + 1.0);
   }
 
-  const std::array<std::string, STAGE2_MATCHED_FILTER_FEATURES>& stage2MatchedFilterFeatureNames()
+  const std::array<std::string, MATCHED_FILTER_FEATURES>& matchedFilterFeatureNames()
   {
-    static const std::array<std::string, STAGE2_MATCHED_FILTER_FEATURES> names = {
+    static const std::array<std::string, MATCHED_FILTER_FEATURES> names = {
       "mt_z_med", "mt_z_trim", "mt_n_z2", "mt_n_z3", "mt_loo_med", "mt_loo_n", "mt_cos", "mt_dom", "mt_llr"};
     return names;
   }
 
-  std::array<double, STAGE2_MATCHED_FILTER_FEATURES> stage2MatchedFilterFeatures(const float* tensor,
+  std::array<double, MATCHED_FILTER_FEATURES> matchedFilterFeatures(const float* tensor,
                                                                                   const std::array<double, 6>& library_intensities,
                                                                                   const std::array<double, 6>& fragment_mz,
                                                                                   const TraceEvidence& evidence,
-                                                                                  const Stage2ExtractionOptions& options)
+                                                                                  const PeakFeatureOptions& options)
   {
-    using F = Stage2MatchedFilterFeature;
-    std::array<double, STAGE2_MATCHED_FILTER_FEATURES> f{};
+    using F = MatchedFilterFeature;
+    std::array<double, MATCHED_FILTER_FEATURES> f{};
     std::vector<std::size_t> channels;
     for (std::size_t c = 0; c < FRAGMENTS; ++c)
       if (fragment_mz[c] != 0.0) channels.push_back(c);
@@ -475,7 +475,7 @@ namespace OpenMS::OpenDIA
     }
 
     std::vector<double> z(nf);
-    for (std::size_t k = 0; k < nf; ++k) z[k] = stage2RobustZ(X[k], ca, a, bnd);
+    for (std::size_t k = 0; k < nf; ++k) z[k] = robustZ(X[k], ca, a, bnd);
     f[static_cast<std::size_t>(F::Z_MED)] = mfSlog(mfMedian(z));
     {
       std::vector<double> sorted = z;
@@ -529,7 +529,7 @@ namespace OpenMS::OpenDIA
     return f;
   }
 
-  std::array<double, STAGE2_SEARCH_FEATURES> stage2SearchFeatures(const SearchPeakFeatures& peak)
+  std::array<double, SEARCH_FEATURES> searchFeatures(const SearchPeakFeatures& peak)
   {
     return {peak.transition_support, std::log1p(peak.matched_scans), std::log1p(peak.peak_width_seconds), peak.abs_rt_error_seconds};
   }
@@ -537,12 +537,12 @@ namespace OpenMS::OpenDIA
 
 namespace OpenMS::OpenDIA
 {
-  std::vector<float> stage2SiblingFeatures(const std::vector<std::uint32_t>& group, const std::vector<std::uint32_t>& precursor,
+  std::vector<float> siblingFeatures(const std::vector<std::uint32_t>& group, const std::vector<std::uint32_t>& precursor,
                                            const std::vector<double>& rt, const std::vector<float>& score,
                                            const std::vector<std::uint32_t>& group_precursors, float not_kept, double rt_tolerance)
   {
     const std::size_t n = group.size();
-    constexpr std::size_t F = STAGE2_SIBLING_FEATURES;
+    constexpr std::size_t F = SIBLING_FEATURES;
     float smin = std::numeric_limits<float>::max();
     bool any = false;
     for (float s : score)

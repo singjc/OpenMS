@@ -91,7 +91,7 @@ result:
 - `i_nclaim`: log(1 + claimants).
 
 **Validation** (`gap-20261114`, PLAN_GAP arm I; Astral entrapment raws 01/02, 12-fragment DIALibGen library):
-- **Python prototype:** added to the stage-2 scorer, it raised N at entrapment FDP 1 % from 1694 / 1628 to 1879 / 1921 (frozen seed).
+- **Python prototype:** added to the prototype's scorer, it raised N at entrapment FDP 1 % from 1694 / 1628 to 1879 / 1921 (frozen seed).
 - **C++ implementation:**
   - +143..+185 (raw01) and +260..+367 (raw02) at 1 % over five training seeds, against +118..+185 and +199..+351 for the Python features.
   - At 2 % the raw01 gain depends on the seed: +14..+131.

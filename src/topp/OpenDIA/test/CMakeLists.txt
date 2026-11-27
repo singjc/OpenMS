@@ -26,9 +26,9 @@ add_executable(OpenDIACalibration_test OpenDIACalibration_test.cpp)
 target_link_libraries(OpenDIACalibration_test PRIVATE OpenDIA_impl)
 add_test(NAME OpenDIACalibration_test COMMAND OpenDIACalibration_test)
 
-add_executable(OpenDIAStage2_test OpenDIAStage2_test.cpp)
-target_link_libraries(OpenDIAStage2_test PRIVATE OpenDIA_impl)
-add_test(NAME OpenDIAStage2_test COMMAND OpenDIAStage2_test)
+add_executable(OpenDIAPeakFeatures_test OpenDIAPeakFeatures_test.cpp)
+target_link_libraries(OpenDIAPeakFeatures_test PRIVATE OpenDIA_impl)
+add_test(NAME OpenDIAPeakFeatures_test COMMAND OpenDIAPeakFeatures_test)
 
 add_executable(OpenDIAPeakPicker_test OpenDIAPeakPicker_test.cpp)
 target_link_libraries(OpenDIAPeakPicker_test PRIVATE OpenDIA_impl)

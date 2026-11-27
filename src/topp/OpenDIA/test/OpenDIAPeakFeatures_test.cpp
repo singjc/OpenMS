@@ -6,7 +6,7 @@
 // $Authors: Justin Sing $
 // --------------------------------------------------------------------------
 
-#include "OpenDIAStage2.h"
+#include "OpenDIAPeakFeatures.h"
 
 #include <OpenMS/KERNEL/MSSpectrum.h>
 #include <OpenMS/METADATA/Precursor.h>
@@ -63,7 +63,7 @@ namespace
 
 int main()
 {
-  OpenDIA::Stage2ExtractionOptions options;  // 15 s half width, 4 s core: bins 11..20 are core
+  OpenDIA::PeakFeatureOptions options;  // 15 s half width, 4 s core: bins 11..20 are core
   const std::array<double, 6> library{100, 80, 60, 40, 20, 10};
   const std::array<double, 6> mz{300, 400, 500, 600, 700, 800};
 
@@ -80,7 +80,7 @@ int main()
     e.ms1_isotope = 3.0f;
     options.ms1_offset_ppm = 1.0;
     options.ms2_offset_ppm = -0.5;
-    const auto f = OpenDIA::stage2Features(t.data(), library, mz, e, options);
+    const auto f = OpenDIA::coreFeatures(t.data(), library, mz, e, options);
     require(f[0] == 0.0, "feature 0 is left for the caller");
     require(f[1] == 1.0, "all fragments carry signal");
     require(f[2] > 0.99, "co-eluting fragments correlate");
@@ -96,7 +96,7 @@ int main()
     for (std::size_t c = 0; c < 6; ++c) p.push_back(gaussian(library[5 - c], 13.0 + 1.0 * c, 0.6));
     const auto t = tensor(p);
     auto e = fullEvidence();
-    const auto f = OpenDIA::stage2Features(t.data(), library, mz, e, options);
+    const auto f = OpenDIA::coreFeatures(t.data(), library, mz, e, options);
     require(f[2] < 0.3, "non-co-eluting fragments do not correlate");
     require(f[3] < -0.9, "reversed library ratios anti-correlate");
     require(f[4] == options.ppm_cap && f[5] == options.ppm_cap, "missing signal gets the ppm cap");
@@ -108,7 +108,7 @@ int main()
     const auto t = tensor(p);
     OpenDIA::TraceEvidence e;
     e.ms2_mask = (1u << 14) | (1u << 15);  // only two core bins scanned
-    const auto f = OpenDIA::stage2Features(t.data(), library, {300, 400, 0, 0, 0, 0}, e, options);
+    const auto f = OpenDIA::coreFeatures(t.data(), library, {300, 400, 0, 0, 0, 0}, e, options);
     require(f[2] == 0.0, "fewer than three scanned bins give no co-elution");
     require(f[1] == 1.0, "two valid fragments, both with signal");
   }
@@ -120,7 +120,7 @@ int main()
     peak.matched_scans = 9;
     peak.peak_width_seconds = 20;
     peak.abs_rt_error_seconds = 12.5;
-    const auto f = OpenDIA::stage2SearchFeatures(peak);
+    const auto f = OpenDIA::searchFeatures(peak);
     require(f[0] == 4.0 && std::abs(f[1] - std::log1p(9.0)) < 1e-12 && std::abs(f[2] - std::log1p(20.0)) < 1e-12 && f[3] == 12.5,
             "support, log scans, log width, |RT error|");
   }
@@ -192,21 +192,21 @@ int main()
     }
     const auto t = tensor(p);
     auto e = fullEvidence();
-    const auto f = OpenDIA::stage2BoundaryFeatures(t.data(), library, mz, e, options);
+    const auto f = OpenDIA::boundaryFeatures(t.data(), library, mz, e, options);
     // FWHM of sigma 1.5 bins after one smoothing pass: 2.355 * sqrt(2.25 + 0.5) bins * 0.9375 s = 3.66 s.
     require(std::abs(std::expm1(f[0]) - 3.66) < 0.3, "boundary FWHM off");
     require(std::expm1(f[1]) < 12.0, "boundary width should stop before the neighbour");
     require(f[2] > 0.95 && f[3] > 0.95 && f[4] == 1.0, "co-eluting library-ratio peak should score high");
     // Every other bin without a scan: the picker sees only the scan bins, so the peak is still found and narrow.
     e.ms2_mask = 0x55555555u;
-    const auto g = OpenDIA::stage2BoundaryFeatures(t.data(), library, mz, e, options);
+    const auto g = OpenDIA::boundaryFeatures(t.data(), library, mz, e, options);
     require(std::expm1(g[1]) < 12.0 && g[3] > 0.9, "sparse scan bins break the boundary features");
     // Fewer than 3 scan bins or no signal: all zero.
     e.ms2_mask = 0x3u;
-    const auto z = OpenDIA::stage2BoundaryFeatures(t.data(), library, mz, e, options);
+    const auto z = OpenDIA::boundaryFeatures(t.data(), library, mz, e, options);
     require(z[0] == 0.0 && z[2] == 0.0 && z[4] == 0.0, "too few scan bins must give zero features");
     const std::vector<float> empty(TraceCollector::SAMPLE_SIZE, 0.0f);
-    require(OpenDIA::stage2BoundaryFeatures(empty.data(), library, mz, fullEvidence(), options)[4] == 0.0, "empty window gives zero features");
+    require(OpenDIA::boundaryFeatures(empty.data(), library, mz, fullEvidence(), options)[4] == 0.0, "empty window gives zero features");
   }
 
   // 10. b/y ion features: counts copied from the evidence.
@@ -214,7 +214,7 @@ int main()
     auto e = fullEvidence();
     e.byion_b = 7;
     e.byion_y = 9;
-    const auto f = OpenDIA::stage2ByIonFeatures(e);
+    const auto f = OpenDIA::byIonFeatures(e);
     require(f[0] == 7.0 && f[1] == 9.0, "byion features copy the counts");
   }
 
@@ -224,30 +224,30 @@ int main()
     for (std::size_t c = 0; c < 6; ++c) p.push_back(gaussian(library[c], 16.0, 1.5));
     auto t = tensor(p);
     auto e = fullEvidence();
-    const auto base = OpenDIA::stage2Features(t.data(), library, mz, e, options);
-    const auto x = OpenDIA::stage2ExtraFeatures(t.data(), library, mz, e, options);
-    require(OpenDIA::stage2ExtraFeatureNames().size() == OpenDIA::STAGE2_EXTRA_FEATURES, "extra names");
-    for (std::size_t k = 0; k < 7; ++k) require(x[k] == base[k + 1], "extra block copies extraction features 1..7");
+    const auto base = OpenDIA::coreFeatures(t.data(), library, mz, e, options);
+    const auto x = OpenDIA::evidenceFeatures(t.data(), library, mz, e, options);
+    require(OpenDIA::evidenceFeatureNames().size() == OpenDIA::EVIDENCE_FEATURES, "evidence names");
+    for (std::size_t k = 0; k < 7; ++k) require(x[k] == base[k + 1], "evidence block copies core features 1..7");
     require(x[8] > 0.0, "core MS2 area");
     // All signal in the central mobility bin (IM / 2): centroid offset 0.5 bin, central share 1, profiles identical.
     require(std::abs(x[9] - 0.5) < 1e-9 && std::abs(x[11] - 1.0) < 1e-9, "central mobility signal");
     // Move every fragment to mobility bin 0: offset 3.5 bins, central share 0.
     for (std::size_t c = 0; c < 6; ++c)
       for (std::size_t b = 0; b < RT; ++b) std::swap(t[(c * RT + b) * IM + IM / 2], t[(c * RT + b) * IM]);
-    const auto y = OpenDIA::stage2ExtraFeatures(t.data(), library, mz, e, options);
+    const auto y = OpenDIA::evidenceFeatures(t.data(), library, mz, e, options);
     require(std::abs(y[9] - 3.5) < 1e-9 && y[11] == 0.0, "off-centre mobility signal");
     const std::vector<float> empty(TraceCollector::SAMPLE_SIZE, 0.0f);
-    const auto z = OpenDIA::stage2ExtraFeatures(empty.data(), library, mz, e, options);
+    const auto z = OpenDIA::evidenceFeatures(empty.data(), library, mz, e, options);
     require(z[8] == 0.0 && z[9] == IM / 2.0 && z[10] == 0.0 && z[11] == 0.0, "empty window");
   }
 
   // 15. Matched-filter features: names, no signal, coherent peak, single interferer, robust z by hand.
   {
-    const auto& names = OpenDIA::stage2MatchedFilterFeatureNames();
+    const auto& names = OpenDIA::matchedFilterFeatureNames();
     require(names.size() == 9 && names[0] == "mt_z_med" && names[3] == "mt_n_z3" && names[8] == "mt_llr", "matched-filter names are stable");
     const auto e = fullEvidence();
     const std::vector<float> empty(TraceCollector::SAMPLE_SIZE, 0.0f);
-    for (double v : OpenDIA::stage2MatchedFilterFeatures(empty.data(), library, mz, e, options))
+    for (double v : OpenDIA::matchedFilterFeatures(empty.data(), library, mz, e, options))
       require(v == 0.0, "no signal gives zero matched-filter features");
 
     // Coherent library-shaped peak at the centre bin on a flat background.
@@ -259,7 +259,7 @@ int main()
       p.push_back(g);
     }
     const auto t = tensor(p);
-    const auto f = OpenDIA::stage2MatchedFilterFeatures(t.data(), library, mz, e, options);
+    const auto f = OpenDIA::matchedFilterFeatures(t.data(), library, mz, e, options);
     require(f[3] == 6.0, "coherent peak: all six fragments z >= 3");
     require(f[4] > 0.9 && f[6] > 0.9, "coherent peak: high leave-one-out correlation and cosine");
 
@@ -268,12 +268,12 @@ int main()
     q[5] = gaussian(500.0, 16.0, 1.5);
     for (double& v : q[5]) v += 1.0;
     const auto ti = tensor(q);
-    const auto g = OpenDIA::stage2MatchedFilterFeatures(ti.data(), library, mz, e, options);
+    const auto g = OpenDIA::matchedFilterFeatures(ti.data(), library, mz, e, options);
     require(g[7] > 0.0 && g[3] < f[3], "single interferer: dominance positive and fewer z >= 3");
 
     // By hand: box sums bg {1,3,3,3,4,4,3}, median 3, MAD 0, apex 20, so z = 17 / (sqrt(3) + 1).
     const std::vector<double> x{1, 0, 2, 1, 0, 6, 9, 5, 0, 1, 3, 0};
-    require(std::abs(OpenDIA::stage2RobustZ(x, 6, 5, 8) - 17.0 / (std::sqrt(3.0) + 1.0)) < 1e-9, "robust z by hand");
+    require(std::abs(OpenDIA::robustZ(x, 6, 5, 8) - 17.0 / (std::sqrt(3.0) + 1.0)) < 1e-9, "robust z by hand");
   }
 
   {
@@ -283,13 +283,13 @@ int main()
     const std::vector<std::uint32_t> group{0, 0, 0, 1, 2, 2}, prec{0, 1, 1, 2, 3, 4}, counts{3, 1, 2};
     const std::vector<double> rt{100.0, 101.5, 200.0, 100.0, 50.0, 52.0};
     const std::vector<float> score{5.0f, NK, 7.0f, 3.0f, 2.0f, 4.0f};
-    const auto s = OpenDIA::stage2SiblingFeatures(group, prec, rt, score, counts, NK);
+    const auto s = OpenDIA::siblingFeatures(group, prec, rt, score, counts, NK);
     const std::vector<std::vector<float>> expect{{2, 1, 2, 1.5f}, {2, 1, 5, 1.5f}, {2, 0, 2, 3}, {0, 0, 2, 3}, {1, 1, 4, 2}, {1, 1, 2, 2}};
-    require(s.size() == 6 * OpenDIA::STAGE2_SIBLING_FEATURES, "sibling feature size");
+    require(s.size() == 6 * OpenDIA::SIBLING_FEATURES, "sibling feature size");
     for (std::size_t i = 0; i < 6; ++i)
       for (std::size_t k = 0; k < 4; ++k) require(std::abs(s[i * 4 + k] - expect[i][k]) < 1e-6f, "sibling feature value");
   }
 
-  std::cout << "OpenDIAStage2_test passed\n";
+  std::cout << "OpenDIAPeakFeatures_test passed\n";
   return 0;
 }

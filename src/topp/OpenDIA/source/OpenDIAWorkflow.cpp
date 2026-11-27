@@ -12,7 +12,7 @@
 #include <OpenDIAGBM.h>
 #include <OpenDIAInterference.h>
 #include <OpenDIARTRefine.h>
-#include <OpenDIAStage2.h>
+#include <OpenDIAPeakFeatures.h>
 #include <OpenDIATraces.h>
 
 #include <OpenMS/CHEMISTRY/AASequence.h>
@@ -253,14 +253,14 @@ namespace OpenMS::OpenDIA
   std::vector<std::string> runFeatureNames()
   {
     std::vector<std::string> n;
-    for (const auto& s : stage2SearchFeatureNames()) n.push_back(s);
-    for (const auto& s : stage2BoundaryFeatureNames()) n.push_back(s);
-    for (const auto& s : stage2ByIonFeatureNames()) n.push_back(s);
+    for (const auto& s : searchFeatureNames()) n.push_back(s);
+    for (const auto& s : boundaryFeatureNames()) n.push_back(s);
+    for (const auto& s : byIonFeatureNames()) n.push_back(s);
     for (const char* s : FragmentGrid::evidenceNames()) n.emplace_back(s);
     for (const char* s : FragmentGrid::deficitNames()) n.emplace_back(s);
     for (const char* s : InterferenceResolver::featureNames()) n.emplace_back(s);
-    for (const auto& s : stage2ExtraFeatureNames()) n.push_back(s);
-    for (const auto& s : stage2MatchedFilterFeatureNames()) n.push_back(s);
+    for (const auto& s : evidenceFeatureNames()) n.push_back(s);
+    for (const auto& s : matchedFilterFeatureNames()) n.push_back(s);
     return n;
   }
 
@@ -814,13 +814,13 @@ namespace OpenMS::OpenDIA
     // features are computed when the window closes and the tensor is released, so tensor memory follows the windows
     // co-eluting at one time.
     // Every feature is computed from the same tensor values as before (byte-identical).
-    Stage2ExtractionOptions extraction;
-    extraction.rt_half_width = options_.grid_half_width_s;
-    extraction.core_half_width = options_.core_half_width_s;
-    extraction.im_half_width = TRACE_IM_HALF_WIDTH;
-    std::vector<float> boundary(n * STAGE2_BOUNDARY_FEATURES, 0.0f);
-    std::vector<float> extra_block(n * STAGE2_EXTRA_FEATURES, 0.0f);
-    std::vector<float> mf_block(n * STAGE2_MATCHED_FILTER_FEATURES, 0.0f);
+    PeakFeatureOptions feature_options;
+    feature_options.rt_half_width = options_.grid_half_width_s;
+    feature_options.core_half_width = options_.core_half_width_s;
+    feature_options.im_half_width = TRACE_IM_HALF_WIDTH;
+    std::vector<float> boundary(n * BOUNDARY_FEATURES, 0.0f);
+    std::vector<float> evidence_block(n * EVIDENCE_FEATURES, 0.0f);
+    std::vector<float> mf_block(n * MATCHED_FILTER_FEATURES, 0.0f);
     const int threads = options_.threads;
     TraceCollector::CloseCallback on_close = [&, threads](const std::vector<std::uint32_t>& closed, const TraceCollector& tc)
     {
@@ -832,12 +832,12 @@ namespace OpenMS::OpenDIA
         {
           const std::size_t i = closed[static_cast<std::size_t>(c)];
           const float* tensor = tc.windowTensor(i, view);
-          const auto b = stage2BoundaryFeatures(tensor, tc.libraryIntensities(i), tc.fragmentMZ(i), tc.evidence(i), extraction);
-          for (std::size_t k = 0; k < STAGE2_BOUNDARY_FEATURES; ++k) boundary[i * STAGE2_BOUNDARY_FEATURES + k] = static_cast<float>(b[k]);
-          const auto x = stage2ExtraFeatures(tensor, tc.libraryIntensities(i), tc.fragmentMZ(i), tc.evidence(i), extraction);
-          for (std::size_t k = 0; k < STAGE2_EXTRA_FEATURES; ++k) extra_block[i * STAGE2_EXTRA_FEATURES + k] = static_cast<float>(x[k]);
-          const auto m = stage2MatchedFilterFeatures(tensor, tc.libraryIntensities(i), tc.fragmentMZ(i), tc.evidence(i), extraction);
-          for (std::size_t k = 0; k < STAGE2_MATCHED_FILTER_FEATURES; ++k) mf_block[i * STAGE2_MATCHED_FILTER_FEATURES + k] = static_cast<float>(m[k]);
+          const auto b = boundaryFeatures(tensor, tc.libraryIntensities(i), tc.fragmentMZ(i), tc.evidence(i), feature_options);
+          for (std::size_t k = 0; k < BOUNDARY_FEATURES; ++k) boundary[i * BOUNDARY_FEATURES + k] = static_cast<float>(b[k]);
+          const auto x = evidenceFeatures(tensor, tc.libraryIntensities(i), tc.fragmentMZ(i), tc.evidence(i), feature_options);
+          for (std::size_t k = 0; k < EVIDENCE_FEATURES; ++k) evidence_block[i * EVIDENCE_FEATURES + k] = static_cast<float>(x[k]);
+          const auto m = matchedFilterFeatures(tensor, tc.libraryIntensities(i), tc.fragmentMZ(i), tc.evidence(i), feature_options);
+          for (std::size_t k = 0; k < MATCHED_FILTER_FEATURES; ++k) mf_block[i * MATCHED_FILTER_FEATURES + k] = static_cast<float>(m[k]);
         }
       }
     };
@@ -874,7 +874,7 @@ namespace OpenMS::OpenDIA
     result.feature_names = names;
     // Capacity for the sibling columns added after the first scorer pass, so widening never reallocates (untouched
     // capacity is not resident).
-    result.features.reserve(n * (d + STAGE2_SIBLING_FEATURES));
+    result.features.reserve(n * (d + SIBLING_FEATURES));
     result.features.assign(n * d, 0.0f);
     const double noise = FragmentGrid::noiseLevel(grid_windows, resolver_precursors);
     const auto t_interference = std::chrono::steady_clock::now();
@@ -896,15 +896,15 @@ namespace OpenMS::OpenDIA
         peak.matched_scans = w.peak.matched_scans;
         peak.peak_width_seconds = w.peak.rt_end - w.peak.rt_start;
         peak.abs_rt_error_seconds = lib.precursors[w.precursor].has_library_rt ? std::abs(w.peak.apex_rt_error_seconds) : 0.0;
-        for (double v : stage2SearchFeatures(peak)) f[o++] = static_cast<float>(v);
-        for (std::size_t k = 0; k < STAGE2_BOUNDARY_FEATURES; ++k) f[o++] = boundary[i * STAGE2_BOUNDARY_FEATURES + k];
+        for (double v : searchFeatures(peak)) f[o++] = static_cast<float>(v);
+        for (std::size_t k = 0; k < BOUNDARY_FEATURES; ++k) f[o++] = boundary[i * BOUNDARY_FEATURES + k];
         for (const auto v : traces.byIonCounts(i)) f[o++] = static_cast<float>(static_cast<double>(v));
         for (float v : grids.evidence()[i]) f[o++] = v;
         const auto& gp = grid_precursors[grid_windows[i].precursor];
         for (float v : FragmentGrid::deficit(grid_windows[i].core_area, gp.library, gp.search, noise)) f[o++] = v;
         for (std::size_t k = 0; k < InterferenceResolver::FEATURES; ++k) f[o++] = interference[i * InterferenceResolver::FEATURES + k];
-        for (std::size_t k = 0; k < STAGE2_EXTRA_FEATURES; ++k) f[o++] = extra_block[i * STAGE2_EXTRA_FEATURES + k];
-        for (std::size_t k = 0; k < STAGE2_MATCHED_FILTER_FEATURES; ++k) f[o++] = mf_block[i * STAGE2_MATCHED_FILTER_FEATURES + k];
+        for (std::size_t k = 0; k < EVIDENCE_FEATURES; ++k) f[o++] = evidence_block[i * EVIDENCE_FEATURES + k];
+        for (std::size_t k = 0; k < MATCHED_FILTER_FEATURES; ++k) f[o++] = mf_block[i * MATCHED_FILTER_FEATURES + k];
       }
     }
     say("Features: " + std::to_string(d) + " per window, noise=" + std::to_string(noise) + " seconds=" + std::to_string(seconds(t_features)) +
@@ -917,7 +917,7 @@ namespace OpenMS::OpenDIA
     std::vector<FragmentGridCollector::Precursor>().swap(grid_precursors);
     std::vector<InterferenceResolver::Precursor>().swap(resolver_precursors);
     std::vector<float>().swap(boundary);
-    std::vector<float>().swap(extra_block);
+    std::vector<float>().swap(evidence_block);
     std::vector<float>().swap(mf_block);
 
     // 6. Scorer.
@@ -1014,10 +1014,10 @@ namespace OpenMS::OpenDIA
         group[i] = lib.precursors[prec[i]].sibling_group;
         rt[i] = windows[i].peak.rt_apex;
       }
-      const auto sib = stage2SiblingFeatures(group, prec, rt, scored.score, lib.sibling_group_sizes, CrossFitScorer::NOT_KEPT);
+      const auto sib = siblingFeatures(group, prec, rt, scored.score, lib.sibling_group_sizes, CrossFitScorer::NOT_KEPT);
       std::vector<std::uint32_t>().swap(group);
       std::vector<double>().swap(rt);
-      constexpr std::size_t S = STAGE2_SIBLING_FEATURES;
+      constexpr std::size_t S = SIBLING_FEATURES;
       const std::size_t d2 = d + S;
       // Widen in place, last row first: row i moves from i * d to i * d2 >= i * d, so no unread value is overwritten.
       auto& f = input.features;

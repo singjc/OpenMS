@@ -19,7 +19,7 @@ add_library(OpenDIA_impl STATIC
   source/OpenDIATraces.cpp
   source/OpenDIARTMap.cpp
   source/OpenDIACalibration.cpp
-  source/OpenDIAStage2.cpp
+  source/OpenDIAPeakFeatures.cpp
   source/OpenDIAPeakPicker.cpp
   source/OpenDIAInterference.cpp
   source/OpenDIAScorer.cpp
@@ -35,7 +35,7 @@ add_library(OpenDIA_impl STATIC
   include/OpenDIATraces.h
   include/OpenDIARTMap.h
   include/OpenDIACalibration.h
-  include/OpenDIAStage2.h
+  include/OpenDIAPeakFeatures.h
   include/OpenDIAPeakPicker.h
   include/OpenDIAInterference.h
   include/OpenDIAScorer.h
