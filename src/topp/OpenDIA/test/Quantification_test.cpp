@@ -91,6 +91,8 @@ std::string sequence(std::size_t i)
   }
   return result;
 }
+// Cross-check only: OpenDIA's EntityInference must equal the shared OpenMS LevelContextInference exactly.
+// The OpenDIA library itself does not depend on it.
 void compareNative(const std::vector<QuantifiedEntity>& entities, InferenceLevel level, InferenceContext context, std::size_t run_id = 0)
 {
   std::vector<LevelContextInputRow> rows;
@@ -289,9 +291,9 @@ int main()
   hit(tiny[0], 1, 0);
   const auto singleton = quantify(collisions, tiny, permissive);
   check(singleton.inference_warnings.size() == 6 && std::isnan(peptide(singleton, 0).runs[0].q_value),
-        "one target and one decoy are unestimable for native local-FDR KDE, not a crash or fallback");
-  check(singleton.inference_warnings.front().find("fewer than two target observations") != std::string::npos,
-        "singleton warning explains native KDE prerequisite");
+        "one target and one decoy are unestimable for local-FDR KDE, not a crash or fallback");
+  check(singleton.inference_warnings.front().find("fewer than two target scores") != std::string::npos,
+        "singleton warning explains KDE prerequisite");
 
   AnalysisLibrary ties;
   std::vector<RunResult> tie_runs(1);

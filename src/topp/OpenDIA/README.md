@@ -100,12 +100,13 @@ filter reports and quantities, not the underlying candidate evidence.
 - Protein quantities require the peak-group and protein cuts, independently of the peptide reporting cut. Only
   modified peptides mapping to exactly one supplied protein accession contribute protein scores and areas. The
   `protein_groups` files contain singleton supplied accessions, not inferred indistinguishable groups.
-- Peptide and protein inference reuse the native **LevelContextInference** statistics also used by OpenSwathInfer,
-  adapted from PyProphet and Rosenberger et al. (2017), DOI `10.1038/nmeth.4398`. Best entity scores are selected
+- Peptide and protein inference is OpenDIA's own `EntityInference` (`source/results/EntityInference.cpp`), the
+  method of PyProphet and Rosenberger et al. (2017), DOI `10.1038/nmeth.4398`, with PyProphet's default settings.
+  It uses only OpenMS's general `MultipleTesting` statistics, no OpenSWATH code. Best entity scores are selected
   before report filtering. Target and decoy classes remain separate, actual decoy sequences/accessions are retained,
   and no matched target/decoy counterpart is required.
 - Run-specific statistics use separate distributions per run. Experiment-wide statistics pool entity/run best scores.
-  Global statistics use the best score per entity over all runs. Native defaults use empirical p-values, bootstrap
+  Global statistics use the best score per entity over all runs. The defaults are empirical p-values, bootstrap
   pi0 estimation and probit local-FDR estimation. Unestimable contexts are null with explicit warnings, without a
   substitute estimator. Successful contexts/runs remain available. Reusing the established method is not an empirical
   guarantee of true FDR calibration on every OpenDIA dataset.

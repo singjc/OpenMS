@@ -344,7 +344,7 @@ namespace OpenMS::OpenDIA
                        number(window->peak.area), std::string("raw_ms2_area"), number(window->score), number(window->q_value),
                        number(global), precursor.decoy, options.inference_context};
         row.insert(row.end(), rest.begin(), rest.end());
-        // Preserve native context statistics even when another context supplies the gate.
+        // Preserve every context's statistics even when another context supplies the gate.
         appendStatistics(row, peptide, pe);
         appendStatistics(row, group, pg);
         row.insert(row.end(), {pass_peak, pass_peptide, pass_group});

@@ -58,7 +58,7 @@ struct Quantification
   std::vector<std::string> inference_warnings;
 };
 
-/// Native default PyProphet level/context inference, before report filtering.
+/// PyProphet level/context inference (OpenDIA EntityInference), before report filtering.
 /// Modified sequences collapse charge states. Only uniquely mapped peptides score singleton proteins.
 /// Entity areas require precursor cuts. Each matrix additionally applies only its corresponding level cuts.
 Quantification quantify(const AnalysisLibrary& library, const std::vector<RunResult>& runs, const ReportingOptions& options = {});

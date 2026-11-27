@@ -86,7 +86,7 @@ if(EXISTS "${CMAKE_SOURCE_DIR}/src/tests/topp/TargetedFileConverter_10_input.pqp
   add_test(NAME OpenDIALibraryParquet_test COMMAND OpenDIALibraryParquet_test ${CMAKE_CURRENT_BINARY_DIR}
     ${CMAKE_SOURCE_DIR}/src/tests/topp/TargetedFileConverter_10_input.pqp)
 endif()
-# Design rule: no OpenSWATH extraction/workflow code, except shared level/context statistics.
+# Design rule: no OpenSWATH code in the OpenDIA core library.
 add_test(NAME OpenDIA_no_openswath
   COMMAND ${CMAKE_COMMAND} -DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/.. -P ${CMAKE_CURRENT_SOURCE_DIR}/no_openswath.cmake)
 

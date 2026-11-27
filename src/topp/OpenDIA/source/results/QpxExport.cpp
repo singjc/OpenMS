@@ -136,7 +136,7 @@ namespace
     return {
       {"qpx_view", view},
       {"opendia_schema_version", "1"},
-      {"opendia_algorithm", "OpenDIA precursor scoring; pooled paired precursor competition; PyProphet-adapted level-context inference"},
+      {"opendia_algorithm", "OpenDIA precursor scoring; pooled paired precursor competition; OpenDIA PyProphet-method level-context inference"},
       {"opendia_peakgroup_fdr", QPXDatasetExport::formatNumber(options.peakgroup_fdr)},
       {"opendia_peptide_fdr", QPXDatasetExport::formatNumber(options.peptide_fdr)},
       {"opendia_protein_fdr", QPXDatasetExport::formatNumber(options.protein_fdr)},
@@ -147,7 +147,7 @@ namespace
       {"opendia_openms_revision", VersionInfo::getRevision()},
       {"opendia_canonical_extension_encoding",
        "nullable x_opendia_* strings; shortest round-trip decimals preserve source binary64; typed candidate companion retains scorer binary32"},
-      {"opendia_entity_estimator_status", "shared LevelContextInference; empirical calibration remains dataset-dependent"},
+      {"opendia_entity_estimator_status", "OpenDIA EntityInference (PyProphet method and defaults); empirical calibration remains dataset-dependent"},
       {"opendia_entity_inference_reference", "10.1038/nmeth.4398"},
       {"opendia_entity_inference_context", options.inference_context},
       {"opendia_entity_inference_contexts", "run-specific,experiment-wide,global"},

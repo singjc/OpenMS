@@ -2,14 +2,13 @@
 // SPDX-License-Identifier: BSD-3-Clause
 // $Maintainer: Justin Sing $
 
-#include <OpenMS/ANALYSIS/OPENSWATH/LevelContextInference.h>
 #include <OpenMS/CHEMISTRY/AASequence.h>
 #include <OpenMS/CONCEPT/Exception.h>
-#include <OpenMS/MATH/STATISTICS/MultipleTesting.h>
 #include <algorithm>
 #include <cmath>
 #include <limits>
 #include <map>
+#include <results/EntityInference.h>
 #include <results/Quantification.h>
 #include <set>
 #include <stdexcept>
@@ -35,133 +34,6 @@ namespace
       begin = end + 1;
     }
     return result;
-  }
-
-  void estimate(std::vector<QuantifiedEntity>& entities, std::size_t run_count, InferenceLevel level, std::vector<std::string>& warnings)
-  {
-    std::vector<LevelContextInputRow> all, global;
-    std::vector<std::vector<LevelContextInputRow>> by_run(run_count);
-    for (std::size_t e = 0; e < entities.size(); ++e)
-    {
-      double best = absent;
-      for (const auto& r : entities[e].runs)
-      {
-        LevelContextInputRow row;
-        row.run_id = static_cast<Int64>(r.run);
-        row.entity_id = static_cast<Int64>(e);
-        row.group_id = std::to_string(r.run) + ":" + std::to_string(e);
-        row.decoy = entities[e].decoy;
-        row.score = r.score;
-        all.push_back(row);
-        by_run[r.run].push_back(row);
-        best = std::max(best, r.score);
-      }
-      if (! std::isfinite(best)) continue;
-      LevelContextInputRow row;
-      row.entity_id = static_cast<Int64>(e);
-      row.group_id = std::to_string(e);
-      row.decoy = entities[e].decoy;
-      row.score = best;
-      global.push_back(row);
-    }
-    // Run calls are isolated so an unestimable run cannot discard successful runs.
-    auto infer = [&](std::vector<LevelContextInputRow> rows, InferenceContext context, const std::string& label) {
-      if (rows.empty()) return;
-      LevelContextInferenceConfig config;
-      config.level = level;
-      config.context = context;
-      for (auto& row : rows)
-        row.context = context;
-      std::vector<LevelContextResultRow> results;
-      auto warn = [&](const std::string& reason) { warnings.push_back(toString(level) + " " + label + ": native inference unavailable: " + reason); };
-      // The native local-FDR KDE requires at least two target p-values. With one,
-      // its zero bandwidth produces a degenerate spline instead of an estimate.
-      if (std::count_if(rows.begin(), rows.end(), [](const auto& row) { return ! row.decoy; }) < 2)
-      {
-        warn("fewer than two target observations for native local-FDR KDE");
-        return;
-      }
-      try
-      {
-        // Upstream PyProphet pi0est rejects pi0 <= 0 (e.g. all-tie or fully separated scores).
-        // Native estimation continues with q/PEP of zero, so replay its own p/pi0 steps and reject.
-        std::vector<double> targets, decoys;
-        for (const auto& row : rows)
-        {
-          if (std::isfinite(row.score)) (row.decoy ? decoys : targets).push_back(row.score);
-        }
-        std::sort(targets.begin(), targets.end());
-        std::sort(decoys.begin(), decoys.end());
-        if (! targets.empty() && ! decoys.empty())
-        {
-          const auto& error = config.error;
-          const auto p = error.parametric ? Math::MultipleTesting::pNorm(targets, decoys) : Math::MultipleTesting::pEmp(targets, decoys);
-          const auto pi0 = Math::MultipleTesting::pi0Est(p, error.pi0_lambda, Math::MultipleTesting::toPi0Method(error.pi0_method),
-                                                         error.pi0_smooth_df, error.pi0_smooth_log_pi0)
-                             .pi0;
-          if (! (pi0 > 0))
-          {
-            warn("estimated pi0 <= 0");
-            return;
-          }
-        }
-        results = LevelContextInference::infer(rows, config);
-      }
-      catch (const Exception::Precondition& error)
-      {
-        const std::string message = error.getMessage();
-        if (message.find("score distribution is empty.") == std::string::npos
-            && message.find("score distribution only contained NaN values.") == std::string::npos)
-          throw;
-        warn(message);
-        return;
-      }
-      catch (const std::invalid_argument& error)
-      {
-        // Native statistical routines report unestimable p-value/KDE inputs this way.
-        const std::string message = error.what();
-        if (message != "pi0Est: no finite p-values provided" && message != "qValue: pi0 not in [0,1]" && message != "lfdr: pi0 not in [0,1]"
-            && message != "linBin: xmax must be > xmin")
-          throw;
-        warn(message);
-        return;
-      }
-      if (std::any_of(results.begin(), results.end(),
-                      [](const auto& row) { return ! std::isfinite(row.pvalue) || ! std::isfinite(row.qvalue) || ! std::isfinite(row.pep); }))
-      {
-        warn("non-finite native error statistics");
-        return;
-      }
-      for (const auto& row : results)
-      {
-        auto& entity = entities.at(static_cast<std::size_t>(row.entity_id));
-        if (context == InferenceContext::Global)
-        {
-          entity.global_q_value = row.qvalue;
-          entity.global_p_value = row.pvalue;
-          entity.global_pep = row.pep;
-          continue;
-        }
-        auto& run
-          = *std::find_if(entity.runs.begin(), entity.runs.end(), [&](const auto& r) { return r.run == static_cast<std::size_t>(*row.run_id); });
-        if (context == InferenceContext::RunSpecific)
-        {
-          run.q_value = row.qvalue;
-          run.p_value = row.pvalue;
-          run.pep = row.pep;
-        }
-        else
-        {
-          run.experiment_q_value = row.qvalue;
-          run.experiment_p_value = row.pvalue;
-          run.experiment_pep = row.pep;
-        }
-      }
-    };
-    infer(global, InferenceContext::Global, "global");
-    infer(all, InferenceContext::ExperimentWide, "experiment-wide");
-    for (std::size_t r = 0; r < run_count; ++r)
-      infer(by_run[r], InferenceContext::RunSpecific, "run-specific run " + std::to_string(r));
   }
 
   void evidence(QuantifiedEntity& entity, std::size_t run, double score)
@@ -307,8 +179,8 @@ Quantification quantify(const AnalysisLibrary& library, const std::vector<RunRes
       if (e != missing) evidence(out.peptides[e], r, w->score);
       if (g != missing) evidence(out.protein_groups[g], r, w->score);
     }
-  estimate(out.peptides, runs.size(), InferenceLevel::Peptide, out.inference_warnings);
-  estimate(out.protein_groups, runs.size(), InferenceLevel::Protein, out.inference_warnings);
+  EntityInference::estimate(out.peptides, runs.size(), "peptide", out.inference_warnings);
+  EntityInference::estimate(out.protein_groups, runs.size(), "protein", out.inference_warnings);
   for (std::size_t r = 0; r < runs.size(); ++r)
     for (const auto& [p, w] : winners[r])
     {
