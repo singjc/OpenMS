@@ -26,7 +26,27 @@ The plan is [PRECHECK_HELA.md](PRECHECK_HELA.md) (frozen in `3eb30fd255` before 
   - Wall time is 25 % shorter (20:06 to 15:02), and extraction is 2× faster.
   - Peak RSS is about unchanged (21.8 to 21.5 GiB). H held only 674k tensors at once. Its peak (about 21.9 GB at pass-1 extraction in both arms) comes from the arrays of 12.1 M windows: search candidates, `RunWindow`, the interference windows (384 B each) and the feature table. Calibration on H peaks at 14.7 GB.
 
+## Follow-up: interference per extraction group (OpenMS `738f88d0e3`)
+
+Extraction groups now hold whole isolation windows. The interference features, which link windows only within one isolation window, are computed inside each group. Only the 12-fragment central areas (96 B per window) outlive the group, so the run-wide `InterferenceResolver::Window` array (384 B per window) is gone.
+
+The check ran in codon jobs 44834711 (D, cn-072) and 44834712 (H, cn-091), with the script in [ifg-evidence/](ifg-evidence/). Each job alternated `prev` (`e3533d93`) and `ifg` (`8cd6186d`) on one node.
+
+Result: every `ifg` and `prev` output is `cmp`-identical to `base_r1` of the A/B above, on both D and H. Astral raw01 seed0 is also byte-identical, both with the cache (16 groups) and with `-no_spectrum_cache` (a single group); see `evidence/ifg*`.
+
+| Set | prev wall r3 / r4 | ifg wall r1 / r2 | prev peak RSS GiB | ifg peak RSS GiB |
+|---|---|---|---|---|
+| D | 11:03 / 11:11 | 11:03 / 10:54 | 16.9 / 16.6 | 16.1 / 15.9 |
+| H | 13:29 / 13:10 | 13:08 / 13:12 | 21.4 / 19.4 | 21.8 / 18.6 |
+
+- **D:** peak RSS is about 0.8 GiB lower. Wall time is unchanged.
+- **H:** peak RSS varies by about 2 GiB between repeats of the same binary, which is larger than the change.
+- **Astral (laptop):** wall time fell from 9:00 to 7:18. Features plus interference now take 0.5 s plus 32 s summed over the groups, against 12.7 s single-threaded before, and the groups run in parallel. This timing is descriptive.
+- **Where the peak is now:**
+  - On both D and H it is the per-window state: the feature table, `RunWindow` and the search candidates, at extraction and in the first scorer fold (H r1 reached 21.4 GB there).
+  - On H, calibration peaks at 14.7 GB.
+
 ## What is left for memory (no change made)
 
-- Per-window state that scales with the window count: `InterferenceResolver::Window` (core area and 32-bin profile), the feature table, `RunWindow` and the search candidates. Shrinking these would mean computing interference per isolation-window group and not materialising every window at once. That is a larger restructuring.
+- Per-window state that scales with the window count: the feature table (45 floats per window), `RunWindow` with its `SearchCandidate` (about 100 B) and the search candidates before the population filter. Shrinking these needs a lighter `RunWindow` or features built per group. Both change internal layouts, but not outputs.
 - On Astral, the peak is calibration pass 2, with 600k members' traces held over the run (about 10.4 GB).
