@@ -1,0 +1,26 @@
+SELFTEST_PASS run-specific all gates
+SELFTEST_PASS experiment-wide all gates
+SELFTEST_PASS run-specific Supplied inference context contradicts stored metadata
+SELFTEST_PASS missing_companion Missing mandatory native inference companion
+SELFTEST_PASS companion_q_changed inference companion exact all-context score/p/q/PEP including null and zero
+SELFTEST_PASS companion_null_pep_becomes_zero inference companion exact all-context score/p/q/PEP including null and zero
+SELFTEST_PASS companion_global_has_run inference companion context and nullable global-run semantics
+SELFTEST_PASS report_zero_p_becomes_null inference companion exact all-context score/p/q/PEP including null and zero
+SELFTEST_PASS precursor_statistic_drift precursor modified-peptide statistics equal entity all-context statistics exactly
+SELFTEST_PASS protein_precursor_statistic_drift precursor singleton-protein statistics equal entity all-context statistics exactly
+SELFTEST_PASS global_differs_across_runs peptides: identical global pep across sparse runs
+SELFTEST_PASS probability_out_of_range protein_groups: nullable finite probability experiment_pep
+SELFTEST_PASS run_context_wrongly_uses_experiment peptides: independent level pass flags
+SELFTEST_PASS experiment_context_wrongly_uses_run per-feature peak-group plus corresponding-level pass flags
+SELFTEST_PASS experiment_matrix_wrongly_uses_run peptide_matrix: exact eligible cells
+SELFTEST_PASS context_column_wrong protein_groups: selected context declared consistently
+SELFTEST_PASS unmodified_entity_id canonical modified target sequence available for independent entity lineage
+SELFTEST_PASS shared_peptide_in_protein singleton protein areas use unique modified peptides independently of peptide q
+SELFTEST_PASS protein_score_from_shared singleton protein best score uses unique modified peptides before report cuts
+SELFTEST_PASS protein_group_not_singleton protein entities retain singleton supplied accessions
+SELFTEST_PASS decoy_accession_not_namespaced independent protein-group pg_id hash mismatch
+SELFTEST_PASS qpx_experiment_q_changed canonical QPX singleton protein evidence matches unfiltered entity long table
+SELFTEST_PASS qpx_feature_experiment_q_changed unfiltered retained report equals canonical QPX winners including experiment q
+SELFTEST_PASS null_becomes_zero precursor_matrix: exact eligible cells
+SELFTEST_PASS missing_context_metadata Missing selected inference context metadata
+HARNESS_SELFTEST_PASS: two context positive fixtures plus 23 corruption gates

@@ -1,0 +1,10 @@
+100% ▕██████████████████████████████████████▏ (00:00:04.19 elapsed)     
+100% ▕██████████████████████████████████████▏ (00:00:02.72 elapsed)     
+feature: VALID (1 info)
+  info: identity_not_checked [feature_id] Not all feature_id values are derived (footer identity_source), so they were not re-derived
+pg: VALID
+sample: VALID
+run: VALID
+provenance: VALID
+Producer candidate identity: 1675700 rows checked, 0 stale
+Overall: VALID

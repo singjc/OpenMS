@@ -1,0 +1,8 @@
+feature: VALID (1 info)
+  info: identity_not_checked [feature_id] Not all feature_id values are derived (footer identity_source), so they were not re-derived
+pg: VALID
+sample: VALID
+run: VALID
+provenance: VALID
+Producer candidate identity: 228492 rows checked, 0 stale
+Overall: VALID

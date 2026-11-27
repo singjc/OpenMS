@@ -1,0 +1,117 @@
+{
+  "pyprophet_revision": "4344e2b5cb30871085eb33b953210791b920624d",
+  "compatibility": {
+    "scipy": "1.18.1",
+    "shim": "rankdata(method=min) integer dtype only, identical rank values"
+  },
+  "all_tie_upstream_error": "ClickException: The estimated pi0 <= 0. Check that you have valid p-values or use a different range of lambda. Current lambda range: [0.1  0.15 0.2  0.25 0.3  0.35 0.4  0.45]",
+  "tolerances": {
+    "p": 1e-12,
+    "q": 1e-10,
+    "pep": 0.01
+  },
+  "reports": [
+    {
+      "level": "peptide",
+      "context": "run-specific",
+      "run": 0,
+      "rows": 927,
+      "pi0": 0.2981321839080461,
+      "p_max_abs": 2.220446049250313e-16,
+      "q_max_abs": 1.6653345369377348e-16,
+      "pep_max_abs": 9.992007221626409e-16
+    },
+    {
+      "level": "peptide",
+      "context": "run-specific",
+      "run": 1,
+      "rows": 929,
+      "pi0": 0.1994134897360704,
+      "p_max_abs": 2.220446049250313e-16,
+      "q_max_abs": 1.1102230246251565e-16,
+      "pep_max_abs": 7.771561172376096e-16
+    },
+    {
+      "level": "peptide",
+      "context": "run-specific",
+      "run": 2,
+      "rows": 929,
+      "pi0": 0.14858260019550346,
+      "p_max_abs": 1.1102230246251565e-16,
+      "q_max_abs": 1.1102230246251565e-16,
+      "pep_max_abs": 6.661338147750939e-16
+    },
+    {
+      "level": "peptide",
+      "context": "experiment-wide",
+      "run": null,
+      "rows": 2785,
+      "pi0": 0.28042259032215994,
+      "p_max_abs": 1.1102230246251565e-16,
+      "q_max_abs": 1.6653345369377348e-16,
+      "pep_max_abs": 2.3314683517128287e-15
+    },
+    {
+      "level": "peptide",
+      "context": "global",
+      "run": null,
+      "rows": 959,
+      "pi0": 0.06944444444444446,
+      "p_max_abs": 1.1102230246251565e-16,
+      "q_max_abs": 1.0408340855860843e-16,
+      "pep_max_abs": 3.6637359812630166e-15
+    },
+    {
+      "level": "protein",
+      "context": "run-specific",
+      "run": 0,
+      "rows": 501,
+      "pi0": 0.21300874857360216,
+      "p_max_abs": 1.1102230246251565e-16,
+      "q_max_abs": 1.1102230246251565e-16,
+      "pep_max_abs": 8.881784197001252e-16
+    },
+    {
+      "level": "protein",
+      "context": "run-specific",
+      "run": 1,
+      "rows": 501,
+      "pi0": 0.1673640167364017,
+      "p_max_abs": 1.1102230246251565e-16,
+      "q_max_abs": 1.1102230246251565e-16,
+      "pep_max_abs": 8.881784197001252e-16
+    },
+    {
+      "level": "protein",
+      "context": "run-specific",
+      "run": 2,
+      "rows": 502,
+      "pi0": 0.11363636363636365,
+      "p_max_abs": 1.1102230246251565e-16,
+      "q_max_abs": 9.71445146547012e-17,
+      "pep_max_abs": 5.551115123125783e-16
+    },
+    {
+      "level": "protein",
+      "context": "experiment-wide",
+      "run": null,
+      "rows": 1504,
+      "pi0": 0.19498607242339835,
+      "p_max_abs": 2.220446049250313e-16,
+      "q_max_abs": 1.1102230246251565e-16,
+      "pep_max_abs": 2.886579864025407e-15
+    },
+    {
+      "level": "protein",
+      "context": "global",
+      "run": null,
+      "rows": 505,
+      "pi0": 0.027777777777777783,
+      "p_max_abs": 1.1102230246251565e-16,
+      "q_max_abs": 8.500145032286355e-17,
+      "pep_max_abs": 5.551115123125783e-16
+    }
+  ],
+  "errors": [],
+  "passed": true
+}
