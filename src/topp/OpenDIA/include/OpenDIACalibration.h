@@ -261,6 +261,7 @@ namespace OpenMS::OpenDIA
       std::size_t fragment_count = 0;
       double window_low = -std::numeric_limits<double>::infinity(); ///< Collected run RT range (windowed pass only).
       double window_high = std::numeric_limits<double>::infinity();
+      std::size_t expected = 0; ///< Windowed pass: trace capacity reserved at the first collected spectrum (0 none).
       std::array<double, FRAGMENTS> fragment_mz{};
       std::array<double, FRAGMENTS> library_intensity{};
       // One entry per isolating spectrum, in RT order. im is empty when the member has no library 1/K0.
@@ -287,6 +288,17 @@ namespace OpenMS::OpenDIA
     std::vector<Candidate> candidates_(std::size_t member, std::size_t half_window, double rt_low, double rt_high,
                                        std::size_t max_candidates, std::size_t min_fragments) const;
 
+    /// Stage-3 search range of member @p m: around @p centre (from its target's library RT), to the run edge outside
+    /// [support_low, support_high].
+    void stage3Range_(std::size_t m, double centre, double half_window_s, double support_low, double support_high, double& low,
+                      double& high) const;
+    /// Stage-3 best candidate of member @p m (strongest score, first on ties); false if it has none.
+    bool stage3Best_(std::size_t m, double low, double high, std::size_t half_window, Candidate& best) const;
+    /// Windowed pass: stage 3 of the members that closed since the last call, in parallel. Their best candidate is
+    /// kept and their traces are cut to what stage 4 reads (the +-64 spectrum anchor slice around the best apex),
+    /// so trace memory follows the members still open. Stage 4 sees the same values as without the cut.
+    void settleClosed_();
+
     /// Stages 3 and 4 around @p centre (library RT to run RT); throws if too few anchors. Targets whose library RT
     /// is below @p support_low (above @p support_high) and their decoys are searched from the run start (to the run end).
     void finish_(CalibrationResult& result, const std::function<double(double)>& centre, std::size_t half_window,
@@ -308,6 +320,10 @@ namespace OpenMS::OpenDIA
     /// Last collected RT per member (NaN while empty), so the per-spectrum order check needs no load from the trace vector.
     std::vector<double> member_last_rt_;
     std::vector<std::size_t> active_; ///< Scratch: members of the current isolation window inside their range.
+    std::vector<std::size_t> closing_; ///< Windowed pass: members closed and not yet settled.
+    std::vector<std::uint8_t> settled_; ///< Windowed pass: stage 3 done at close (settled_best_ holds the result).
+    std::vector<std::uint8_t> settled_present_;
+    std::vector<Candidate> settled_best_;
     bool ion_mobility_array_as_vssc_ = false;
     bool saw_im_ = false;
     int threads_ = 1;

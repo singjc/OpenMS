@@ -423,19 +423,13 @@ namespace OpenMS::OpenDIA
         {
           member.window_high = std::numeric_limits<double>::infinity();
         }
-        // Reserve the expected trace length once (window span / cycle, +10 %), instead of growing by doubling. This
+        // Reserve the expected trace length (window span / cycle, +10 %) instead of growing by doubling, when the
+        // member receives its first spectrum (see consumeSpectrum), so capacity is held only by open members. This
         // only sets capacity; the collected values are unchanged.
         if (window_->cycle_s > 0.0 && window_->run_last_rt > window_->run_first_rt)
         {
           const double span = std::min(member.window_high, window_->run_last_rt) - std::max(member.window_low, window_->run_first_rt);
-          if (span > 0.0)
-          {
-            const auto expected = static_cast<std::size_t>(std::ceil(1.1 * span / window_->cycle_s)) + 4;
-            member.rt.reserve(expected);
-            member.intensity.reserve(expected);
-            member.ppm.reserve(expected);
-            if (member.library_im > 0.0) member.im.reserve(expected);
-          }
+          if (span > 0.0) member.expected = static_cast<std::size_t>(std::ceil(1.1 * span / window_->cycle_s)) + 4;
         }
       }
     }
@@ -450,6 +444,88 @@ namespace OpenMS::OpenDIA
     {
       member_last_rt_[m] = panel_[m].rt.empty() ? std::numeric_limits<double>::quiet_NaN() : panel_[m].rt.back();
     }
+    if (window_)
+    {
+      settled_.assign(panel_.size(), 0);
+      settled_present_.assign(panel_.size(), 0);
+      settled_best_.assign(panel_.size(), Candidate{});
+    }
+  }
+
+  void CalibrationCollector::stage3Range_(std::size_t m, double centre, double half_window_s, double support_low, double support_high,
+                                          double& low, double& high) const
+  {
+    const double library_rt = panel_[panel_[m].is_decoy ? panel_[m].partner : m].library_rt;
+    low = library_rt < support_low ? -std::numeric_limits<double>::infinity() : centre - half_window_s;
+    high = library_rt > support_high ? std::numeric_limits<double>::infinity() : centre + half_window_s;
+  }
+
+  bool CalibrationCollector::stage3Best_(std::size_t m, double low, double high, std::size_t half_window, Candidate& best) const
+  {
+    bool present = false;
+    double score = -1.0;
+    for (const auto& candidate : candidates_(m, half_window, low, high, options_.candidates, options_.min_fragments))
+    {
+      if (!present || candidate.score > score)
+      {
+        present = true;
+        score = candidate.score;
+        best = candidate;
+      }
+    }
+    return present;
+  }
+
+  void CalibrationCollector::settleClosed_()
+  {
+    if (closing_.empty()) return;
+    const CalibrationWindow& w = *window_;
+    std::exception_ptr error = nullptr;
+#pragma omp parallel for schedule(dynamic, 16) num_threads(threads_) if (threads_ > 1 && closing_.size() >= 64)
+    for (std::ptrdiff_t c = 0; c < static_cast<std::ptrdiff_t>(closing_.size()); ++c)
+    {
+    try
+    {
+      const std::size_t m = closing_[static_cast<std::size_t>(c)];
+      Member& member = panel_[m];
+      const double library_rt = panel_[member.is_decoy ? member.partner : m].library_rt;
+      double low = 0.0, high = 0.0;
+      stage3Range_(m, w.map(library_rt), w.half_window_s, w.support_low, w.support_high, low, high);
+      Candidate best;
+      const bool present = stage3Best_(m, low, high, w.half_window_spectra, best);
+      // Stage 4 reads the +-64 spectrum slice around the best apex (anchor trace, apex 1/K0, mass errors at apex +-1).
+      // Keep only that slice and re-index the apex; members without a candidate need no trace.
+      std::size_t first = 0, last = 0;
+      if (present)
+      {
+        first = best.apex > 64 ? best.apex - 64 : 0;
+        last = std::min(member.rt.size() - 1, best.apex + 64);
+        best.apex -= first;
+      }
+      const auto cut = [&](auto& v)
+      {
+        using V = std::decay_t<decltype(v)>;
+        if (!present || v.empty()) { V().swap(v); return; }
+        V(v.begin() + static_cast<std::ptrdiff_t>(first), v.begin() + static_cast<std::ptrdiff_t>(last) + 1).swap(v);
+      };
+      cut(member.rt);
+      cut(member.intensity);
+      cut(member.ppm);
+      cut(member.im);
+      settled_best_[m] = best;
+      settled_present_[m] = present ? 1 : 0;
+      settled_[m] = 1;
+    }
+    catch (...)
+    {
+#pragma omp critical (OpenDIA_CalibrationCollector_settle)
+      {
+        if (!error) error = std::current_exception();
+      }
+    }
+    }
+    closing_.clear();
+    if (error) std::rethrow_exception(error);
   }
 
   void CalibrationCollector::consumeSpectrum(MSSpectrum& spectrum)
@@ -508,13 +584,16 @@ namespace OpenMS::OpenDIA
           // Spectra arrive in RT order, so this member is complete: release the growth reserve of its traces.
           if (!slot->closed)
           {
-            Member& member = panel_[by_mz_[slot - slots_.begin()]];
+            const std::size_t m = by_mz_[slot - slots_.begin()];
+            Member& member = panel_[m];
             member.rt.shrink_to_fit();
             member.intensity.shrink_to_fit();
             member.ppm.shrink_to_fit();
             member.im.shrink_to_fit();
             member.closed = true;
             slot->closed = true;
+            // Windowed pass: the member's traces are final; its stage 3 runs in the next settle batch.
+            if (window_) closing_.push_back(m);
           }
           continue;
         }
@@ -593,6 +672,13 @@ namespace OpenMS::OpenDIA
           }
           continue;
         }
+        if (member.rt.empty() && member.expected > 0)
+        {
+          member.rt.reserve(member.expected);
+          member.intensity.reserve(member.expected);
+          member.ppm.reserve(member.expected);
+          if (member.library_im > 0.0) member.im.reserve(member.expected);
+        }
         member.rt.push_back(rt);
         last = rt;
         member.intensity.push_back(intensity);
@@ -610,6 +696,7 @@ namespace OpenMS::OpenDIA
       }
       if (error) std::rethrow_exception(error);
     }
+    if (closing_.size() >= 4096) settleClosed_();
   }
 
   std::vector<CalibrationCollector::Candidate> CalibrationCollector::candidates_(std::size_t index, std::size_t half_window,
@@ -1168,15 +1255,20 @@ namespace OpenMS::OpenDIA
       const double high = library_rt > support_high ? std::numeric_limits<double>::infinity() : centre + result.stage3_half_window_s;
       result.stage3_extended_targets += !is_decoy[m] && (library_rt < support_low || library_rt > support_high);
       rt_informative[m] = library_rt >= support_low && library_rt <= support_high;
-      const auto candidates = candidates_(m, half_window, low, high, options_.candidates, options_.min_fragments);
-      for (const auto& candidate : candidates)
+      // Windowed pass: members closed during collection were searched then (same range, same traces).
+      if (!settled_.empty() && settled_[m])
       {
-        if (!present[m] || candidate.score > score[m])
+        present[m] = settled_present_[m] != 0;
+        if (present[m])
         {
-          present[m] = true;
-          score[m] = candidate.score;
-          best[m] = candidate;
+          best[m] = settled_best_[m];
+          score[m] = best[m].score;
         }
+      }
+      else
+      {
+        present[m] = stage3Best_(m, low, high, half_window, best[m]);
+        if (present[m]) score[m] = best[m].score;
       }
       if (present[m]) residual[m] = best[m].rt - centre;
     }
