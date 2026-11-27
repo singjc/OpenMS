@@ -1,0 +1,335 @@
+Start testing: Nov 27 20:18 GMT
+----------------------------------------------------------
+963/3457 Testing: TOPPWRITEINI_OpenDIA
+963/3457 Test: TOPPWRITEINI_OpenDIA
+Command: "/home/singjc/Documents/github/OpenMS-r1-full-ninja-build/bin/OpenDIA" "-test" "-write_ini" "/home/singjc/Documents/github/OpenMS-r1-full-ninja-build/src/tests/topp/tmp_path/OpenDIA.tmp.ini"
+Directory: /home/singjc/Documents/github/OpenMS-r1-full-ninja-build/src/tests/topp
+"TOPPWRITEINI_OpenDIA" start time: Nov 27 20:18 GMT
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   0.03 sec
+----------------------------------------------------------
+Test Passed.
+"TOPPWRITEINI_OpenDIA" end time: Nov 27 20:18 GMT
+"TOPPWRITEINI_OpenDIA" time elapsed: 00:00:00
+----------------------------------------------------------
+
+742/3457 Testing: OpenDIASpectrumCache_test
+742/3457 Test: OpenDIASpectrumCache_test
+Command: "/home/singjc/Documents/github/OpenMS-r1-full-ninja-build/src/tests/class_tests/bin/OpenDIASpectrumCache_test"
+Directory: /home/singjc/Documents/github/OpenMS-r1-full-ninja-build/src/tests/class_tests/openms/topp_OpenDIA_tests
+"OpenDIASpectrumCache_test" start time: Nov 27 20:18 GMT
+Output:
+----------------------------------------------------------
+OpenDIASpectrumCache_test passed
+<end of output>
+Test time =   0.25 sec
+----------------------------------------------------------
+Test Passed.
+"OpenDIASpectrumCache_test" end time: Nov 27 20:18 GMT
+"OpenDIASpectrumCache_test" time elapsed: 00:00:00
+----------------------------------------------------------
+
+737/3457 Testing: OpenDIAWorkflow_test
+737/3457 Test: OpenDIAWorkflow_test
+Command: "/home/singjc/Documents/github/OpenMS-r1-full-ninja-build/src/tests/class_tests/bin/OpenDIAWorkflow_test" "/home/singjc/Documents/github/OpenMS-r1-full-ninja-build/src/tests/class_tests/openms/topp_OpenDIA_tests" "/home/singjc/Documents/github/OpenMS-r1-sparse-experiment/src/tests/topp/TargetedFileConverter_10_input.pqp"
+Directory: /home/singjc/Documents/github/OpenMS-r1-full-ninja-build/src/tests/class_tests/openms/topp_OpenDIA_tests
+"OpenDIAWorkflow_test" start time: Nov 27 20:18 GMT
+Output:
+----------------------------------------------------------
+OpenDIAWorkflow_test passed
+<end of output>
+Test time =   0.19 sec
+----------------------------------------------------------
+Test Passed.
+"OpenDIAWorkflow_test" end time: Nov 27 20:18 GMT
+"OpenDIAWorkflow_test" time elapsed: 00:00:00
+----------------------------------------------------------
+
+743/3457 Testing: OpenDIAPeakPicker_test
+743/3457 Test: OpenDIAPeakPicker_test
+Command: "/home/singjc/Documents/github/OpenMS-r1-full-ninja-build/src/tests/class_tests/bin/OpenDIAPeakPicker_test"
+Directory: /home/singjc/Documents/github/OpenMS-r1-full-ninja-build/src/tests/class_tests/openms/topp_OpenDIA_tests
+"OpenDIAPeakPicker_test" start time: Nov 27 20:18 GMT
+Output:
+----------------------------------------------------------
+estimateBoundaryHalfWidths: extent 2.0 -> 1.877, extent 3.5 -> 3.130
+pickPeakGroup: 1152 ns per 6x32 window (1000000 found)
+OpenDIAPeakPicker_test passed
+<end of output>
+Test time =   1.36 sec
+----------------------------------------------------------
+Test Passed.
+"OpenDIAPeakPicker_test" end time: Nov 27 20:18 GMT
+"OpenDIAPeakPicker_test" time elapsed: 00:00:01
+----------------------------------------------------------
+
+748/3457 Testing: OpenDIAMzIndex_test
+748/3457 Test: OpenDIAMzIndex_test
+Command: "/home/singjc/Documents/github/OpenMS-r1-full-ninja-build/src/tests/class_tests/bin/OpenDIAMzIndex_test"
+Directory: /home/singjc/Documents/github/OpenMS-r1-full-ninja-build/src/tests/class_tests/openms/topp_OpenDIA_tests
+"OpenDIAMzIndex_test" start time: Nov 27 20:18 GMT
+Output:
+----------------------------------------------------------
+OpenDIAMzIndex_test passed
+<end of output>
+Test time =   2.50 sec
+----------------------------------------------------------
+Test Passed.
+"OpenDIAMzIndex_test" end time: Nov 27 20:18 GMT
+"OpenDIAMzIndex_test" time elapsed: 00:00:02
+----------------------------------------------------------
+
+741/3457 Testing: OpenDIAPeakFeatures_test
+741/3457 Test: OpenDIAPeakFeatures_test
+Command: "/home/singjc/Documents/github/OpenMS-r1-full-ninja-build/src/tests/class_tests/bin/OpenDIAPeakFeatures_test"
+Directory: /home/singjc/Documents/github/OpenMS-r1-full-ninja-build/src/tests/class_tests/openms/topp_OpenDIA_tests
+"OpenDIAPeakFeatures_test" start time: Nov 27 20:18 GMT
+Output:
+----------------------------------------------------------
+OpenDIAPeakFeatures_test passed
+<end of output>
+Test time =   0.05 sec
+----------------------------------------------------------
+Test Passed.
+"OpenDIAPeakFeatures_test" end time: Nov 27 20:18 GMT
+"OpenDIAPeakFeatures_test" time elapsed: 00:00:00
+----------------------------------------------------------
+
+750/3457 Testing: OpenDIALibraryParquet_test
+750/3457 Test: OpenDIALibraryParquet_test
+Command: "/home/singjc/Documents/github/OpenMS-r1-full-ninja-build/src/tests/class_tests/bin/OpenDIALibraryParquet_test" "/home/singjc/Documents/github/OpenMS-r1-full-ninja-build/src/tests/class_tests/openms/topp_OpenDIA_tests" "/home/singjc/Documents/github/OpenMS-r1-sparse-experiment/src/tests/topp/TargetedFileConverter_10_input.pqp"
+Directory: /home/singjc/Documents/github/OpenMS-r1-full-ninja-build/src/tests/class_tests/openms/topp_OpenDIA_tests
+"OpenDIALibraryParquet_test" start time: Nov 27 20:18 GMT
+Output:
+----------------------------------------------------------
+OpenDIALibraryParquet_test passed
+<end of output>
+Test time =   0.13 sec
+----------------------------------------------------------
+Test Passed.
+"OpenDIALibraryParquet_test" end time: Nov 27 20:18 GMT
+"OpenDIALibraryParquet_test" time elapsed: 00:00:00
+----------------------------------------------------------
+
+745/3457 Testing: OpenDIAScorer_test
+745/3457 Test: OpenDIAScorer_test
+Command: "/home/singjc/Documents/github/OpenMS-r1-full-ninja-build/src/tests/class_tests/bin/OpenDIAScorer_test"
+Directory: /home/singjc/Documents/github/OpenMS-r1-full-ninja-build/src/tests/class_tests/openms/topp_OpenDIA_tests
+"OpenDIAScorer_test" start time: Nov 27 20:18 GMT
+Output:
+----------------------------------------------------------
+synthetic: real 1510 passing 1357 false 7
+OpenDIAScorer_test passed
+<end of output>
+Test time =   0.86 sec
+----------------------------------------------------------
+Test Passed.
+"OpenDIAScorer_test" end time: Nov 27 20:18 GMT
+"OpenDIAScorer_test" time elapsed: 00:00:00
+----------------------------------------------------------
+
+747/3457 Testing: OpenDIAFragmentGrid_test
+747/3457 Test: OpenDIAFragmentGrid_test
+Command: "/home/singjc/Documents/github/OpenMS-r1-full-ninja-build/src/tests/class_tests/bin/OpenDIAFragmentGrid_test"
+Directory: /home/singjc/Documents/github/OpenMS-r1-full-ninja-build/src/tests/class_tests/openms/topp_OpenDIA_tests
+"OpenDIAFragmentGrid_test" start time: Nov 27 20:18 GMT
+Output:
+----------------------------------------------------------
+OpenDIAFragmentGrid_test passed
+<end of output>
+Test time =   0.51 sec
+----------------------------------------------------------
+Test Passed.
+"OpenDIAFragmentGrid_test" end time: Nov 27 20:18 GMT
+"OpenDIAFragmentGrid_test" time elapsed: 00:00:00
+----------------------------------------------------------
+
+739/3457 Testing: OpenDIATraces_test
+739/3457 Test: OpenDIATraces_test
+Command: "/home/singjc/Documents/github/OpenMS-r1-full-ninja-build/src/tests/class_tests/bin/OpenDIATraces_test" "/home/singjc/Documents/github/OpenMS-r1-full-ninja-build/src/tests/class_tests/openms/topp_OpenDIA_tests/OpenDIATraces_test"
+Directory: /home/singjc/Documents/github/OpenMS-r1-full-ninja-build/src/tests/class_tests/openms/topp_OpenDIA_tests
+"OpenDIATraces_test" start time: Nov 27 20:18 GMT
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   0.58 sec
+----------------------------------------------------------
+Test Passed.
+"OpenDIATraces_test" end time: Nov 27 20:18 GMT
+"OpenDIATraces_test" time elapsed: 00:00:00
+----------------------------------------------------------
+
+744/3457 Testing: OpenDIAInterference_test
+744/3457 Test: OpenDIAInterference_test
+Command: "/home/singjc/Documents/github/OpenMS-r1-full-ninja-build/src/tests/class_tests/bin/OpenDIAInterference_test"
+Directory: /home/singjc/Documents/github/OpenMS-r1-full-ninja-build/src/tests/class_tests/openms/topp_OpenDIA_tests
+"OpenDIAInterference_test" start time: Nov 27 20:18 GMT
+Output:
+----------------------------------------------------------
+OpenDIAInterference_test passed
+<end of output>
+Test time =   0.23 sec
+----------------------------------------------------------
+Test Passed.
+"OpenDIAInterference_test" end time: Nov 27 20:18 GMT
+"OpenDIAInterference_test" time elapsed: 00:00:00
+----------------------------------------------------------
+
+749/3457 Testing: OpenDIARTRefine_test
+749/3457 Test: OpenDIARTRefine_test
+Command: "/home/singjc/Documents/github/OpenMS-r1-full-ninja-build/src/tests/class_tests/bin/OpenDIARTRefine_test"
+Directory: /home/singjc/Documents/github/OpenMS-r1-full-ninja-build/src/tests/class_tests/openms/topp_OpenDIA_tests
+"OpenDIARTRefine_test" start time: Nov 27 20:18 GMT
+Output:
+----------------------------------------------------------
+OpenDIARTRefine_test passed
+<end of output>
+Test time =   0.08 sec
+----------------------------------------------------------
+Test Passed.
+"OpenDIARTRefine_test" end time: Nov 27 20:18 GMT
+"OpenDIARTRefine_test" time elapsed: 00:00:00
+----------------------------------------------------------
+
+751/3457 Testing: OpenDIA_no_openswath
+751/3457 Test: OpenDIA_no_openswath
+Command: "/usr/bin/cmake" "-DSOURCE_DIR=/home/singjc/Documents/github/OpenMS-r1-sparse-experiment/src/topp/OpenDIA/test/.." "-P" "/home/singjc/Documents/github/OpenMS-r1-sparse-experiment/src/topp/OpenDIA/test/no_openswath.cmake"
+Directory: /home/singjc/Documents/github/OpenMS-r1-full-ninja-build/src/tests/class_tests/openms/topp_OpenDIA_tests
+"OpenDIA_no_openswath" start time: Nov 27 20:18 GMT
+Output:
+----------------------------------------------------------
+-- OpenDIA core: no OpenSWATH references in /home/singjc/Documents/github/OpenMS-r1-sparse-experiment/src/topp/OpenDIA/test/../include and /source
+<end of output>
+Test time =   0.17 sec
+----------------------------------------------------------
+Test Passed.
+"OpenDIA_no_openswath" end time: Nov 27 20:18 GMT
+"OpenDIA_no_openswath" time elapsed: 00:00:00
+----------------------------------------------------------
+
+738/3457 Testing: OpenDIASearch_test
+738/3457 Test: OpenDIASearch_test
+Command: "/home/singjc/Documents/github/OpenMS-r1-full-ninja-build/src/tests/class_tests/bin/OpenDIASearch_test"
+Directory: /home/singjc/Documents/github/OpenMS-r1-full-ninja-build/src/tests/class_tests/openms/topp_OpenDIA_tests
+"OpenDIASearch_test" start time: Nov 27 20:18 GMT
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   0.44 sec
+----------------------------------------------------------
+Test Passed.
+"OpenDIASearch_test" end time: Nov 27 20:18 GMT
+"OpenDIASearch_test" time elapsed: 00:00:00
+----------------------------------------------------------
+
+753/3457 Testing: OpenDIA_rejects_duplicate_run_names
+753/3457 Test: OpenDIA_rejects_duplicate_run_names
+Command: "/home/singjc/Documents/github/OpenMS-r1-full-ninja-build/bin/OpenDIA" "-in" "/home/singjc/Documents/github/OpenMS-r1-sparse-experiment/src/tests/topp/OpenSwathWorkflow_17_input.mzML" "/home/singjc/Documents/github/OpenMS-r1-sparse-experiment/src/tests/topp/OpenSwathWorkflow_17_input.mzML" "-lib" "/home/singjc/Documents/github/OpenMS-r1-sparse-experiment/src/tests/topp/TargetedFileConverter_10_input.pqp" "-out_dir" "/home/singjc/Documents/github/OpenMS-r1-full-ninja-build/src/tests/class_tests/openms/topp_OpenDIA_tests/OpenDIA_duplicate"
+Directory: /home/singjc/Documents/github/OpenMS-r1-full-ninja-build/src/tests/class_tests/openms/topp_OpenDIA_tests
+"OpenDIA_rejects_duplicate_run_names" start time: Nov 27 20:18 GMT
+Output:
+----------------------------------------------------------
+Two input runs share the file name OpenSwathWorkflow_17_input; outputs would collide.
+OpenDIA took 0.00 s (wall), 0.00 s (CPU), 0.00 s (system), 0.00 s (user); Peak Memory Usage: 29 MB.
+<end of output>
+Test time =   0.04 sec
+----------------------------------------------------------
+Test Passed.
+"OpenDIA_rejects_duplicate_run_names" end time: Nov 27 20:18 GMT
+"OpenDIA_rejects_duplicate_run_names" time elapsed: 00:00:00
+----------------------------------------------------------
+
+752/3457 Testing: OpenDIA_fails_closed_on_tiny_library
+752/3457 Test: OpenDIA_fails_closed_on_tiny_library
+Command: "/home/singjc/Documents/github/OpenMS-r1-full-ninja-build/bin/OpenDIA" "-in" "/home/singjc/Documents/github/OpenMS-r1-sparse-experiment/src/tests/topp/OpenSwathWorkflow_17_input.mzML" "-lib" "/home/singjc/Documents/github/OpenMS-r1-sparse-experiment/src/tests/topp/TargetedFileConverter_10_input.pqp" "-out_dir" "/home/singjc/Documents/github/OpenMS-r1-full-ninja-build/src/tests/class_tests/openms/topp_OpenDIA_tests/OpenDIA_tiny"
+Directory: /home/singjc/Documents/github/OpenMS-r1-full-ninja-build/src/tests/class_tests/openms/topp_OpenDIA_tests
+"OpenDIA_fails_closed_on_tiny_library" start time: Nov 27 20:18 GMT
+Output:
+----------------------------------------------------------
+Reading library /home/singjc/Documents/github/OpenMS-r1-sparse-experiment/src/tests/topp/TargetedFileConverter_10_input.pqp
+Library: precursors=8 pairs=8 rss_mb=32
+Run 1/1: /home/singjc/Documents/github/OpenMS-r1-sparse-experiment/src/tests/topp/OpenSwathWorkflow_17_input.mzML
+  Spectrum cache: /home/singjc/Documents/github/OpenMS-r1-full-ninja-build/src/tests/class_tests/openms/topp_OpenDIA_tests/OpenDIA_tiny/opendia_cache_20261127_201857_692468_1 rss_mb=32 peak_mb=31
+Error: Unexpected internal error (Calibration needs at least 50 target-decoy pairs with library RT and five fragments)
+<end of output>
+Test time =   0.05 sec
+----------------------------------------------------------
+Test Passed.
+"OpenDIA_fails_closed_on_tiny_library" end time: Nov 27 20:18 GMT
+"OpenDIA_fails_closed_on_tiny_library" time elapsed: 00:00:00
+----------------------------------------------------------
+
+964/3457 Testing: TOPPWRITEINI_OpenDIA_SectionName
+964/3457 Test: TOPPWRITEINI_OpenDIA_SectionName
+Command: "/usr/bin/cmake" "-test" "-DNAME=OpenDIA" "-DFILE=/home/singjc/Documents/github/OpenMS-r1-full-ninja-build/src/tests/topp/tmp_path/OpenDIA.tmp.ini" "-P" "/home/singjc/Documents/github/OpenMS-r1-sparse-experiment/src/tests/topp/check_ini.cmake"
+Directory: /home/singjc/Documents/github/OpenMS-r1-full-ninja-build/src/tests/topp
+"TOPPWRITEINI_OpenDIA_SectionName" start time: Nov 27 20:18 GMT
+Output:
+----------------------------------------------------------
+-- Match: OpenDIA == OpenDIA
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"TOPPWRITEINI_OpenDIA_SectionName" end time: Nov 27 20:18 GMT
+"TOPPWRITEINI_OpenDIA_SectionName" time elapsed: 00:00:00
+----------------------------------------------------------
+
+1173/3457 Testing: TOPPWRITECTD_OpenDIA
+1173/3457 Test: TOPPWRITECTD_OpenDIA
+Command: "/home/singjc/Documents/github/OpenMS-r1-full-ninja-build/bin/OpenDIA" "-test" "-write_ctd" "/home/singjc/Documents/github/OpenMS-r1-full-ninja-build/src/tests/topp/tmp_path/"
+Directory: /home/singjc/Documents/github/OpenMS-r1-full-ninja-build/src/tests/topp
+"TOPPWRITECTD_OpenDIA" start time: Nov 27 20:18 GMT
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   0.04 sec
+----------------------------------------------------------
+Test Passed.
+"TOPPWRITECTD_OpenDIA" end time: Nov 27 20:18 GMT
+"TOPPWRITECTD_OpenDIA" time elapsed: 00:00:00
+----------------------------------------------------------
+
+740/3457 Testing: OpenDIACalibration_test
+740/3457 Test: OpenDIACalibration_test
+Command: "/home/singjc/Documents/github/OpenMS-r1-full-ninja-build/src/tests/class_tests/bin/OpenDIACalibration_test"
+Directory: /home/singjc/Documents/github/OpenMS-r1-full-ninja-build/src/tests/class_tests/openms/topp_OpenDIA_tests
+"OpenDIACalibration_test" start time: Nov 27 20:18 GMT
+Output:
+----------------------------------------------------------
+OpenDIACalibration tests passed: anchors=240 rt_sigma=2.2239 ppm=4.01138 im=0.0199217
+<end of output>
+Test time =   4.96 sec
+----------------------------------------------------------
+Test Passed.
+"OpenDIACalibration_test" end time: Nov 27 20:18 GMT
+"OpenDIACalibration_test" time elapsed: 00:00:04
+----------------------------------------------------------
+
+746/3457 Testing: OpenDIAGBM_test
+746/3457 Test: OpenDIAGBM_test
+Command: "/home/singjc/Documents/github/OpenMS-r1-full-ninja-build/src/tests/class_tests/bin/OpenDIAGBM_test"
+Directory: /home/singjc/Documents/github/OpenMS-r1-full-ninja-build/src/tests/class_tests/openms/topp_OpenDIA_tests
+"OpenDIAGBM_test" start time: Nov 27 20:18 GMT
+Output:
+----------------------------------------------------------
+separable AUC 0.999979 trees 300
+GBM rescore r1: pos 108 neg 240 (hard precursors 60) trees 300/300/221
+GBM rescore r2: stopped (pooledPairedTDC: a fold has zero decoy spread.); keeping round 1 scores
+gbmRescore frac 0.02: targets at q<=0.01 204 (weak input 108, uninformative 0)
+GBM rescore r1: pos 108 neg 3000 (hard precursors 3000) trees 207/300/300
+GBM rescore r2: pos 761 neg 3000 (hard precursors 3000) trees 152/118/300
+GBM rescore r3: stopped (pooledPairedTDC: a fold has zero decoy spread.); keeping round 2 scores
+gbmRescore frac 0: targets at q<=0.01 688 (weak input 108, uninformative 0)
+all OpenDIAGBM tests passed
+<end of output>
+Test time =   8.32 sec
+----------------------------------------------------------
+Test Passed.
+"OpenDIAGBM_test" end time: Nov 27 20:19 GMT
+"OpenDIAGBM_test" time elapsed: 00:00:08
+----------------------------------------------------------
+
+End testing: Nov 27 20:19 GMT

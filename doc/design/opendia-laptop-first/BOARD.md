@@ -21,6 +21,7 @@ Current state on 23 November 2026: the HeLa diaPASEF entrapment at r ≈ 7. The 
 
 | Step | WP | State | Record |
 |---|---|---|---|
+| Organize private OpenDIA code into mirrored include/source modules and remove redundant filename prefixes (OpenMS 1aeda81e11); namespace, targets and CTest names unchanged | R-WP6 | Done: 20/20 tests, Astral raw01 seed0 3/3 byte-identical, cache removed | [RESULT_LAYOUT](gates/single-binary/layout-20261127/RESULT_LAYOUT.md) |
 | **Current default: 21,396 (D) / 37,342 (H), 82 % / 90 % of DIA-NN**; own q ≤ 0.01 lower bound D 1.11 %, H 1.29 % (OpenMS bcb156e036) | R-WP5 | Done | [README](README.md) |
 | Cleanup to one tool: `OpenDIA` / `OpenDIACalibrate` step tools and their-only code removed (OpenMS 35db7eaee1, after 319f043f77 and 9ba060f978); 14/14 tests, no warnings | R-WP6 | Done (byte-identical: D156, D7V, H7, 9/9 files) | [README](README.md) |
 | Rename the one tool `OpenDIAWorkflow` to `OpenDIA` (directory `src/topp/OpenDIA/`), `-scoring_lib` restored for Astral (OpenMS 46243afae4) | R-WP6 | Done (byte-identical: D156, 3/3 files) | [README](README.md) |
@@ -209,6 +210,7 @@ Current state on 23 November 2026: the HeLa diaPASEF entrapment at r ≈ 7. The 
 
 | Step | State | Record |
 |---|---|---|
+| Organize private OpenDIA code into mirrored include/source modules and remove redundant filename prefixes (OpenMS 1aeda81e11); namespace, targets and CTest names unchanged | Done: 20/20 tests, Astral raw01 seed0 3/3 byte-identical, cache removed | [RESULT_LAYOUT](gates/single-binary/layout-20261127/RESULT_LAYOUT.md) |
 | Compact streaming library tables and training-row-only RT refinement (OpenMS 8c0a89f053): 19 tests pass, allocated AnalysisLibrary heap 1344.23 to 372.519 MiB on the 603k library | Done: both raw01 seed0 arms byte-identical, 3/3 files each | [local validation](gates/single-binary/compact-library-20261124/RESULT_LOCAL.md) |
 | Full predicted-library direct-Parquet resource and identity experiment, unchanged three raws x five seeds | Done (pass): 15/15 byte-identical, COMPLETED 0:0; median wall 94.6 to 37.8 min (2.46x), peak RSS 87.9 to 64.5 GiB (-26%); bootstrap pass | [RESULT_PARQUET](gates/single-binary/astral-full-parquet/RESULT_PARQUET.md), [PLAN_PARQUET](gates/single-binary/astral-full-parquet/PLAN_PARQUET.md) |
 | Output-identical memory and runtime round (OpenMS a11a95ec05, bdb0159ff4): scoring state released early, vectorised scorer forward pass, parallel readout, compact calibration scan; 19 tests pass | Done locally: raw01 seed0 byte-identical 3/3 for mem5, rt1, rt2 | [local result](gates/single-binary/runtime-round-20261125/RESULT_LOCAL.md) |
