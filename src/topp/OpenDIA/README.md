@@ -107,6 +107,7 @@ the same module directories, with no `OpenDIA` prefix on header or implementatio
 | --- | --- |
 | `workflow/` | `Workflow` |
 | `library/` | `Library`, `LibraryParquet` |
+| `library/preparation/` | `Assay`, `DecoySequences`, `AssayPrediction`, `Preparation` |
 | `io/` | `SpectrumCache` |
 | `calibration/` | `Calibration`, `RTMap`, `RTRefine` |
 | `extraction/` | `Search`, `Traces`, `FragmentGrid`, `PeakPicker`, `MzIndex` |
@@ -117,12 +118,21 @@ Includes are qualified relative to `include/`, for example `#include <extraction
 `#include <library/Library.h>`. Header-only components and implementations without a separate header remain in
 their module directory, so the mirrored layout does not require artificial header/source pairs.
 
+Library preparation owns separate assay records, pseudo-reverse sequence generation and direct PeptDeep inference.
+`Preparation` composes these into the existing predicted-decoy workflow. It has no analysis-state or file-format
+ownership. The CLI alone adapts PQP records through `TransitionPQPFile`. Future FASTA prediction and assay generation
+can compose the same preparation components without coupling them to the compact analysis library. These future
+entry points are not implemented here.
+
 Tests remain flat in `test/`, with filenames such as `Workflow_test.cpp`, `FragmentGrid_cases.inc` and
 `no_openswath.cmake`. Build targets and CTest names retain their `OpenDIA` prefixes, independently of source filenames.
 
 ## Tests
 
 Run `ctest -R 'OpenDIA'` to include the TOPP INI/CTD checks as well as the core tests.
+- **`OpenDIAPreparation_test`:** sequence and annotation eligibility against the legacy decoy generator.
+  With ONNX, **`OpenDIAPreparation_prediction_test`** also compares real-model assay predictions and fresh generated
+  PQP bytes against the legacy preparation path. Legacy dependencies occur only in these test oracles.
 - **`OpenDIAWorkflow_test`:** compact-table grouping, top-twelve scoring, identities, moves and partial-cache fallback
   against an independent materialized library oracle, including shuffled/interleaved fragments.
 - **`OpenDIACalibration_test` and `OpenDIATraces_test`:** indexed and Library-based collector equivalence, including

@@ -5,6 +5,13 @@
 # $Authors: Justin Sing $
 # --------------------------------------------------------------------------
 
+add_executable(OpenDIAPreparation_test Preparation_test.cpp)
+target_link_libraries(OpenDIAPreparation_test PRIVATE OpenDIA_impl)
+add_test(NAME OpenDIAPreparation_test COMMAND OpenDIAPreparation_test ${CMAKE_CURRENT_BINARY_DIR}/preparation_sequences)
+if(WITH_ONNX)
+  add_test(NAME OpenDIAPreparation_prediction_test COMMAND OpenDIAPreparation_test ${CMAKE_CURRENT_BINARY_DIR}/preparation_prediction --prediction)
+endif()
+
 add_executable(OpenDIAWorkflow_test Workflow_test.cpp)
 target_link_libraries(OpenDIAWorkflow_test PRIVATE OpenDIA_impl)
 if(EXISTS "${CMAKE_SOURCE_DIR}/src/tests/topp/TargetedFileConverter_10_input.pqp")

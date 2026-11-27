@@ -7,8 +7,8 @@
 // --------------------------------------------------------------------------
 
 #include <workflow/Workflow.h>
+#include <library/preparation/Preparation.h>
 
-#include <OpenMS/ANALYSIS/OPENSWATH/OpenSwathLibraryPreparation.h>
 #include <OpenMS/ANALYSIS/OPENSWATH/TransitionPQPFile.h>
 #include <OpenMS/APPLICATIONS/TOPPBase.h>
 #include <OpenMS/CONCEPT/VersionInfo.h>
@@ -28,6 +28,110 @@
 #include <unistd.h>
 
 using namespace OpenMS;
+
+namespace
+{
+  namespace Preparation = OpenMS::OpenDIA::Preparation;
+
+  // The PQP reader/writer is the only preparation boundary using external assay records.
+  template <typename To, typename From>
+  void moveCompoundMetadata(To& to, From& from)
+  {
+    to.id = std::move(from.id);
+    to.sequence = std::move(from.sequence);
+    to.charge = from.charge;
+    to.rt = from.rt;
+    to.rt_start = from.rt_start;
+    to.rt_end = from.rt_end;
+    to.drift_time = from.drift_time;
+    to.protein_refs = std::move(from.protein_refs);
+    to.peptide_group_label = std::move(from.peptide_group_label);
+    to.gene_name = std::move(from.gene_name);
+    to.sum_formula = std::move(from.sum_formula);
+    to.compound_name = std::move(from.compound_name);
+    to.label_type = std::move(from.label_type);
+    to.smiles = std::move(from.smiles);
+    to.adducts = std::move(from.adducts);
+    to.modifications.reserve(from.modifications.size());
+    for (const auto& mod : from.modifications) to.modifications.push_back({mod.location, mod.unimod_id});
+  }
+
+  template <typename To, typename From>
+  void moveTransitionMetadata(To& to, From& from)
+  {
+    to.transition_name = std::move(from.transition_name);
+    to.peptide_ref = std::move(from.peptide_ref);
+    to.library_intensity = from.library_intensity;
+    to.product_mz = from.product_mz;
+    to.precursor_mz = from.precursor_mz;
+    to.precursor_im = from.precursor_im;
+    to.fragment_charge = from.fragment_charge;
+    to.fragment_nr = from.fragment_nr;
+    to.peptidoforms = std::move(from.peptidoforms);
+  }
+
+  Preparation::Assays fromPQP(OpenSwath::LightTargetedExperiment&& source)
+  {
+    Preparation::Assays result;
+    result.compounds.reserve(source.compounds.size());
+    result.transitions.reserve(source.transitions.size());
+    result.proteins.reserve(source.proteins.size());
+    for (auto& c : source.compounds)
+    {
+      Preparation::Compound compound;
+      moveCompoundMetadata(compound, c);
+      result.compounds.push_back(std::move(compound));
+    }
+    for (auto& t : source.transitions)
+    {
+      Preparation::Transition transition;
+      moveTransitionMetadata(transition, t);
+      transition.fragment_type = t.getFragmentType();
+      transition.decoy = t.getDecoy();
+      transition.detecting = t.isDetectingTransition();
+      transition.quantifying = t.isQuantifyingTransition();
+      transition.identifying = t.isIdentifyingTransition();
+      result.transitions.push_back(std::move(transition));
+    }
+    for (auto& p : source.proteins)
+      result.proteins.push_back({std::move(p.id), std::move(p.sequence), std::move(p.uniprot_id)});
+    return result;
+  }
+
+  OpenSwath::LightTargetedExperiment toPQP(Preparation::Assays&& source)
+  {
+    OpenSwath::LightTargetedExperiment result;
+    result.compounds.reserve(source.compounds.size());
+    result.transitions.reserve(source.transitions.size());
+    result.proteins.reserve(source.proteins.size());
+    for (auto& c : source.compounds)
+    {
+      OpenSwath::LightCompound compound;
+      moveCompoundMetadata(compound, c);
+      result.compounds.push_back(std::move(compound));
+    }
+    for (auto& t : source.transitions)
+    {
+      OpenSwath::LightTransition transition;
+      moveTransitionMetadata(transition, t);
+      transition.setFragmentType(t.fragment_type);
+      transition.setDecoy(t.decoy);
+      transition.setDetectingTransition(t.detecting);
+      transition.setQuantifyingTransition(t.quantifying);
+      transition.setIdentifyingTransition(t.identifying);
+      result.transitions.push_back(std::move(transition));
+    }
+    for (auto& p : source.proteins)
+    {
+      OpenSwath::LightProtein protein;
+      protein.id = std::move(p.id);
+      protein.sequence = std::move(p.sequence);
+      protein.uniprot_id = std::move(p.uniprot_id);
+      result.proteins.push_back(std::move(protein));
+    }
+    return result;
+  }
+}
 
 /**
   @page TOPP_OpenDIA OpenDIA
@@ -125,12 +229,12 @@ protected:
   }
 
   /// -decoys predict: drop the library's decoys and give every target a pseudo-reversed decoy predicted like a target
-  /// (OpenSwathLibraryPreparation::generateDecoys with predict_decoys and predict_keep_short, settings estimated from the
-  /// library). Returns the path of the target/decoy PQP it writes to @p cache_dir. The library is predicted once per
+  /// (library/preparation, settings estimated from the library). Returns the path of the target/decoy PQP it writes to
+  /// @p cache_dir. The library is predicted once per
   /// input: <stem>.predicted_decoys.pqp.key holds the SHA-1 of the input library, the model directory and the OpenMS
   /// revision, and a library with a matching key is reused. Prediction writes to a temporary name and renames, so a
   /// concurrent or interrupted call never leaves a partial library under the final name.
-  /// ponytail: the only remaining OpenSWATH dependency of OpenDIA; to be removed or replaced (decision pending).
+  /// TransitionPQPFile remains the format boundary; sequence generation and inference use OpenDIA-owned records.
   std::string predictDecoys_(const std::string& lib, const std::string& cache_dir)
   {
     const std::string stem = stem_(lib);
@@ -195,15 +299,16 @@ protected:
     TransitionPQPFile().convertLightTargetedExperimentToPQP(targets_pqp.c_str(), targets);
     targets = OpenSwath::LightTargetedExperiment();
 
-    OpenSwathLibraryPreparation::DecoyGeneratorParameters parameters;
-    parameters.method = "pseudo-reverse";
-    parameters.predict_decoys = true;
-    parameters.predict_keep_short = true;
-    parameters.predict_model_directory = getStringOption_("decoy_model_dir");
-    parameters.predict_threads = std::max(1, getIntOption_("threads"));
-    OpenSwathLibraryPreparation preparation;
-    preparation.setLogType(log_type_);
-    preparation.generateDecoys(targets_pqp, FileTypes::PQP, partial, FileTypes::PQP, parameters);
+    // Preserve the canonical-ID and numeric round trip of the previous preparation path.
+    TransitionPQPFile().convertPQPToTargetedExperiment(targets_pqp.c_str(), targets);
+    auto assays = fromPQP(std::move(targets));
+    targets = OpenSwath::LightTargetedExperiment();
+    Preparation::PredictionOptions options;
+    options.model_directory = getStringOption_("decoy_model_dir");
+    options.threads = std::max(1, getIntOption_("threads"));
+    options.log_type = log_type_;
+    auto predicted = toPQP(Preparation::predictDecoys(std::move(assays), options));
+    TransitionPQPFile().convertLightTargetedExperimentToPQP(partial.c_str(), predicted);
     std::filesystem::rename(partial, out);
     std::ofstream(key_file) << key;
     return out;
@@ -241,7 +346,7 @@ protected:
       }
       if (OpenDIA::isParquetLibrary(lib_path))
       {
-        writeLogError_("-decoys predict needs a PQP -lib (decoy prediction still runs through the OpenSWATH PQP code).");
+        writeLogError_("-decoys predict needs a PQP -lib (the prediction format boundary uses the PQP reader/writer).");
         return ILLEGAL_PARAMETERS;
       }
       const std::string cache = getStringOption_("decoy_cache");

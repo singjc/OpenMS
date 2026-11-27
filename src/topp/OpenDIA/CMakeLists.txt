@@ -30,6 +30,13 @@ add_library(OpenDIA_impl STATIC
   source/calibration/RTRefine.cpp
   source/library/Library.cpp
   source/library/LibraryParquet.cpp
+  source/library/preparation/DecoySequences.cpp
+  source/library/preparation/AssayPrediction.cpp
+  source/library/preparation/Preparation.cpp
+  include/library/preparation/Assay.h
+  include/library/preparation/DecoySequences.h
+  include/library/preparation/AssayPrediction.h
+  include/library/preparation/Preparation.h
   include/library/Library.h
   include/extraction/MzIndex.h
   include/extraction/Search.h
