@@ -16,8 +16,12 @@ LIB=$C/entlib-odp5-20261118/runs/D_cur_s0/hela_r5.predicted_decoys.pqp   # predi
 TGT=$C/entlib-r5-20261118/targets.pqp                                     # targets-only library DIA-NN searched
 cd "$W"
 sha256sum -c bundle.sha256 || exit 3
+# Attempt 1 (job 44884353) ran every evaluation with LABELS=old: --cleanenv dropped the per-command variables. Its outputs
+# are kept as out_attempt1 (the old-label reproduction stands); this attempt passes the mode with --env and checks it.
+test -d out_attempt1 || mv out out_attempt1
 mkdir -p lay out
-py() { singularity exec --cleanenv --no-home --bind "$C" "$SIF" python "$@"; }
+LABELS=old; RELABEL=$W/relabel_hela.tsv
+py() { singularity exec --cleanenv --no-home --bind "$C" --env "LABELS=$LABELS,RELABEL=$RELABEL" "$SIF" python "$@"; }
 # Layouts in the evaluator's <P>_<arm>_s<seed> form, symlinks only (no copy, no write to run directories).
 # record:runs_dir:set:arms (arm names as published). Only run tables are linked.
 records=(
@@ -51,15 +55,17 @@ for name in odp sib rtr gbt v7m6 blend; do
   for set in D H; do
     ls -d lay/$name/${set}_* > /dev/null 2>&1 || continue
     for labels in old corrected; do
-      LABELS=$labels RELABEL=$W/relabel_hela.tsv py eval_pdec_relabel.py "$LIB" "lay/$name" "$set" > out/${name}_${set}_${labels}.txt 2>&1
+      LABELS=$labels; py eval_pdec_relabel.py "$LIB" "lay/$name" "$set" > out/${name}_${set}_${labels}.txt 2>&1
       echo "$name $set $labels exit=$?"
+      grep -q "^labels: $labels;" out/${name}_${set}_${labels}.txt || { echo "LABEL MODE NOT APPLIED $name $set $labels"; exit 4; }
     done
   done
 done
 for set in D H; do
   for labels in old corrected; do
-    LABELS=$labels RELABEL=$W/relabel_hela.tsv py eval_diann_relabel.py "$TGT" "$C/entlib-diann5-20261119/$set/report.parquet" > out/diann_${set}_${labels}.txt 2>&1
+    LABELS=$labels; py eval_diann_relabel.py "$TGT" "$C/entlib-diann5-20261119/$set/report.parquet" > out/diann_${set}_${labels}.txt 2>&1
     echo "diann $set $labels exit=$?"
+    grep -q "^labels: $labels;" out/diann_${set}_${labels}.txt || { echo "LABEL MODE NOT APPLIED diann $set $labels"; exit 4; }
   done
 done
 sha256sum out/*.txt > out/outputs.sha256

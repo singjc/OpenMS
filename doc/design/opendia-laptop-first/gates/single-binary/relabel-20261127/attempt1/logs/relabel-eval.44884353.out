@@ -1,0 +1,32 @@
+relabel.sbatch: OK
+eval_pdec_relabel.py: OK
+eval_diann_relabel.py: OK
+relabel_hela.tsv: OK
+relabel-eval-20261127.sif: OK
+odp D old exit=0
+odp D corrected exit=0
+odp H old exit=0
+odp H corrected exit=0
+sib D old exit=0
+sib D corrected exit=0
+sib H old exit=0
+sib H corrected exit=0
+rtr D old exit=0
+rtr D corrected exit=0
+rtr H old exit=0
+rtr H corrected exit=0
+gbt D old exit=0
+gbt D corrected exit=0
+gbt H old exit=0
+gbt H corrected exit=0
+v7m6 D old exit=0
+v7m6 D corrected exit=0
+blend D old exit=0
+blend D corrected exit=0
+blend H old exit=0
+blend H corrected exit=0
+diann D old exit=0
+diann D corrected exit=0
+diann H old exit=0
+diann H corrected exit=0
+done
