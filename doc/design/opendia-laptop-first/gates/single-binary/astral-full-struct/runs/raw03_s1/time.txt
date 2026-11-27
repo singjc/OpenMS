@@ -1,0 +1,23 @@
+	Command being timed: "singularity exec --cleanenv --no-home --home /tmp/astr-44925732-xQ7Ki7:/tmp --env TMPDIR=/tmp --bind /nfs/research/juan/singj/opendia --bind /tmp/astr-44925732-xQ7Ki7:/tmp /nfs/research/juan/singj/opendia/part-20261127/opendia-struct-20261127.sif OpenDIA -in /nfs/research/juan/singj/opendia/proteobench-astral-entrapment/transfer/raw/LFQ_Astral_DIA_15min_50ng_Human_03.raw -lib /nfs/research/juan/singj/opendia/astral-struct-20261127/library/search6.opendia.parquet -scoring_lib /nfs/research/juan/singj/opendia/astral-struct-20261127/library/scoring12.opendia.parquet -out_dir /nfs/research/juan/singj/opendia/astral-struct-20261127/runs/raw03_s1 -threads 16 -seed 1"
+	User time (seconds): 10590.10
+	System time (seconds): 287.91
+	Percent of CPU this job got: 782%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 23:09.36
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 51553648
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 757
+	Minor (reclaiming a frame) page faults: 164785407
+	Voluntary context switches: 28384206
+	Involuntary context switches: 752893
+	Swaps: 0
+	File system inputs: 79166
+	File system outputs: 1976
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0
