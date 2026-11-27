@@ -188,6 +188,10 @@ namespace OpenMS::OpenDIA
       windows_[i].core_area.fill(0.0);
       windows_[i].profile.fill(0.0);
     }
+    apex_k_.resize(window_index_.size());
+    for (std::size_t k = 0; k < window_index_.size(); ++k) apex_k_[k] = windows_[window_index_[k]].rt_apex;
+    im_.resize(np);
+    for (std::size_t p = 0; p < np; ++p) im_[p] = precursors_[p].im;
     by_apex_.resize(windows_.size());
     std::iota(by_apex_.begin(), by_apex_.end(), 0u);
     std::sort(by_apex_.begin(), by_apex_.end(), [&](std::uint32_t a, std::uint32_t b)
@@ -335,10 +339,10 @@ namespace OpenMS::OpenDIA
         bool open = false;
         for (std::uint32_t k = window_offsets_[p]; k < window_offsets_[p + 1] && !open; ++k)
         {
-          open = std::abs(rt - windows_[window_index_[k]].rt_apex) < half_;
+          open = std::abs(rt - apex_k_[k]) < half_;
         }
         if (!open) continue;
-        const double precursor_im = precursors_[p].im;
+        const double precursor_im = im_[p];
         const bool filter_im = spectrum_has_im && precursor_im > 0.0;
         if (filter_im && mobilities == nullptr && std::abs(scalar_im - precursor_im) > im_half_) continue;
         reached_.push_back(p);
@@ -352,7 +356,7 @@ namespace OpenMS::OpenDIA
       const std::uint32_t p = reached_[static_cast<std::size_t>(r)];
       // Fragment sums of this spectrum, once per precursor: |ppm| < tolerance (open interval), and, with mobility
       // filtering, |1/K0 - precursor 1/K0| <= im half width.
-      const double precursor_im = precursors_[p].im;
+      const double precursor_im = im_[p];
       const bool filter_im = spectrum_has_im && precursor_im > 0.0;
       std::array<double, K>& sum = sums_[static_cast<std::size_t>(r)];
       sum.fill(0.0);
@@ -383,7 +387,7 @@ namespace OpenMS::OpenDIA
         for (std::uint32_t k = window_offsets_[p]; k < window_offsets_[p + 1]; ++k)
         {
           const std::uint32_t w = window_index_[k];
-          double d = rt - windows_[w].rt_apex;
+          double d = rt - apex_k_[k];
           if (!(std::abs(d) < half_)) continue;
           // The apex sits on the edge of the two central bins; snap its own scan onto the edge and floor (upper bin).
           if (std::abs(d) < APEX_SNAP_S) d = 0.0;

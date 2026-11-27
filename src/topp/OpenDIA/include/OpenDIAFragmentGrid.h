@@ -155,6 +155,8 @@ namespace OpenMS::OpenDIA
     const std::vector<Precursor>& precursors_;
     std::vector<InterferenceResolver::Window>& windows_;
     std::vector<std::uint32_t> window_offsets_, window_index_;
+    /// Hot-loop copies kept contiguous (cache locality; same values): apex RT per window_index_ entry, 1/K0 per precursor.
+    std::vector<double> apex_k_, im_;
     std::vector<double> rt_low_, rt_high_;
     std::vector<std::uint32_t> by_apex_;  ///< Windows by apex (close order).
     std::size_t close_cursor_ = 0;

@@ -305,6 +305,8 @@ namespace OpenMS::OpenDIA
       bool closed;
     };
     std::vector<Slot> slots_;
+    /// Last collected RT per member (NaN while empty), so the per-spectrum order check needs no load from the trace vector.
+    std::vector<double> member_last_rt_;
     std::vector<std::size_t> active_; ///< Scratch: members of the current isolation window inside their range.
     bool ion_mobility_array_as_vssc_ = false;
     bool saw_im_ = false;

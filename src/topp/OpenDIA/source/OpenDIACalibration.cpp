@@ -445,6 +445,11 @@ namespace OpenMS::OpenDIA
       const Member& member = panel_[by_mz_[s]];
       slots_[s] = {member.precursor_mz, member.window_low, member.window_high, member.closed};
     }
+    member_last_rt_.resize(panel_.size());
+    for (std::size_t m = 0; m < panel_.size(); ++m)
+    {
+      member_last_rt_[m] = panel_[m].rt.empty() ? std::numeric_limits<double>::quiet_NaN() : panel_[m].rt.back();
+    }
   }
 
   void CalibrationCollector::consumeSpectrum(MSSpectrum& spectrum)
@@ -525,12 +530,14 @@ namespace OpenMS::OpenDIA
       try
       {
         Member& member = panel_[active_[m]];
-        if (!member.rt.empty() && rt < member.rt.back())
+        // last == member.rt.back(), NaN when empty: both comparisons are then false, as with the empty checks.
+        double& last = member_last_rt_[active_[m]];
+        if (rt < last)
         {
           throw std::runtime_error("Calibration requires MS2 spectra in nondecreasing RT order");
         }
         // Spectra sharing one RT (diaPASEF windows of one frame) merge into one entry by the per-fragment maximum.
-        const bool merge = !member.rt.empty() && member.rt.back() == rt;
+        const bool merge = last == rt;
         std::array<float, FRAGMENTS> intensity{}, ppm{}, im{};
         for (std::size_t f = 0; f < member.fragment_count; ++f)
         {
@@ -587,6 +594,7 @@ namespace OpenMS::OpenDIA
           continue;
         }
         member.rt.push_back(rt);
+        last = rt;
         member.intensity.push_back(intensity);
         member.ppm.push_back(ppm);
         // Without a library 1/K0 the mean mobility is never computed (always 0), so it is not stored.
