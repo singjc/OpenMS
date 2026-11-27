@@ -28,8 +28,9 @@ namespace OpenMS::OpenDIA
   {
     constexpr std::uint32_t NO_IM = std::numeric_limits<std::uint32_t>::max();
 
-    /// Fixed record header; the variable parts follow in this order: precursors (3 doubles each), peak m/z (doubles),
-    /// peak intensities (floats), ion-mobility values (floats).
+    /// Fixed record header; each precursor is six doubles (m/z, isolation offsets, drift time, drift offsets)
+    /// and one unit byte, followed by peak m/z (doubles), intensities (floats), and mobility values (floats).
+    /// This cache is run-local, so no persistent-format compatibility is required.
     struct Header
     {
       double rt;
@@ -120,8 +121,11 @@ namespace OpenMS::OpenDIA
     put(out_buffer_, &h, 1);
     for (const auto& p : spectrum.getPrecursors())
     {
-      const double v[3] = {p.getMZ(), p.getIsolationWindowLowerOffset(), p.getIsolationWindowUpperOffset()};
-      put(out_buffer_, v, 3);
+      const double v[6] = {p.getMZ(), p.getIsolationWindowLowerOffset(), p.getIsolationWindowUpperOffset(),
+                           p.getDriftTime(), p.getDriftTimeWindowLowerOffset(), p.getDriftTimeWindowUpperOffset()};
+      const auto unit = static_cast<std::uint8_t>(p.getDriftTimeUnit());
+      put(out_buffer_, v, 6);
+      put(out_buffer_, &unit, 1);
       precursors_.push_back({v[0], v[1], v[2]});
       low = std::min(low, v[0] - v[1]);
       high = std::max(high, v[0] + v[2]);
@@ -176,10 +180,25 @@ namespace OpenMS::OpenDIA
     in.seekg(static_cast<std::streamoff>(entry.offset));
     Header h;
     in.read(reinterpret_cast<char*>(&h), sizeof(h));
-    std::vector<double> pre(3 * static_cast<std::size_t>(h.precursors));
+    if (!in) throw std::runtime_error("SpectrumCache: cannot read record header for " + file_);
+    std::vector<Precursor> precursors(h.precursors);
+    for (auto& precursor : precursors)
+    {
+      double values[6];
+      std::uint8_t unit;
+      in.read(reinterpret_cast<char*>(values), sizeof(values));
+      in.read(reinterpret_cast<char*>(&unit), sizeof(unit));
+      if (!in) throw std::runtime_error("SpectrumCache: cannot read precursor isolation rectangle for " + file_);
+      precursor.setMZ(values[0]);
+      precursor.setIsolationWindowLowerOffset(values[1]);
+      precursor.setIsolationWindowUpperOffset(values[2]);
+      precursor.setDriftTime(values[3]);
+      precursor.setDriftTimeWindowLowerOffset(values[4]);
+      precursor.setDriftTimeWindowUpperOffset(values[5]);
+      precursor.setDriftTimeUnit(static_cast<DriftTimeUnit>(unit));
+    }
     std::vector<double> mz(h.peaks);
     std::vector<float> intensity(h.peaks);
-    in.read(reinterpret_cast<char*>(pre.data()), static_cast<std::streamsize>(pre.size() * sizeof(double)));
     in.read(reinterpret_cast<char*>(mz.data()), static_cast<std::streamsize>(mz.size() * sizeof(double)));
     in.read(reinterpret_cast<char*>(intensity.data()), static_cast<std::streamsize>(intensity.size() * sizeof(float)));
     out = MSSpectrum();
@@ -196,13 +215,6 @@ namespace OpenMS::OpenDIA
     out.setMSLevel(h.level);
     out.setDriftTime(h.drift_time);
     out.setDriftTimeUnit(static_cast<DriftTimeUnit>(h.drift_unit));
-    std::vector<Precursor> precursors(h.precursors);
-    for (std::size_t i = 0; i < precursors.size(); ++i)
-    {
-      precursors[i].setMZ(pre[3 * i]);
-      precursors[i].setIsolationWindowLowerOffset(pre[3 * i + 1]);
-      precursors[i].setIsolationWindowUpperOffset(pre[3 * i + 2]);
-    }
     out.setPrecursors(std::move(precursors));
     out.resize(h.peaks);
     for (std::size_t i = 0; i < h.peaks; ++i)

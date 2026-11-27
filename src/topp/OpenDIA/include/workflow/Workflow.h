@@ -156,6 +156,12 @@ namespace OpenMS::OpenDIA
     std::size_t extraction_groups = 0;
     /// Groups extracted concurrently, each with threads / this many threads. 0 = auto (threads / 4, at least 1).
     std::size_t extraction_parallel = 0;
+    /// Optional native .xipm visualization export, after the final scoring pass. Empty disables all export work.
+    std::string peakmaps_path;
+    double peakmaps_q = 0.01;
+    double peakmaps_rt_padding_s = 15.0;
+    bool peakmaps_include_decoys = false;
+    std::uint64_t peakmaps_run_id = 0;
   };
 
   /// One scored candidate window of the run (the population), with its features and result.

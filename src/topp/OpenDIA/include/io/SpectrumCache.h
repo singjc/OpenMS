@@ -25,8 +25,9 @@ namespace OpenMS::OpenDIA
     @brief Run-local spectrum cache: the first raw read writes every MS1 and MS2 spectrum to one flat binary file, later
     passes replay it instead of decoding the raw file again.
 
-    Only the fields the OpenDIA collectors read are kept, at their in-memory precision: RT, MS level, precursor m/z and
-    isolation offsets, peaks (m/z double, intensity float), drift time and its unit, and the first ion-mobility float
+    Only the fields the OpenDIA collectors read are kept, at their in-memory precision: RT, MS level, precursor m/z,
+    isolation offsets, precursor mobility rectangles (drift time, unit, and lower/upper offsets), peaks
+    (m/z double, intensity float), spectrum drift time and its unit, and the first ion-mobility float
     array with its exact name (the name carries the unit). Records are written in arrival order, so a replay delivers
     the same spectra in the same order. An in-memory index (level, RT, isolation window, file offset) allows reading
     the records of selected isolation windows only.

@@ -5,6 +5,19 @@
 # $Authors: Justin Sing $
 # --------------------------------------------------------------------------
 
+# Output contracts are tested through both native readers and direct Parquet inspection.
+foreach(_output_test IN ITEMS Quantification QpxExport ReportExport PeakMapExport Annotations)
+  add_executable(OpenDIA${_output_test}_test ${_output_test}_test.cpp)
+  target_link_libraries(OpenDIA${_output_test}_test PRIVATE OpenDIA_impl)
+  add_test(NAME OpenDIA${_output_test}_test COMMAND OpenDIA${_output_test}_test ${CMAKE_CURRENT_BINARY_DIR}/OpenDIA${_output_test}_test_data)
+  # The implementation uses headers privately. Reader-based output tests need the same Arrow headers.
+  foreach(_output_arrow IN ITEMS ${OPENMS_ARROW_TARGET} ${OPENMS_PARQUET_TARGET} Arrow::arrow_shared Parquet::parquet_shared)
+    if(TARGET ${_output_arrow})
+      target_include_directories(OpenDIA${_output_test}_test SYSTEM PRIVATE $<TARGET_PROPERTY:${_output_arrow},INTERFACE_INCLUDE_DIRECTORIES>)
+    endif()
+  endforeach()
+endforeach()
+
 add_executable(OpenDIAPreparation_test Preparation_test.cpp)
 target_link_libraries(OpenDIAPreparation_test PRIVATE OpenDIA_impl)
 add_test(NAME OpenDIAPreparation_test COMMAND OpenDIAPreparation_test ${CMAKE_CURRENT_BINARY_DIR}/preparation_sequences)

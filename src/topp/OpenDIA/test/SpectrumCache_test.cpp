@@ -71,8 +71,16 @@ namespace
       a.setMZ(500.25 + rt * 1e-3);
       a.setIsolationWindowLowerOffset(12.5);
       a.setIsolationWindowUpperOffset(12.75);
+      a.setDriftTime(1.0375123456789);
+      a.setDriftTimeUnit(DriftTimeUnit::VSSC);
+      a.setDriftTimeWindowLowerOffset(0.0123456789123);
+      a.setDriftTimeWindowUpperOffset(0.0234567891234);
       Precursor b = a;
       b.setMZ(700.125);
+      b.setDriftTime(20.125678912345);
+      b.setDriftTimeUnit(DriftTimeUnit::MILLISECOND);
+      b.setDriftTimeWindowLowerOffset(2.125678912345);
+      b.setDriftTimeWindowUpperOffset(1.987654321012);
       s.setPrecursors({a, b});
     }
     if (im_array)
@@ -109,6 +117,10 @@ namespace
       require(p.getMZ() == q.getMZ() && p.getIsolationWindowLowerOffset() == q.getIsolationWindowLowerOffset() &&
                   p.getIsolationWindowUpperOffset() == q.getIsolationWindowUpperOffset(),
               what + ": precursor");
+      require(p.getDriftTime() == q.getDriftTime() && p.getDriftTimeUnit() == q.getDriftTimeUnit() &&
+                  p.getDriftTimeWindowLowerOffset() == q.getDriftTimeWindowLowerOffset() &&
+                  p.getDriftTimeWindowUpperOffset() == q.getDriftTimeWindowUpperOffset(),
+              what + ": precursor mobility rectangle");
     }
     require(a.getDriftTime() == b.getDriftTime() && a.getDriftTimeUnit() == b.getDriftTimeUnit(), what + ": drift time");
     require(a.containsIMData() == b.containsIMData(), what + ": has IM");

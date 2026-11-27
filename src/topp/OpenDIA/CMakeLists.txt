@@ -33,6 +33,16 @@ add_library(OpenDIA_impl STATIC
   source/library/preparation/DecoySequences.cpp
   source/library/preparation/AssayPrediction.cpp
   source/library/preparation/Preparation.cpp
+  source/results/Annotations.cpp
+  source/results/Quantification.cpp
+  source/results/QpxExport.cpp
+  source/results/ReportExport.cpp
+  source/io/PeakMapExport.cpp
+  include/results/Annotations.h
+  include/results/Quantification.h
+  include/results/QpxExport.h
+  include/results/ReportExport.h
+  include/io/PeakMapExport.h
   include/library/preparation/Assay.h
   include/library/preparation/DecoySequences.h
   include/library/preparation/AssayPrediction.h

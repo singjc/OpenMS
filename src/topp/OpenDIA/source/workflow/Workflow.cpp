@@ -14,6 +14,7 @@
 #include <calibration/RTRefine.h>
 #include <features/PeakFeatures.h>
 #include <io/SpectrumCache.h>
+#include <io/PeakMapExport.h>
 #include <extraction/Traces.h>
 
 #include <OpenMS/CHEMISTRY/AASequence.h>
@@ -643,9 +644,31 @@ namespace OpenMS::OpenDIA
         " ms2_tolerance_ppm=" + std::to_string(cal.ms2_tolerance_ppm) + " boundary_half_widths=" + std::to_string(cal.boundary_half_widths) +
         " seconds=" + std::to_string(seconds(t_run)));
 
+    // Visualization is separate from scoring and runs only once, on the final result, while the cache is alive.
+    const auto export_maps = [&]
+    {
+      if (options_.peakmaps_path.empty()) return;
+      PeakMapExportOptions export_options;
+      export_options.path = options_.peakmaps_path;
+      export_options.q_value = options_.peakmaps_q;
+      export_options.rt_padding_s = options_.peakmaps_rt_padding_s;
+      export_options.include_decoys = options_.peakmaps_include_decoys;
+      export_options.im_array_as_vssc = options_.im_array_as_vssc;
+      export_options.run_id = options_.peakmaps_run_id;
+      const auto start = std::chrono::steady_clock::now();
+      exportPeakMaps(lib, result, export_options, [&](Interfaces::IMSDataConsumer& consumer, const std::vector<int>& levels)
+      {
+        readSpectra(path, consumer, levels, cache_.get());
+      });
+      say("Peak maps: " + options_.peakmaps_path + " seconds=" + std::to_string(seconds(start)));
+    };
     // Steps 2-6.
     searchAndScore_(path, result, anchors, {}, cal.tolerance_s, say, t_run);
-    if (!options_.rt_refine) return result;
+    if (!options_.rt_refine)
+    {
+      export_maps();
+      return result;
+    }
 
     // Per-run ridge RT correction from the first pass's own q <= 0.01 target IDs, then a
     // second search, extraction and scoring pass with corrected RTs and a narrower RT window.
@@ -668,12 +691,17 @@ namespace OpenMS::OpenDIA
       folds.push_back(p.rt_fold);
     }
     const auto refined = refineRT_(train, y, folds, cal.tolerance_s, "RT refine", say);
-    if (refined.first.empty()) return result;
+    if (refined.first.empty())
+    {
+      export_maps();
+      return result;
+    }
     // Release the first pass before the second.
     std::vector<RunWindow>().swap(result.windows);
     std::vector<float>().swap(result.features);
     result.feature_names.clear();
     searchAndScore_(path, result, anchors, refined.first, refined.second, say, t_run);
+    export_maps();
     return result;
   }
 

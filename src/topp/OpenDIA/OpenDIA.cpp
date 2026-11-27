@@ -8,17 +8,22 @@
 
 #include <workflow/Workflow.h>
 #include <library/preparation/Preparation.h>
+#include <results/Annotations.h>
+#include <results/QpxExport.h>
+#include <results/ReportExport.h>
 
 #include <OpenMS/ANALYSIS/OPENSWATH/TransitionPQPFile.h>
 #include <OpenMS/APPLICATIONS/TOPPBase.h>
 #include <OpenMS/CONCEPT/VersionInfo.h>
 #include <OpenMS/FORMAT/FileHandler.h>
+#include <OpenMS/FORMAT/ParamXMLFile.h>
 #include <OpenMS/SYSTEM/File.h>
 #include <OpenMS/SYSTEM/SysInfo.h>
 
 #include <algorithm>
 #include <charconv>
 #include <chrono>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -142,9 +147,10 @@ namespace
   12-fragment grids, shared-signal interference); a cross-fitted, self-trained scorer per run; and q-values by pooled
   paired target-decoy competition. Across runs, precursors get a global q-value from their best run score.
 
-  Output directory: <run>.precursors.tsv (one row per precursor winner), <run>.calibration.json, precursors.tsv
-  (precursors at the run and global q cut, all runs) and optionally <run>.features.tsv (every scored window with its
-  features).
+  Output directory: qpx/ holds the canonical QPX evidence dataset. precursors.tsv (or Parquet) contains every
+  retained precursor winner across runs. Precursor, peptide and protein-group matrices apply the configured
+  run/global q-value cuts. Calibration JSON remains a sidecar. Optional XIPM files contain measured peak maps.
+  Legacy TSVs are available under legacy/ for exact comparisons.
 */
 class TOPPOpenDIA final : public TOPPBase
 {
@@ -162,9 +168,25 @@ protected:
                        "(same precursor IDs); default: the search fragments", false);
     setValidFormats_("scoring_lib", {"pqp", "parquet"});
     registerOutputDir_("out_dir", "<dir>", "", "Output directory");
-    registerDoubleOption_("q", "<q>", 0.01, "q-value cut of the combined precursor table", false);
+    registerDoubleOption_("q", "<q>", 0.01, "Run and global peak-group q-value cut for quantification matrices", false);
     setMinFloat_("q", 0.0);
     setMaxFloat_("q", 1.0);
+    registerDoubleOption_("peptide_q", "<q>", 0.01, "Run and global peptide q-value cut for the peptide matrix", false);
+    setMinFloat_("peptide_q", 0.0);
+    setMaxFloat_("peptide_q", 1.0);
+    registerDoubleOption_("protein_q", "<q>", 0.01, "Run and global protein-group q-value cut for the protein-group matrix", false);
+    setMinFloat_("protein_q", 0.0);
+    setMaxFloat_("protein_q", 1.0);
+    registerStringOption_("output_format", "<format>", "tsv", "High-level tables and matrix format (canonical QPX is always Parquet)", false);
+    setValidStrings_("output_format", {"tsv", "parquet", "both"});
+    registerFlag_("legacy_outputs", "Also write the original byte-compatible precursor TSVs in legacy/");
+    registerFlag_("peakmaps_out", "Also export measured MS1/MS2 peak maps as <run>.xipm (additional spectrum replay)");
+    registerDoubleOption_("peakmaps_q", "<q>", 0.01, "Run q-value cut for optional XIPM peak maps", false);
+    setMinFloat_("peakmaps_q", 0.0);
+    setMaxFloat_("peakmaps_q", 1.0);
+    registerDoubleOption_("peakmaps_rt_padding", "<seconds>", 15.0, "RT padding on each side of the winning peak for optional XIPM export", false);
+    setMinFloat_("peakmaps_rt_padding", 0.0);
+    registerFlag_("peakmaps_decoys", "Include decoys passing peakmaps_q in optional XIPM export");
     registerFlag_("features_out", "Also write <run>.features.tsv with every scored window and its features");
     registerIntOption_("seed", "<n>", 0, "Scorer seed", false);
     setMinInt_("seed", 0);
@@ -218,7 +240,7 @@ protected:
 
   static std::string stem_(const std::string& path)
   {
-    return std::filesystem::path(path).stem().string();
+    return File::stemName(path);
   }
 
   static void number_(std::string& row, double v)
@@ -325,6 +347,19 @@ protected:
       writeLogError_("No input runs.");
       return ILLEGAL_PARAMETERS;
     }
+    for (const auto value : {q_cut, getDoubleOption_("peptide_q"), getDoubleOption_("protein_q"), getDoubleOption_("peakmaps_q")})
+    {
+      if (!std::isfinite(value) || value < 0.0 || value > 1.0)
+      {
+        writeLogError_("Output q-value cuts must be finite and in [0, 1].");
+        return ILLEGAL_PARAMETERS;
+      }
+    }
+    if (!std::isfinite(getDoubleOption_("peakmaps_rt_padding")))
+    {
+      writeLogError_("Peak-map RT padding must be finite.");
+      return ILLEGAL_PARAMETERS;
+    }
     std::filesystem::create_directories(out_dir);
     std::map<std::string, int> stems;
     for (const auto& in : inputs)
@@ -359,6 +394,15 @@ protected:
     SysInfo::getProcessMemoryConsumption(library_rss);
     writeLogInfo_("Library: precursors=" + std::to_string(library.precursors.size()) + " pairs=" + std::to_string(library.pairs) +
                   " rss_mb=" + std::to_string(library_rss / 1024));
+
+    const auto genes = OpenDIA::readGeneAnnotations(lib_path);
+    const OpenDIA::ReportingOptions reporting{q_cut, getDoubleOption_("peptide_q"), getDoubleOption_("protein_q")};
+    const bool legacy_outputs = getFlag_("legacy_outputs");
+    const std::string legacy_dir = out_dir + "/legacy";
+    const std::string qpx_dir = out_dir + "/qpx";
+    std::filesystem::create_directories(qpx_dir);
+    ParamXMLFile().store(out_dir + "/parameters.ini", getParam_());
+    if (legacy_outputs) std::filesystem::create_directories(legacy_dir);
 
     OpenDIA::RunOptions options;
     options.threads = std::max(1, getIntOption_("threads"));
@@ -406,13 +450,18 @@ protected:
     {
       const std::string name = stem_(inputs[r]);
       writeLogInfo_("Run " + std::to_string(r + 1) + "/" + std::to_string(inputs.size()) + ": " + inputs[r]);
+      options.peakmaps_path = getFlag_("peakmaps_out") ? out_dir + "/" + name + ".xipm" : "";
+      options.peakmaps_q = getDoubleOption_("peakmaps_q");
+      options.peakmaps_rt_padding_s = getDoubleOption_("peakmaps_rt_padding");
+      options.peakmaps_include_decoys = getFlag_("peakmaps_decoys");
+      options.peakmaps_run_id = r;
       OpenDIA::RunAnalysis analysis(library, options, [&](const std::string& line) { writeLogInfo_("  " + line); });
       OpenDIA::RunResult result = analysis.run(inputs[r]);
       {
         std::ofstream json(out_dir + "/" + name + ".calibration.json");
         json << result.calibration_json;
       }
-      if (!writeRun_(out_dir + "/" + name + ".precursors.tsv", name, library, result))
+      if (legacy_outputs && !writeRun_(legacy_dir + "/" + name + ".precursors.tsv", name, library, result))
       {
         return CANNOT_WRITE_OUTPUT_FILE;
       }
@@ -425,46 +474,29 @@ protected:
         const auto& w = result.windows[i];
         if (w.score > OpenDIA::CrossFitScorer::NOT_KEPT) hits[w.precursor].push_back({r, i, w.score, w.q_value});
       }
-      // Keep only what the combined table needs.
+      const auto evidence_start = std::chrono::steady_clock::now();
+      OpenDIA::writeCandidateEvidence(qpx_dir, library, result);
+      writeLogInfo_("Candidate evidence: windows=" + std::to_string(result.windows.size()) + " seconds=" +
+                    std::to_string(std::chrono::duration<double>(std::chrono::steady_clock::now() - evidence_start).count()));
+      // Candidate diagnostics have been persisted. Retain windows for cross-run reporting.
       std::vector<float>().swap(result.features);
       results.push_back(std::move(result));
     }
 
-    // Global precursor q: best calibrated score over runs, paired target-decoy competition (ties to the decoy).
-    std::vector<double> global_q(library.precursors.size(), 1.0);
-    {
-      std::vector<double> best(library.precursors.size(), -std::numeric_limits<double>::infinity());
-      for (std::size_t p = 0; p < hits.size(); ++p)
-        for (const auto& h : hits[p]) best[p] = std::max(best[p], static_cast<double>(h.score));
-      std::vector<std::int64_t> pair_winner(library.pairs, -1);
-      for (std::uint32_t p = 0; p < library.precursors.size(); ++p)
-      {
-        if (!std::isfinite(best[p])) continue;
-        auto& w = pair_winner[library.precursors[p].pair];
-        if (w < 0 || best[p] > best[w] || (best[p] == best[w] && library.precursors[p].decoy)) w = p;
-      }
-      std::vector<std::uint32_t> ranked;
-      for (auto w : pair_winner)
-        if (w >= 0) ranked.push_back(static_cast<std::uint32_t>(w));
-      std::sort(ranked.begin(), ranked.end(), [&](std::uint32_t a, std::uint32_t b)
-      {
-        if (best[a] != best[b]) return best[a] > best[b];
-        if (library.precursors[a].decoy != library.precursors[b].decoy) return library.precursors[a].decoy;
-        return a < b;
-      });
-      std::vector<double> q(ranked.size());
-      double t = 0.0, d = 0.0;
-      for (std::size_t i = 0; i < ranked.size(); ++i)
-      {
-        (library.precursors[ranked[i]].decoy ? d : t) += 1.0;
-        q[i] = std::min(1.0, (d + 1.0) / std::max(t, 1.0));
-      }
-      for (std::size_t i = q.size(); i-- > 1;) q[i - 1] = std::min(q[i - 1], q[i]);
-      for (std::size_t i = 0; i < ranked.size(); ++i) global_q[ranked[i]] = q[i];
-    }
+    const auto reporting_start = std::chrono::steady_clock::now();
+    const auto quantification = OpenDIA::quantify(library, results, reporting);
+    const auto& global_q = quantification.global_precursor_q;
+    OpenDIA::writeQpxDataset(qpx_dir, library, results, quantification, genes, reporting);
+    OpenDIA::writeReports(out_dir, library, results, quantification, genes, reporting, getStringOption_("output_format"));
+    writeLogInfo_("QPX and reports: seconds=" +
+                  std::to_string(std::chrono::duration<double>(std::chrono::steady_clock::now() - reporting_start).count()));
 
-    std::ofstream all(out_dir + "/precursors.tsv");
-    all << "run\tprecursor_id\tsequence\tcharge\tproteins\trt_apex\trt_start\trt_end\tarea\tscore\tq_value\tglobal_q_value\n";
+    std::ofstream all;
+    if (legacy_outputs)
+    {
+      all.open(legacy_dir + "/precursors.tsv");
+      all << "run\tprecursor_id\tsequence\tcharge\tproteins\trt_apex\trt_start\trt_end\tarea\tscore\tq_value\tglobal_q_value\n";
+    }
     std::size_t rows = 0, global_targets = 0;
     for (std::uint32_t p = 0; p < library.precursors.size(); ++p)
     {
@@ -478,12 +510,15 @@ protected:
         const auto& proteins = library.protein_sets[pre.proteins];
         std::string row = stem_(inputs[h.run]) + '\t' + std::string(pre.id) + '\t' + pre.sequence + '\t' + std::to_string(pre.charge) + '\t' + proteins;
         for (double v : {w.peak.rt_apex, w.peak.rt_start, w.peak.rt_end, w.peak.area, static_cast<double>(w.score), w.q_value, global_q[p]}) number_(row, v);
-        all << row << '\n';
+        if (legacy_outputs) all << row << '\n';
         ++rows;
       }
     }
-    all.close();
-    if (!all) return CANNOT_WRITE_OUTPUT_FILE;
+    if (legacy_outputs)
+    {
+      all.close();
+      if (!all) return CANNOT_WRITE_OUTPUT_FILE;
+    }
     writeLogInfo_("Combined: " + std::to_string(global_targets) + " target precursors at global q <= " + std::to_string(q_cut) + ", " +
                   std::to_string(rows) + " run-level rows; seconds=" +
                   std::to_string(std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count()));
