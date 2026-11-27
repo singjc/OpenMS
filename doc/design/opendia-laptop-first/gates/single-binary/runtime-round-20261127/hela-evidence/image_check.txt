@@ -1,0 +1,5 @@
+e3533d93709c9bc068743690f4561b9219ca69f7e5dbf0279207f047af4f104b  OpenDIA
+8ca771eeda87bf6fcd3b160f4a5c6826fb4e724a5338c2ce648b18545a6efff8  OpenDIA.base
+1
+stty: 'standard input': Inappropriate ioctl for device
+

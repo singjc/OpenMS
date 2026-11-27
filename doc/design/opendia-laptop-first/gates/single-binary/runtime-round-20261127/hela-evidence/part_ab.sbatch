@@ -1,0 +1,42 @@
+#!/bin/bash
+#SBATCH -c 8
+#SBATCH --mem=96G
+#SBATCH -t 6:00:00
+# Partitioned extraction A/B on HeLa diaPASEF (perf-20261127, OpenMS ff4fdc067f). One node, arms alternated:
+# base (8ca771ee, pre fold/cache/partition) and new (e3533d93, default cache + 16 groups) on D r~7 seed 0, -threads 8.
+# Gate: every output file of each new arm cmp-identical to the base arm; cache directory removed. Wall and peak RSS
+# are same-node A/B (descriptive). Usage: sbatch -J part-ab -o $W/logs/%x.%j.out part_ab.sbatch [D|H]
+set -uo pipefail
+C=/nfs/research/juan/singj/opendia; W=$C/part-20261127; V=$C/entlib-hela-20261118/data
+DD=$V/20200505_Evosep_200SPD_SG06-16_MLHeLa_200ng_py8_S3-A1_1_2737.d
+HD=$V/20201207_tims03_Evo03_PS_SA_HeLa_200ng_EvoSep_prot_high_speed_21min_8cm_S1-C8_1_22474.d
+LIB=$C/entlib-odp5-20261118/runs/D_cur_s0/hela_r5.predicted_decoys.pqp
+SIF=$W/opendia-part-20261127.sif
+P=${1:-D}
+case $P in D) IN=$DD;; H) IN=$HD;; *) echo "unknown set $P"; exit 2;; esac
+BIN=/home/singjc/Documents/github/OpenMS-r1-full-ninja-build/bin
+echo "node $(hostname) cpu $(lscpu | grep 'Model name' | sed 's/.*: *//') set $P"
+sha256sum $SIF
+run() {
+  local arm=$1 exe=$2 rep=$3
+  local O=$W/runs/${P}_${arm}_r$rep
+  test ! -e $O || { echo "exists $O"; return 1; }
+  mkdir -p $O
+  local SC=${TMPDIR:-/tmp}/pab-$SLURM_JOB_ID-$arm-$rep; mkdir -p $SC
+  /usr/bin/time -v -o $O.time singularity exec --cleanenv --no-home --home $SC:/tmp --env TMPDIR=/tmp --bind $C --bind $SC:/tmp \
+    $SIF $BIN/$exe -in $IN -lib $LIB -out_dir $O -threads 8 -seed 0 > $O.log 2>&1
+  local rc=$?
+  rm -rf $SC
+  echo "$arm r$rep exit=$rc $(grep -E 'Elapsed' $O.time | awk '{print $NF}') maxrss_kb=$(grep 'Maximum resident' $O.time | awk '{print $NF}')"
+  grep -E "Extraction:" $O.log | sed -E 's/^ +//' | cut -c1-260
+}
+run base OpenDIA.base 1
+run new OpenDIA 1
+run base OpenDIA.base 2
+run new OpenDIA 2
+REF=$W/runs/${P}_base_r1
+for O in $W/runs/${P}_new_r1 $W/runs/${P}_new_r2 $W/runs/${P}_base_r2; do
+  ls -d $O/opendia_cache_* 2>/dev/null && echo "GATE CACHE_LEFT $O"
+  for f in $(cd $REF && ls); do cmp -s $O/$f $REF/$f && echo "GATE SAME $(basename $O) $f" || echo "GATE DIFF $(basename $O) $f"; done
+  [ "$(cd $REF && ls)" = "$(cd $O && ls)" ] && echo "GATE FILESET_SAME $(basename $O)" || echo "GATE FILESET_DIFF $(basename $O)"
+done
