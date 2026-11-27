@@ -1,0 +1,19 @@
+Predicting decoys for 24 target precursors (0 library decoys dropped)
+Progress of 'reading PQP file (SQL warmup)':
+-- done [took 0.00 s (CPU), 0.00 s (Wall)] -- 
+Progress of 'streaming PQP to LightTargetedExperiment':
+-- done [took 0.00 s (CPU), 0.00 s (Wall)] -- 
+Progress of 'Generating decoy peptides (Light)':
+-- done [took 0.00 s (CPU), 0.00 s (Wall)] -- 
+Progress of 'Generating decoy transitions (Light)':
+-- done [took 0.01 s (CPU), 0.00 s (Wall)] -- 
+Decoy prediction: instrument QE, NCE 30 (mean cosine 1 to the library intensities of 24 targets).
+Decoy prediction: library RT = 0 + 1 x predicted RT.
+Progress of 'Predicting decoy assays':
+-- done [took 0.20 s (CPU), 0.07 s (Wall)] -- 
+Decoy prediction: 24 decoys predicted; 0 dropped with fewer fragments than their target inside 351.203-1110.59 m/z; 0 kept with fewer fragments; 0 rejected by the models.
+Reading library /home/singjc/.jcode/scratch/decoyprep-20261127/cli_ref/cli_targets.predicted_decoys.pqp
+Library: precursors=48 pairs=24 rss_mb=94
+Run 1/1: /home/singjc/Documents/github/OpenMS-r1-sparse-experiment/src/tests/topp/OpenSwathWorkflow_17_input.mzML
+  Spectrum cache: /home/singjc/.jcode/scratch/decoyprep-20261127/cli_ref/opendia_cache_20261127_210230_744294_1 rss_mb=94 peak_mb=101
+Error: Unexpected internal error (Calibration needs at least 50 target-decoy pairs with library RT and five fragments)

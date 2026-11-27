@@ -1,0 +1,5 @@
+CLI exit codes: reference=8 owned=8
+PASS: fresh CLI predicted-decoy PQP bytes identical
+ffc95e7192ab7cb742641ff663c62c10de4773fbdbc656ca5421f2808fd3e17c  /home/singjc/.jcode/scratch/decoyprep-20261127/cli_ref/cli_targets.predicted_decoys.pqp
+ffc95e7192ab7cb742641ff663c62c10de4773fbdbc656ca5421f2808fd3e17c  /home/singjc/.jcode/scratch/decoyprep-20261127/cli_owned/cli_targets.predicted_decoys.pqp
+PASS: prediction temporary files removed

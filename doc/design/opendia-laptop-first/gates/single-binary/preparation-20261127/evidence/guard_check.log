@@ -1,0 +1,17 @@
+-- OpenDIA core: no OpenSWATH references in /home/singjc/.jcode/scratch/decoyprep-20261127/guard/include and /source
+CMake Error at Documents/github/OpenMS-r1-sparse-experiment/src/topp/OpenDIA/test/no_openswath.cmake:25 (message):
+  OpenSWATH code in the OpenDIA core:
+
+  OpenDIA.cpp: #include
+  <OpenMS/ANALYSIS/OPENSWATH/OpenSwathLibraryPreparation.h>
+
+
+CMake Error at Documents/github/OpenMS-r1-sparse-experiment/src/topp/OpenDIA/test/no_openswath.cmake:25 (message):
+  OpenSWATH code in the OpenDIA core:
+
+
+  /home/singjc/.jcode/scratch/decoyprep-20261127/guard/source/library/preparation/Bad.cpp:
+  #include <OpenMS/ANALYSIS/OPENSWATH/MRMDecoy.h>
+
+
+PASS: CLI boundary and nested core negative fixtures rejected

@@ -1,0 +1,3 @@
+PASS: ONNX-disabled predictor and preparation fail with Precondition
+
+--- Command finished with exit code: 0 ---
