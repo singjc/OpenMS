@@ -6,7 +6,7 @@
 // $Authors: Justin Sing $
 // --------------------------------------------------------------------------
 
-#include "OpenDIAWorkflow.h"
+#include <workflow/Workflow.h>
 
 #include <OpenMS/ANALYSIS/OPENSWATH/OpenSwathLibraryPreparation.h>
 #include <OpenMS/ANALYSIS/OPENSWATH/TransitionPQPFile.h>

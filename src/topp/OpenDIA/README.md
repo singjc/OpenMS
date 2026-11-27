@@ -98,6 +98,28 @@ result:
   - Entrapment FDP_c at q ≤ 0.01 stayed ≤ 0.0071.
 - **Benchmark-specific share:** about a third of the raw02 gain comes from same-composition entrapment/parent pairs that only exist in the benchmark.
 
+## Module layout
+
+`OpenDIA.cpp` is the command-line entry point. Core headers in `include/` and implementations in `source/` use
+the same module directories, with no `OpenDIA` prefix on header or implementation filenames:
+
+| Module | Files |
+| --- | --- |
+| `workflow/` | `Workflow` |
+| `library/` | `Library`, `LibraryParquet` |
+| `io/` | `SpectrumCache` |
+| `calibration/` | `Calibration`, `RTMap`, `RTRefine` |
+| `extraction/` | `Search`, `Traces`, `FragmentGrid`, `PeakPicker`, `MzIndex` |
+| `features/` | `PeakFeatures`, `Interference` |
+| `scoring/` | `Scorer`, `GBM` |
+
+Includes are qualified relative to `include/`, for example `#include <extraction/Search.h>` and
+`#include <library/Library.h>`. Header-only components and implementations without a separate header remain in
+their module directory, so the mirrored layout does not require artificial header/source pairs.
+
+Tests remain flat in `test/`, with filenames such as `Workflow_test.cpp`, `FragmentGrid_cases.inc` and
+`no_openswath.cmake`. Build targets and CTest names retain their `OpenDIA` prefixes, independently of source filenames.
+
 ## Tests
 
 Run `ctest -R 'OpenDIA'` to include the TOPP INI/CTD checks as well as the core tests.

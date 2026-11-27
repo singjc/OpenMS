@@ -5,7 +5,7 @@
 # $Authors: Justin Sing $
 # --------------------------------------------------------------------------
 
-add_executable(OpenDIAWorkflow_test OpenDIAWorkflow_test.cpp)
+add_executable(OpenDIAWorkflow_test Workflow_test.cpp)
 target_link_libraries(OpenDIAWorkflow_test PRIVATE OpenDIA_impl)
 if(EXISTS "${CMAKE_SOURCE_DIR}/src/tests/topp/TargetedFileConverter_10_input.pqp")
   add_test(NAME OpenDIAWorkflow_test COMMAND OpenDIAWorkflow_test ${CMAKE_CURRENT_BINARY_DIR}
@@ -14,61 +14,61 @@ else()
   add_test(NAME OpenDIAWorkflow_test COMMAND OpenDIAWorkflow_test ${CMAKE_CURRENT_BINARY_DIR})
 endif()
 
-add_executable(OpenDIASearch_test OpenDIASearch_test.cpp)
+add_executable(OpenDIASearch_test Search_test.cpp)
 target_link_libraries(OpenDIASearch_test PRIVATE OpenDIA_impl)
 add_test(NAME OpenDIASearch_test COMMAND OpenDIASearch_test)
 
-add_executable(OpenDIATraces_test OpenDIATraces_test.cpp)
+add_executable(OpenDIATraces_test Traces_test.cpp)
 target_link_libraries(OpenDIATraces_test PRIVATE OpenDIA_impl)
 add_test(NAME OpenDIATraces_test COMMAND OpenDIATraces_test ${CMAKE_CURRENT_BINARY_DIR}/OpenDIATraces_test)
 
-add_executable(OpenDIACalibration_test OpenDIACalibration_test.cpp)
+add_executable(OpenDIACalibration_test Calibration_test.cpp)
 target_link_libraries(OpenDIACalibration_test PRIVATE OpenDIA_impl)
 add_test(NAME OpenDIACalibration_test COMMAND OpenDIACalibration_test)
 
-add_executable(OpenDIAPeakFeatures_test OpenDIAPeakFeatures_test.cpp)
+add_executable(OpenDIAPeakFeatures_test PeakFeatures_test.cpp)
 target_link_libraries(OpenDIAPeakFeatures_test PRIVATE OpenDIA_impl)
 add_test(NAME OpenDIAPeakFeatures_test COMMAND OpenDIAPeakFeatures_test)
 
-add_executable(OpenDIASpectrumCache_test OpenDIASpectrumCache_test.cpp)
+add_executable(OpenDIASpectrumCache_test SpectrumCache_test.cpp)
 target_link_libraries(OpenDIASpectrumCache_test PRIVATE OpenDIA_impl)
 add_test(NAME OpenDIASpectrumCache_test COMMAND OpenDIASpectrumCache_test)
 
-add_executable(OpenDIAPeakPicker_test OpenDIAPeakPicker_test.cpp)
+add_executable(OpenDIAPeakPicker_test PeakPicker_test.cpp)
 target_link_libraries(OpenDIAPeakPicker_test PRIVATE OpenDIA_impl)
 add_test(NAME OpenDIAPeakPicker_test COMMAND OpenDIAPeakPicker_test)
 
-add_executable(OpenDIAInterference_test OpenDIAInterference_test.cpp)
+add_executable(OpenDIAInterference_test Interference_test.cpp)
 target_link_libraries(OpenDIAInterference_test PRIVATE OpenDIA_impl)
 add_test(NAME OpenDIAInterference_test COMMAND OpenDIAInterference_test)
 
-add_executable(OpenDIAScorer_test OpenDIAScorer_test.cpp)
+add_executable(OpenDIAScorer_test Scorer_test.cpp)
 target_link_libraries(OpenDIAScorer_test PRIVATE OpenDIA_impl)
 add_test(NAME OpenDIAScorer_test COMMAND OpenDIAScorer_test)
 
-add_executable(OpenDIAGBM_test OpenDIAGBM_test.cpp)
+add_executable(OpenDIAGBM_test GBM_test.cpp)
 target_link_libraries(OpenDIAGBM_test PRIVATE OpenDIA_impl)
 add_test(NAME OpenDIAGBM_test COMMAND OpenDIAGBM_test)
 
-add_executable(OpenDIAFragmentGrid_test OpenDIAFragmentGrid_test.cpp)
+add_executable(OpenDIAFragmentGrid_test FragmentGrid_test.cpp)
 target_link_libraries(OpenDIAFragmentGrid_test PRIVATE OpenDIA_impl)
 add_test(NAME OpenDIAFragmentGrid_test COMMAND OpenDIAFragmentGrid_test)
-add_executable(OpenDIAMzIndex_test OpenDIAMzIndex_test.cpp)
+add_executable(OpenDIAMzIndex_test MzIndex_test.cpp)
 target_link_libraries(OpenDIAMzIndex_test PRIVATE OpenDIA_impl)
 add_test(NAME OpenDIAMzIndex_test COMMAND OpenDIAMzIndex_test)
-add_executable(OpenDIARTRefine_test OpenDIARTRefine_test.cpp)
+add_executable(OpenDIARTRefine_test RTRefine_test.cpp)
 target_link_libraries(OpenDIARTRefine_test PRIVATE OpenDIA_impl)
 add_test(NAME OpenDIARTRefine_test COMMAND OpenDIARTRefine_test)
 if(EXISTS "${CMAKE_SOURCE_DIR}/src/tests/topp/TargetedFileConverter_10_input.pqp")
   # Copies the PQP fixture into the build tree first, so no Parquet copy is ever written into src/tests.
-  add_executable(OpenDIALibraryParquet_test OpenDIALibraryParquet_test.cpp)
+  add_executable(OpenDIALibraryParquet_test LibraryParquet_test.cpp)
   target_link_libraries(OpenDIALibraryParquet_test PRIVATE OpenDIA_impl)
   add_test(NAME OpenDIALibraryParquet_test COMMAND OpenDIALibraryParquet_test ${CMAKE_CURRENT_BINARY_DIR}
     ${CMAKE_SOURCE_DIR}/src/tests/topp/TargetedFileConverter_10_input.pqp)
 endif()
 # Design rule: no OpenSWATH code in the OpenDIA core library.
 add_test(NAME OpenDIA_no_openswath
-  COMMAND ${CMAKE_COMMAND} -DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/.. -P ${CMAKE_CURRENT_SOURCE_DIR}/OpenDIA_no_openswath.cmake)
+  COMMAND ${CMAKE_COMMAND} -DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/.. -P ${CMAKE_CURRENT_SOURCE_DIR}/no_openswath.cmake)
 
 if(EXISTS "${CMAKE_SOURCE_DIR}/src/tests/topp/OpenSwathWorkflow_17_input.mzML" AND
    EXISTS "${CMAKE_SOURCE_DIR}/src/tests/topp/TargetedFileConverter_10_input.pqp")

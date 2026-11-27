@@ -15,36 +15,36 @@ if(NOT TARGET OpenMS::OpenMS_CLI)
 endif()
 
 add_library(OpenDIA_impl STATIC
-  source/OpenDIASearch.cpp
-  source/OpenDIATraces.cpp
-  source/OpenDIARTMap.cpp
-  source/OpenDIACalibration.cpp
-  source/OpenDIAPeakFeatures.cpp
-  source/OpenDIAPeakPicker.cpp
-  source/OpenDIASpectrumCache.cpp
-  source/OpenDIAInterference.cpp
-  source/OpenDIAScorer.cpp
-  source/OpenDIAGBM.cpp
-  source/OpenDIAFragmentGrid.cpp
-  source/OpenDIAWorkflow.cpp
-  source/OpenDIARTRefine.cpp
-  source/OpenDIALibrary.cpp
-  source/OpenDIALibraryParquet.cpp
-  include/OpenDIALibrary.h
-  include/OpenDIAMzIndex.h
-  include/OpenDIASearch.h
-  include/OpenDIATraces.h
-  include/OpenDIARTMap.h
-  include/OpenDIACalibration.h
-  include/OpenDIAPeakFeatures.h
-  include/OpenDIAPeakPicker.h
-  include/OpenDIASpectrumCache.h
-  include/OpenDIAInterference.h
-  include/OpenDIAScorer.h
-  include/OpenDIAGBM.h
-  include/OpenDIAFragmentGrid.h
-  include/OpenDIARTRefine.h
-  include/OpenDIAWorkflow.h)
+  source/extraction/Search.cpp
+  source/extraction/Traces.cpp
+  source/calibration/RTMap.cpp
+  source/calibration/Calibration.cpp
+  source/features/PeakFeatures.cpp
+  source/extraction/PeakPicker.cpp
+  source/io/SpectrumCache.cpp
+  source/features/Interference.cpp
+  source/scoring/Scorer.cpp
+  source/scoring/GBM.cpp
+  source/extraction/FragmentGrid.cpp
+  source/workflow/Workflow.cpp
+  source/calibration/RTRefine.cpp
+  source/library/Library.cpp
+  source/library/LibraryParquet.cpp
+  include/library/Library.h
+  include/extraction/MzIndex.h
+  include/extraction/Search.h
+  include/extraction/Traces.h
+  include/calibration/RTMap.h
+  include/calibration/Calibration.h
+  include/features/PeakFeatures.h
+  include/extraction/PeakPicker.h
+  include/io/SpectrumCache.h
+  include/features/Interference.h
+  include/scoring/Scorer.h
+  include/scoring/GBM.h
+  include/extraction/FragmentGrid.h
+  include/calibration/RTRefine.h
+  include/workflow/Workflow.h)
 target_include_directories(OpenDIA_impl PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(OpenDIA_impl PUBLIC OpenMS::OpenMS_CLI)
 # OpenDIALibrary reads PQP files with the SQLite C API (the sqlite3 OpenMS itself is built with).
