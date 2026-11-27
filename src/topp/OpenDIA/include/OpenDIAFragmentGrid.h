@@ -73,6 +73,8 @@ namespace OpenMS::OpenDIA
 
     /// Median of the nonzero central areas of library fragments over all windows (1 if there are none).
     static double noiseLevel(const std::vector<InterferenceResolver::Window>& windows, const std::vector<InterferenceResolver::Precursor>& precursors);
+    /// noiseLevel() of the values it collects (consumed): the same median for the same values in any order.
+    static double noiseLevel(std::vector<double>& values);
   };
 
   /**

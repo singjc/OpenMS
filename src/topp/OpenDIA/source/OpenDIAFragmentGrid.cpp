@@ -153,6 +153,11 @@ namespace OpenMS::OpenDIA
     for (const auto& w : windows)
       for (std::size_t f = 0; f < K; ++f)
         if (w.core_area[f] > 0.0 && precursors[w.precursor].library[f] > 0.0) v.push_back(w.core_area[f]);
+    return noiseLevel(v);
+  }
+
+  double FragmentGrid::noiseLevel(std::vector<double>& v)
+  {
     if (v.empty()) return 1.0;
     const std::size_t h = v.size() / 2;
     std::nth_element(v.begin(), v.begin() + h, v.end());

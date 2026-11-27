@@ -829,7 +829,10 @@ namespace OpenMS::OpenDIA
         resolver_precursors[l].library[s] = p.scoring_library[s];
       }
     }
-    std::vector<InterferenceResolver::Window> grid_windows(n);
+    // Per window, only the 12-fragment central areas outlive its extraction group (fragment deficit and noise floor);
+    // the grid profile is used by the interference features, computed inside the group.
+    std::vector<FragmentGrid::Values> core_areas(n);
+    std::vector<float> interference(n * InterferenceResolver::FEATURES, 0.0f);
     std::vector<TracePrecursor> trace_precursors(local_precursors.size());
     for (std::size_t l = 0; l < local_precursors.size(); ++l)
     {
@@ -855,14 +858,6 @@ namespace OpenMS::OpenDIA
       // The 6-fragment tensor uses calibrated m/z and precursor 1/K0, resolved here without a Library copy.
       topFragments(lib, pi, factor, t.fragment_mz, t.library_intensity);
     }
-    for (std::size_t i = 0; i < n; ++i)
-    {
-      const auto& w = windows[i];
-      grid_windows[i].precursor = local_of[w.precursor];
-      grid_windows[i].rt_start = w.peak.rt_start;
-      grid_windows[i].rt_apex = w.peak.rt_apex;
-      grid_windows[i].rt_end = w.peak.rt_end;
-    }
     // Streaming tensors: a window's 6-fragment tensor is held only while its RT range is being read. The tensor-derived
     // features are computed when the window closes and the tensor is released, so tensor memory follows the windows
     // co-eluting at one time.
@@ -883,6 +878,33 @@ namespace OpenMS::OpenDIA
     // overlapping its m/z range computes exactly the values of a single pass, and several groups run concurrently.
     // Collector memory follows the groups in flight. Groups need the cache (one replay each); without it, one group.
     const bool partition = cache_ && cache_->complete();
+    // Isolation windows of the run, as the 12-fragment grid keys them: every valid isolation window of a non-empty MS2
+    // spectrum with a finite RT. With the cache they are known before extraction (from its index); otherwise the single
+    // group's collector reports them.
+    std::vector<std::pair<double, double>> isolation_keys;
+    const auto set_isolation = [&]()
+    {
+      std::vector<double> mz(local_precursors.size());
+      for (std::size_t l = 0; l < local_precursors.size(); ++l) mz[l] = lib.precursors[local_precursors[l]].mz;
+      const auto isolation = FragmentGridCollector::isolationIndices(isolation_keys, mz);
+      for (std::size_t l = 0; l < resolver_precursors.size(); ++l) resolver_precursors[l].isolation = isolation[l];
+    };
+    if (partition)
+    {
+      std::set<std::pair<double, double>> keys;
+      const auto& isolation = cache_->precursors();
+      for (const auto& e : cache_->index())
+      {
+        if (e.level != 2 || e.peaks == 0 || !std::isfinite(e.rt)) continue;
+        for (std::size_t k = e.precursor_begin; k < std::size_t{e.precursor_begin} + e.precursor_count; ++k)
+        {
+          std::pair<double, double> key;
+          if (FragmentGridCollector::isolationKey(isolation[k][0], isolation[k][1], isolation[k][2], key)) keys.insert(key);
+        }
+      }
+      isolation_keys.assign(keys.begin(), keys.end());
+      set_isolation();
+    }
     std::size_t group_count = partition ? (options_.extraction_groups == 0 ? 16 : options_.extraction_groups) : 1;
     group_count = std::clamp<std::size_t>(group_count, 1, std::max<std::size_t>(1, local_precursors.size()));
     std::vector<std::vector<std::uint32_t>> group_members;      // global window indices, ascending
@@ -896,12 +918,18 @@ namespace OpenMS::OpenDIA
         return mx != my ? mx < my : x < y;
       });
       std::vector<std::uint32_t> windows_of(local_precursors.size(), 0);
-      for (const auto& gw : grid_windows) ++windows_of[gw.precursor];
+      for (const auto& w : windows) ++windows_of[local_of[w.precursor]];
       std::vector<std::uint32_t> group_of(local_precursors.size(), 0);
       std::size_t acc = 0, g = 0;
+      // Groups hold whole isolation windows (the precursor isolation index is nondecreasing in m/z), so the interference
+      // features, which link windows of one isolation window only, are computed inside the group.
+      std::int32_t last_isolation = -1;
       for (const std::uint32_t l : by_mz)
       {
-        if (g + 1 < group_count && acc * group_count >= (g + 1) * n) ++g;
+        const std::int32_t iso = resolver_precursors[l].isolation;
+        const bool may_cut = iso >= 0 && iso != last_isolation;
+        if (may_cut && g + 1 < group_count && acc * group_count >= (g + 1) * n) ++g;
+        if (iso >= 0) last_isolation = iso;
         group_of[l] = static_cast<std::uint32_t>(g);
         acc += windows_of[l];
       }
@@ -910,7 +938,7 @@ namespace OpenMS::OpenDIA
       group_mz.assign(group_count, {std::numeric_limits<double>::infinity(), -std::numeric_limits<double>::infinity()});
       for (std::uint32_t i = 0; i < n; ++i)
       {
-        const auto l = grid_windows[i].precursor;
+        const auto l = local_of[windows[i].precursor];
         group_members[group_of[l]].push_back(i);
         auto& r = group_mz[group_of[l]];
         r.first = std::min(r.first, lib.precursors[local_precursors[l]].mz);
@@ -928,7 +956,7 @@ namespace OpenMS::OpenDIA
     struct GroupStats
     {
       std::size_t peak_open = 0, peak_held = 0, spectra = 0, peaks = 0;
-      double consume_s = 0.0;
+      double consume_s = 0.0, interference_s = 0.0;
       std::string io;
       std::vector<std::pair<double, double>> isolation;  ///< Isolation windows seen (single group only).
     };
@@ -941,7 +969,7 @@ namespace OpenMS::OpenDIA
       std::vector<std::uint32_t> group_local(local_precursors.size(), UINT32_MAX), group_precursors;
       for (const auto i : members)
       {
-        const auto l = grid_windows[i].precursor;
+        const auto l = local_of[windows[i].precursor];
         if (group_local[l] == UINT32_MAX)
         {
           group_local[l] = static_cast<std::uint32_t>(group_precursors.size());
@@ -960,8 +988,8 @@ namespace OpenMS::OpenDIA
       std::vector<std::uint32_t> precursor_of(members.size());
       for (std::size_t j = 0; j < members.size(); ++j)
       {
-        const auto& src = grid_windows[members[j]];
-        gw[j].precursor = group_local[src.precursor];
+        const auto& src = windows[members[j]].peak;
+        gw[j].precursor = group_local[local_of[windows[members[j]].precursor]];
         gw[j].rt_start = src.rt_start;
         gw[j].rt_apex = src.rt_apex;
         gw[j].rt_end = src.rt_end;
@@ -969,6 +997,8 @@ namespace OpenMS::OpenDIA
         precursor_of[j] = gw[j].precursor;
       }
       std::vector<std::uint32_t>().swap(group_local);
+      std::vector<InterferenceResolver::Precursor> rp(group_precursors.size());
+      for (std::size_t k = 0; k < group_precursors.size(); ++k) rp[k] = resolver_precursors[group_precursors[k]];
       FragmentGridCollector grids(gp, gw, options_.grid_half_width_s, options_.grid_extraction_ppm);
       // With a mobility calibration the 12-fragment grid (and with it the interference inputs) is extracted within the
       // calibrated 1/K0 tolerance of each precursor, as the search is; without one it pools all points.
@@ -1044,14 +1074,29 @@ namespace OpenMS::OpenDIA
       for (std::size_t j = 0; j < members.size(); ++j)
       {
         const std::size_t i = members[j];
-        grid_windows[i].core_area = gw[j].core_area;
-        grid_windows[i].profile = gw[j].profile;
+        core_areas[i] = gw[j].core_area;
         grid_evidence[i] = grids.evidence()[j];
         byions[i] = traces.byIonCounts(j);
       }
       st.peak_open = grids.peakOpenGrids();
       st.peak_held = traces.peakHeldTensors();
-      if (!partition) st.isolation = grids.isolationKeys();
+      if (!partition)
+      {
+        // Single group: it saw every spectrum, so its collector knows the run's isolation windows.
+        st.isolation = grids.isolationKeys();
+        const auto isolation = grids.isolationIndices();
+        for (std::size_t k = 0; k < rp.size(); ++k) rp[k].isolation = isolation[k];
+      }
+      // Interference within the group: every window's partners share its isolation window, which lies in this group.
+      // Window and precursor order are those of the run restricted to the group, so the features are unchanged.
+      const auto t_i = std::chrono::steady_clock::now();
+      const auto group_interference = InterferenceResolver::compute(rp, gw, cal.ms2_tolerance_ppm,
+                                                                    2.0 * options_.grid_half_width_s / InterferenceResolver::BINS, group_threads,
+                                                                    nullptr, cal.has_im ? 2.0 * cal.im_tolerance : 0.0);
+      st.interference_s = seconds(t_i);
+      for (std::size_t j = 0; j < members.size(); ++j)
+        for (std::size_t k = 0; k < InterferenceResolver::FEATURES; ++k)
+          interference[members[j] * InterferenceResolver::FEATURES + k] = group_interference[j * InterferenceResolver::FEATURES + k];
     };
     {
       std::vector<std::exception_ptr> errors(group_count);
@@ -1086,33 +1131,10 @@ namespace OpenMS::OpenDIA
         if (e) std::rethrow_exception(e);
     }
     std::vector<TracePrecursor>().swap(trace_precursors);
-    // Isolation windows of the run, as the 12-fragment grid keys them: every valid isolation window of a non-empty MS2
-    // spectrum with a finite RT (from the cache index when the groups did not see every spectrum).
-    std::vector<std::pair<double, double>> isolation_keys;
-    if (partition)
-    {
-      std::set<std::pair<double, double>> keys;
-      const auto& isolation = cache_->precursors();
-      for (const auto& e : cache_->index())
-      {
-        if (e.level != 2 || e.peaks == 0 || !std::isfinite(e.rt)) continue;
-        for (std::size_t k = e.precursor_begin; k < std::size_t{e.precursor_begin} + e.precursor_count; ++k)
-        {
-          std::pair<double, double> key;
-          if (FragmentGridCollector::isolationKey(isolation[k][0], isolation[k][1], isolation[k][2], key)) keys.insert(key);
-        }
-      }
-      isolation_keys.assign(keys.begin(), keys.end());
-    }
-    else
+    if (!partition)
     {
       isolation_keys = std::move(group_stats[0].isolation);
-    }
-    {
-      std::vector<double> mz(local_precursors.size());
-      for (std::size_t l = 0; l < local_precursors.size(); ++l) mz[l] = lib.precursors[local_precursors[l]].mz;
-      const auto isolation = FragmentGridCollector::isolationIndices(isolation_keys, mz);
-      for (std::size_t l = 0; l < resolver_precursors.size(); ++l) resolver_precursors[l].isolation = isolation[l];
+      set_isolation();
     }
     std::string extract_io;
     std::size_t peak_open = 0, peak_held = 0;
@@ -1153,12 +1175,20 @@ namespace OpenMS::OpenDIA
     // capacity is not resident).
     result.features.reserve(n * (d + SIBLING_FEATURES));
     result.features.assign(n * d, 0.0f);
-    const double noise = FragmentGrid::noiseLevel(grid_windows, resolver_precursors);
-    const auto t_interference = std::chrono::steady_clock::now();
-    const auto interference = InterferenceResolver::compute(resolver_precursors, grid_windows, cal.ms2_tolerance_ppm,
-                                                            2.0 * options_.grid_half_width_s / InterferenceResolver::BINS, options_.threads,
-                                                            nullptr, cal.has_im ? 2.0 * cal.im_tolerance : 0.0);
-    const double interference_s = seconds(t_interference);
+    double noise = 1.0;
+    {
+      // Median of the nonzero central areas of library fragments over all windows (FragmentGrid::noiseLevel()).
+      std::vector<double> v;
+      for (std::size_t i = 0; i < n; ++i)
+      {
+        const auto& lib12 = resolver_precursors[local_of[windows[i].precursor]].library;
+        for (std::size_t f = 0; f < K12; ++f)
+          if (core_areas[i][f] > 0.0 && lib12[f] > 0.0) v.push_back(core_areas[i][f]);
+      }
+      noise = FragmentGrid::noiseLevel(v);
+    }
+    double interference_s = 0.0;
+    for (const auto& st : group_stats) interference_s += st.interference_s;
 #pragma omp parallel num_threads(options_.threads)
     {
 #pragma omp for schedule(dynamic, 1024)
@@ -1177,20 +1207,21 @@ namespace OpenMS::OpenDIA
         for (std::size_t k = 0; k < BOUNDARY_FEATURES; ++k) f[o++] = boundary[i * BOUNDARY_FEATURES + k];
         for (const auto v : byions[i]) f[o++] = static_cast<float>(static_cast<double>(v));
         for (float v : grid_evidence[i]) f[o++] = v;
-        const auto& gp = grid_precursors[grid_windows[i].precursor];
-        for (float v : FragmentGrid::deficit(grid_windows[i].core_area, gp.library, gp.search, noise)) f[o++] = v;
+        const auto& gp = grid_precursors[local_of[w.precursor]];
+        for (float v : FragmentGrid::deficit(core_areas[i], gp.library, gp.search, noise)) f[o++] = v;
         for (std::size_t k = 0; k < InterferenceResolver::FEATURES; ++k) f[o++] = interference[i * InterferenceResolver::FEATURES + k];
         for (std::size_t k = 0; k < EVIDENCE_FEATURES; ++k) f[o++] = evidence_block[i * EVIDENCE_FEATURES + k];
         for (std::size_t k = 0; k < MATCHED_FILTER_FEATURES; ++k) f[o++] = mf_block[i * MATCHED_FILTER_FEATURES + k];
       }
     }
     say("Features: " + std::to_string(d) + " per window, noise=" + std::to_string(noise) + " seconds=" + std::to_string(seconds(t_features)) +
-        " interference_seconds=" + std::to_string(interference_s));
+        " interference_seconds_sum=" + std::to_string(interference_s));
     // Everything below reads only result.features, windows and the library. Release the extraction state now (about
-    // 384 bytes per window for grid_windows alone) instead of holding it through scoring.
+    // about 180 bytes per window) instead of holding it through scoring.
     std::vector<std::array<std::uint16_t, 2>>().swap(byions);
     std::vector<std::array<float, FragmentGrid::EVIDENCE>>().swap(grid_evidence);
-    std::vector<InterferenceResolver::Window>().swap(grid_windows);
+    std::vector<FragmentGrid::Values>().swap(core_areas);
+    std::vector<float>().swap(interference);
     std::vector<FragmentGridCollector::Precursor>().swap(grid_precursors);
     std::vector<InterferenceResolver::Precursor>().swap(resolver_precursors);
     std::vector<float>().swap(boundary);
