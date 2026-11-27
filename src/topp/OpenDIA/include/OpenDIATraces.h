@@ -219,9 +219,11 @@ namespace OpenMS::OpenDIA
     std::vector<Sample> samples_;
     std::vector<TraceWindow> windows_;  ///< Candidate identities by sample (Library constructor only).
     std::vector<std::size_t> by_rt_;
+    std::vector<double> by_rt_apex_; ///< samples_[by_rt_[k]].apex_rt, contiguous for the RT range searches.
     /// Samples by precursor m/z bucket (MZ_BUCKET_TH wide, from mz_bucket_origin_), each bucket in by_rt_ order.
     static constexpr double MZ_BUCKET_TH = 1.0;
     std::vector<std::vector<std::uint32_t>> by_mz_rt_;
+    std::vector<std::vector<double>> by_mz_rt_apex_, by_mz_rt_mz_; ///< Apex RT and precursor m/z parallel to by_mz_rt_.
     double mz_bucket_origin_ = 0.0;
     std::vector<float> intensities_;
     std::size_t im_bins_ = IM_BINS;
@@ -261,6 +263,9 @@ namespace OpenMS::OpenDIA
     int threads_ = 1;
     std::vector<std::uint32_t> hits_;   ///< Samples isolated by the current MS2 spectrum.
     std::vector<float*> hit_tensor_;    ///< Their tensors.
+    std::vector<std::size_t> ms1_hits_;          ///< Scratch: samples reached by the current MS1 spectrum.
+    std::vector<TraceEvidence*> ms1_evidence_;   ///< Their evidence.
+    std::vector<std::pair<double, double>> isolation_; ///< Scratch: isolation windows of the current MS2 spectrum.
     SpectrumMzIndex mz_index_;          ///< m/z buckets of the current spectrum.
 
     float* tensor_(std::size_t index);

@@ -169,9 +169,16 @@ namespace OpenMS::OpenDIA
     require(samples_.size() <= std::numeric_limits<std::uint32_t>::max(), "Trace sample count exceeds 32-bit indices.");
     mz_bucket_origin_ = std::floor(low);
     by_mz_rt_.assign(static_cast<std::size_t>(std::floor((high - mz_bucket_origin_) / MZ_BUCKET_TH)) + 1, {});
+    by_mz_rt_apex_.assign(by_mz_rt_.size(), {});
+    by_mz_rt_mz_.assign(by_mz_rt_.size(), {});
+    by_rt_apex_.resize(by_rt_.size());
+    for (std::size_t k = 0; k < by_rt_.size(); ++k) by_rt_apex_[k] = samples_[by_rt_[k]].apex_rt;
     for (const std::size_t i : by_rt_)
     {
-      by_mz_rt_[static_cast<std::size_t>(std::floor((samples_[i].precursor_mz - mz_bucket_origin_) / MZ_BUCKET_TH))].push_back(static_cast<std::uint32_t>(i));
+      const auto bucket = static_cast<std::size_t>(std::floor((samples_[i].precursor_mz - mz_bucket_origin_) / MZ_BUCKET_TH));
+      by_mz_rt_[bucket].push_back(static_cast<std::uint32_t>(i));
+      by_mz_rt_apex_[bucket].push_back(samples_[i].apex_rt);
+      by_mz_rt_mz_[bucket].push_back(samples_[i].precursor_mz);
     }
   }
 
@@ -319,9 +326,8 @@ namespace OpenMS::OpenDIA
   void TraceCollector::consumeMS1_(MSSpectrum& spectrum)
   {
     const double rt = spectrum.getRT();
-    auto first = std::lower_bound(by_rt_.begin(), by_rt_.end(), rt - rt_half_width_,
-                                  [this](std::size_t i, double value) { return samples_[i].apex_rt < value; });
-    if (first == by_rt_.end() || samples_[*first].apex_rt > rt + rt_half_width_)
+    const std::size_t first = static_cast<std::size_t>(std::lower_bound(by_rt_apex_.begin(), by_rt_apex_.end(), rt - rt_half_width_) - by_rt_apex_.begin());
+    if (first == by_rt_.size() || by_rt_apex_[first] > rt + rt_half_width_)
     {
       return;
     }
@@ -345,12 +351,14 @@ namespace OpenMS::OpenDIA
       }
       return total;
     };
-    std::vector<std::size_t> ms1_hits;
-    std::vector<TraceEvidence*> ms1_evidence;
-    for (auto active = first; active != by_rt_.end() && samples_[*active].apex_rt <= rt + rt_half_width_; ++active)
+    ms1_hits_.clear();
+    ms1_evidence_.clear();
+    std::vector<std::size_t>& ms1_hits = ms1_hits_;
+    std::vector<TraceEvidence*>& ms1_evidence = ms1_evidence_;
+    for (std::size_t k = first; k < by_rt_.size() && by_rt_apex_[k] <= rt + rt_half_width_; ++k)
     {
-      ms1_hits.push_back(*active);
-      ms1_evidence.push_back(openEvidence_(*active));
+      ms1_hits.push_back(by_rt_[k]);
+      ms1_evidence.push_back(openEvidence_(by_rt_[k]));
     }
     // Each sample writes only its own evidence, so the samples are independent (thread-count invariant).
 #pragma omp parallel for schedule(dynamic, 256) num_threads(threads_) if (threads_ > 1 && ms1_hits.size() >= 1024)
@@ -393,11 +401,12 @@ namespace OpenMS::OpenDIA
       return;
     }
     const double rt = spectrum.getRT();
-    auto first = std::lower_bound(by_rt_.begin(), by_rt_.end(), rt - rt_half_width_,
-                                  [this](std::size_t i, double value) { return samples_[i].apex_rt < value; });
-    if (first == by_rt_.end() || samples_[*first].apex_rt > rt + rt_half_width_)
     {
-      return;
+      const auto first = std::lower_bound(by_rt_apex_.begin(), by_rt_apex_.end(), rt - rt_half_width_);
+      if (first == by_rt_apex_.end() || *first > rt + rt_half_width_)
+      {
+        return;
+      }
     }
     if (!spectrum.isSorted())
     {
@@ -419,7 +428,8 @@ namespace OpenMS::OpenDIA
     const bool scalar_valid = spectrum.getDriftTimeUnit() == DriftTimeUnit::VSSC &&
                                std::isfinite(scalar_im) && scalar_im > 0.0;
     // Isolation windows of this spectrum (same tests as per sample before; a NaN bound never isolates).
-    std::vector<std::pair<double, double>> isolation;
+    std::vector<std::pair<double, double>>& isolation = isolation_;
+    isolation.clear();
     double lowest = std::numeric_limits<double>::infinity(), highest = -lowest;
     for (const auto& precursor : spectrum.getPrecursors())
     {
@@ -446,19 +456,21 @@ namespace OpenMS::OpenDIA
     for (std::size_t bucket = bucket_first; bucket <= bucket_last; ++bucket)
     {
       const auto& in_bucket = by_mz_rt_[bucket];
-      auto from_rt = std::lower_bound(in_bucket.begin(), in_bucket.end(), rt - rt_half_width_,
-                                      [this](std::uint32_t i, double value) { return samples_[i].apex_rt < value; });
-      for (auto active = from_rt; active != in_bucket.end() && samples_[*active].apex_rt <= rt + rt_half_width_; ++active)
+      const auto& apex = by_mz_rt_apex_[bucket];
+      const auto& mzs = by_mz_rt_mz_[bucket];
+      for (std::size_t k = static_cast<std::size_t>(std::lower_bound(apex.begin(), apex.end(), rt - rt_half_width_) - apex.begin());
+           k < apex.size() && apex[k] <= rt + rt_half_width_; ++k)
       {
-        const double precursor_mz = samples_[*active].precursor_mz;
+        const double precursor_mz = mzs[k];
+        const std::uint32_t active = in_bucket[k];
         for (const auto& [from, to] : isolation)
         {
           if (from <= precursor_mz && to >= precursor_mz)
           {
-            hits_.push_back(*active);
+            hits_.push_back(active);
             hit_tensor_.resize(hits_.size());
-            hit_tensor_.back() = tensor_(*active);
-            if (evidence_on_) openEvidence_(*active);
+            hit_tensor_.back() = tensor_(active);
+            if (evidence_on_) openEvidence_(active);
             break;
           }
         }
@@ -633,7 +645,7 @@ namespace OpenMS::OpenDIA
   void TraceCollector::close_(double rt)
   {
     // A window receives spectra with RT in [apex - half, apex + half]; once rt passes apex + half it is complete.
-    while (close_cursor_ < by_rt_.size() && samples_[by_rt_[close_cursor_]].apex_rt < rt - rt_half_width_)
+    while (close_cursor_ < by_rt_.size() && by_rt_apex_[close_cursor_] < rt - rt_half_width_)
     {
       const auto index = static_cast<std::uint32_t>(by_rt_[close_cursor_++]);
       closed_[index] = 1;
