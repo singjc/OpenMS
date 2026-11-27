@@ -1,6 +1,21 @@
-# OpenDIA: PyProphet peptide/protein inference (OpenMS f0a62dfbf5)
+# OpenDIA: PyProphet peptide/protein inference (OpenMS f0a62dfbf5, owned in 916e3d5a6b)
 
 Date: 2026-11-27. Baseline ba3125b20f. Plan frozen before results: [PLAN.md](evidence/PLAN.md).
+
+## Update: OpenDIA-owned implementation (916e3d5a6b)
+
+f0a62dfbf5 called the shared OpenSWATH class `LevelContextInference` and loosened the
+`no_openswath` guard to allow it. 916e3d5a6b replaces that call with OpenDIA's own
+`source/results/EntityInference.cpp`. It works directly on `QuantifiedEntity` and uses only
+the general OpenMS `Math::MultipleTesting` statistics. The guard is restored byte-identical to
+ba3125b20f, and the OpenDIA core again has no OpenSWATH references. `LevelContextInference`
+remains only in `Quantification_test` as a test-only cross-check.
+
+Rechecked after the change: 39/39 tests including the restored guard; pinned PyProphet parity
+10/10 batches (max p 2.2e-16, q 1.7e-16, PEP 3.7e-15); diaPASEF legacy 3/3 byte-identical;
+peptide/protein tables and matrices byte-identical to f0a62dfbf5; `inference.parquet` values
+identical in all 395,886 rows (only the method label metadata changed); checker
+ACCEPTANCE_PASS. Wherever the text below mentions LevelContextInference, read EntityInference.
 
 ## What changed
 

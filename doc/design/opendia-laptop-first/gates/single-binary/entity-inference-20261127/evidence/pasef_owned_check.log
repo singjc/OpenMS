@@ -1,0 +1,109 @@
+{"inference_context": "run-specific", "legacy_atol": 0.0, "legacy_rtol": 0.0, "output": "/home/singjc/.jcode/scratch/entity-inference-20261127/out_pasef_owned", "thresholds": {"peakgroup": 0.01, "peptide": 0.01, "protein": 0.01}}
+{"nulls": {"area": 0, "charge": 0, "decoy": 0, "discriminant_score": 0, "feature_id": 0, "genes": 132107, "global_q_value": 0, "inference_context": 0, "pass_peakgroup": 0, "pass_peptide": 0, "pass_protein_group": 0, "peptide_experiment_p_value": 0, "peptide_experiment_pep": 0, "peptide_experiment_q_value": 0, "peptide_global_p_value": 0, "peptide_global_pep": 0, "peptide_global_q_value": 0, "peptide_run_p_value": 0, "peptide_run_pep": 0, "peptide_run_q_value": 0, "precursor_id": 0, "protein_group_experiment_p_value": 0, "protein_group_experiment_pep": 0, "protein_group_experiment_q_value": 0, "protein_group_global_p_value": 0, "protein_group_global_pep": 0, "protein_group_global_q_value": 0, "protein_group_run_p_value": 0, "protein_group_run_pep": 0, "protein_group_run_q_value": 0, "proteins": 0, "quantity_type": 0, "rt_apex": 0, "rt_end": 0, "rt_start": 0, "run": 0, "run_q_value": 0, "sequence": 0, "unmodified_sequence": 0}, "parquet_bytes": 18277029, "rows": 132107, "table": "precursors", "tsv_bytes": 85352315}
+{"nulls": {"20200505_Evosep_200SPD_SG06-16_MLHeLa_200ng_py8_S3-A1_1_2737": 0, "charge": 0, "genes": 27410, "precursor_id": 0, "proteins": 0, "sequence": 0, "unmodified_sequence": 0}, "parquet_bytes": 1029860, "rows": 27410, "table": "precursor_matrix", "tsv_bytes": 1858568}
+{"nulls": {"area": 93510, "decoy": 0, "discriminant_score": 0, "experiment_p_value": 0, "experiment_pep": 0, "experiment_q_value": 0, "global_p_value": 0, "global_pep": 0, "global_q_value": 0, "inference_context": 0, "modified_sequence": 0, "pass": 0, "proteins": 0, "quantity_type": 0, "run": 0, "run_p_value": 0, "run_pep": 0, "run_q_value": 0}, "parquet_bytes": 9189073, "rows": 117941, "table": "peptides", "tsv_bytes": 37529115}
+{"nulls": {"20200505_Evosep_200SPD_SG06-16_MLHeLa_200ng_py8_S3-A1_1_2737": 0, "modified_sequence": 0, "proteins": 0}, "parquet_bytes": 560156, "rows": 24164, "table": "peptide_matrix", "tsv_bytes": 1068283}
+{"nulls": {"area": 8896, "decoy": 0, "discriminant_score": 0, "experiment_p_value": 0, "experiment_pep": 0, "experiment_q_value": 0, "global_p_value": 0, "global_pep": 0, "global_q_value": 0, "inference_context": 0, "pass": 0, "protein_group": 0, "proteins": 0, "quantity_type": 0, "run": 0, "run_p_value": 0, "run_pep": 0, "run_q_value": 0}, "parquet_bytes": 651690, "rows": 14021, "table": "protein_groups", "tsv_bytes": 4334022}
+{"nulls": {"20200505_Evosep_200SPD_SG06-16_MLHeLa_200ng_py8_S3-A1_1_2737": 0, "protein_group": 0, "proteins": 0}, "parquet_bytes": 92137, "rows": 4576, "table": "protein_group_matrix", "tsv_bytes": 151014}
+{"canonical_view": "feature", "string_extensions_decoded": 19}
+{"file": "/home/singjc/.jcode/scratch/entity-inference-20261127/out_pasef_owned/qpx/opendia.feature.parquet", "independent_producer_ids": 228492}
+{"canonical_view": "qpx_pg", "string_extensions_decoded": 4}
+{"file": "/home/singjc/.jcode/scratch/entity-inference-20261127/out_pasef_owned/qpx/opendia.pg.parquet", "independent_pg_ids": 14021}
+PASS nonnull identity feature(feature_id)
+PASS unique feature(feature_id)
+PASS nonnull identity candidates(feature_id)
+PASS unique candidates(feature_id)
+PASS nonnull identity precursors(feature_id)
+PASS unique precursors(feature_id)
+PASS nonnull identity precursors(run,precursor_id)
+PASS unique precursors(run,precursor_id)
+PASS nonnull identity feature(run_file_name,opendia_precursor_id,opendia_candidate_row)
+PASS unique feature(run_file_name,opendia_precursor_id,opendia_candidate_row)
+PASS canonical QPX versus full diagnostic candidate IDs and exact values
+PASS unfiltered retained report equals canonical QPX winners including experiment q
+PASS precursors: selected context declared consistently
+PASS peptides: selected context declared consistently
+PASS protein_groups: selected context declared consistently
+PASS per-feature peak-group plus corresponding-level pass flags
+PASS raw MS2 area semantics
+PASS nonnull identity precursor_matrix(precursor_id)
+PASS unique precursor_matrix(precursor_id)
+PASS nonnull identity expected_precursor(id,run)
+PASS unique expected_precursor(id,run)
+PASS precursor_matrix: exact eligible cells and real zeros
+PASS precursor_matrix: no rows without eligible cells
+{"eligible_cells": 27410, "matrix": "precursor_matrix", "real_zero_cells": 0}
+PASS QPX proteins are singleton supplied accessions
+PASS protein entities retain singleton supplied accessions
+PASS nonnull identity peptides(modified_sequence,run,decoy)
+PASS unique peptides(modified_sequence,run,decoy)
+PASS nonnull identity peptide_matrix(modified_sequence)
+PASS unique peptide_matrix(modified_sequence)
+PASS nonnull identity expected_peptide(id,run)
+PASS unique expected_peptide(id,run)
+PASS peptide_matrix: exact eligible cells and real zeros
+PASS peptide_matrix: no rows without eligible cells
+{"eligible_cells": 24164, "matrix": "peptide_matrix", "real_zero_cells": 0}
+PASS peptides: independent level pass flags
+PASS nonnull identity protein_groups(protein_group,run,decoy)
+PASS unique protein_groups(protein_group,run,decoy)
+PASS nonnull identity protein_group_matrix(protein_group)
+PASS unique protein_group_matrix(protein_group)
+PASS nonnull identity expected_protein_group(id,run)
+PASS unique expected_protein_group(id,run)
+PASS protein_group_matrix: exact eligible cells and real zeros
+PASS protein_group_matrix: no rows without eligible cells
+{"eligible_cells": 4576, "matrix": "protein_group_matrix", "real_zero_cells": 0}
+PASS protein_groups: independent level pass flags
+PASS inference companion context and nullable global-run semantics
+PASS nonnull identity inference(level,entity_id,is_decoy,context,run)
+PASS unique inference(level,entity_id,is_decoy,context,run)
+PASS peptides: identical global q_value across sparse runs
+PASS peptides: identical global p_value across sparse runs
+PASS peptides: identical global pep across sparse runs
+PASS peptides: nullable finite probability run_q_value
+PASS peptides: nullable finite probability run_p_value
+PASS peptides: nullable finite probability run_pep
+PASS peptides: nullable finite probability experiment_q_value
+PASS peptides: nullable finite probability experiment_p_value
+PASS peptides: nullable finite probability experiment_pep
+PASS peptides: nullable finite probability global_q_value
+PASS peptides: nullable finite probability global_p_value
+PASS peptides: nullable finite probability global_pep
+PASS protein_groups: identical global q_value across sparse runs
+PASS protein_groups: identical global p_value across sparse runs
+PASS protein_groups: identical global pep across sparse runs
+PASS protein_groups: nullable finite probability run_q_value
+PASS protein_groups: nullable finite probability run_p_value
+PASS protein_groups: nullable finite probability run_pep
+PASS protein_groups: nullable finite probability experiment_q_value
+PASS protein_groups: nullable finite probability experiment_p_value
+PASS protein_groups: nullable finite probability experiment_pep
+PASS protein_groups: nullable finite probability global_q_value
+PASS protein_groups: nullable finite probability global_p_value
+PASS protein_groups: nullable finite probability global_pep
+PASS inference companion exact all-context score/p/q/PEP including null and zero
+PASS canonical modified target sequence available for independent entity lineage
+PASS modified peptide raw areas sum eligible precursor winners exactly once
+PASS modified peptide best retained scores before any report cut
+PASS singleton protein areas use unique modified peptides independently of peptide q
+PASS singleton protein best score uses unique modified peptides before report cuts
+PASS precursor modified-peptide statistics equal entity all-context statistics exactly
+PASS precursor singleton-protein statistics equal entity all-context statistics exactly
+PASS nonnull identity pg_long(id,run,decoy)
+PASS unique pg_long(id,run,decoy)
+PASS canonical QPX singleton protein evidence matches unfiltered entity long table
+PASS nonnull identity legacy_winners(run,precursor_id)
+PASS unique legacy_winners(run,precursor_id)
+PASS retained candidate identity versus legacy candidate rows
+PASS retained identity and metadata versus legacy
+PASS retained full-precision area/RT/score/q versus legacy
+PASS nonnull identity legacy_combined(id,run)
+PASS unique legacy_combined(id,run)
+PASS precursor matrix exactly equals legacy combined target cells
+BYTE_IDENTICAL 20200505_Evosep_200SPD_SG06-16_MLHeLa_200ng_py8_S3-A1_1_2737.calibration.json
+BYTE_IDENTICAL 20200505_Evosep_200SPD_SG06-16_MLHeLa_200ng_py8_S3-A1_1_2737.precursors.tsv
+BYTE_IDENTICAL precursors.tsv
+UNAVAILABLE optional XIPM checks: no .xipm files
+{"candidate_rows": 228492, "peptide_entity_runs": 117941, "protein_group_entity_runs": 14021, "qpx_files": {"qpx/opendia.feature.parquet": 32274790, "qpx/opendia.pg.parquet": 706986, "qpx/opendia.provenance.parquet": 9776, "qpx/opendia.run.parquet": 21293, "qpx/opendia.sample.parquet": 6871, "qpx/opendia/20200505_Evosep_200SPD_SG06-16_MLHeLa_200ng_py8_S3-A1_1_2737.candidates.parquet": 44063839, "qpx/opendia/inference.parquet": 6216046}, "retained_decoys": 65213, "retained_winners": 132107}
+ACCEPTANCE_PASS: numeric evidence, independent matrices, nulls and file integrity
