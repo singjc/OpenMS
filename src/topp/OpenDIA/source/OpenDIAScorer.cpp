@@ -16,6 +16,14 @@
 
 namespace OpenMS::OpenDIA
 {
+// Hot scorer kernels get an AVX2 clone next to the baseline (GCC function multiversioning, chosen at load time). Only
+// independent elements share a vector; every sum keeps its order and -ffp-contract=off forbids FMA, so both clones
+// give bit-identical results (OpenDIAScorer_test checks the kernels against plain loops).
+#if defined(__GNUC__) && !defined(__clang__) && defined(__x86_64__) && defined(__linux__)
+#define OPENDIA_SIMD_CLONES __attribute__((target_clones("avx2", "default")))
+#else
+#define OPENDIA_SIMD_CLONES
+#endif
   namespace
   {
     /// splitmix64: deterministic on every platform (std distributions are not).
@@ -162,7 +170,7 @@ namespace OpenMS::OpenDIA
     return t;
   }
 
-  void WhitenedNetwork::embed(const Transposed& t, const float* z, double* h, double* act, double* u) const
+  OPENDIA_SIMD_CLONES void WhitenedNetwork::embed(const Transposed& t, const float* z, double* h, double* act, double* u) const
   {
     // Same sums as embed(z, h), each accumulated over its inputs in the same order; the loops are only interchanged
     // so that independent units sit in the inner loop and vectorise.
@@ -187,7 +195,7 @@ namespace OpenMS::OpenDIA
     for (std::size_t e = 0; e < embed_; ++e) h[dimension_ + e] = std::tanh(u[e]);
   }
 
-  std::vector<double> WhitenedNetwork::readout(const std::vector<double>& positive, const std::vector<double>& negative, std::size_t k,
+  OPENDIA_SIMD_CLONES std::vector<double> WhitenedNetwork::readout(const std::vector<double>& positive, const std::vector<double>& negative, std::size_t k,
                                                double lambda, double& objective, int threads)
   {
     const std::size_t np = positive.size() / k, nn = negative.size() / k;
@@ -217,12 +225,18 @@ namespace OpenMS::OpenDIA
         for (std::size_t i = 0; i < k; ++i) c[r * k + i] = negative[(r0 + r) * k + i] - mn[i];
 #pragma omp for schedule(static, 1)
       for (std::ptrdiff_t i = 0; i < static_cast<std::ptrdiff_t>(k); ++i)
-        for (std::size_t j = 0; j <= static_cast<std::size_t>(i); ++j)
+      {
+        // Row i of s stays in cache and the inner loop runs over contiguous j (vectorises); each entry s_ij still
+        // accumulates c_r[i] c_r[j] over r in ascending order, so the sums are the same as the former r-inner loop.
+        double* const si = s.data() + static_cast<std::size_t>(i) * k;
+        const std::size_t len = static_cast<std::size_t>(i) + 1;
+        for (std::size_t r = 0; r < rb; ++r)
         {
-          double acc = s[i * k + j];
-          for (std::size_t r = 0; r < rb; ++r) acc += c[r * k + i] * c[r * k + j];
-          s[i * k + j] = acc;
+          const double* const cr = c.data() + r * k;
+          const double ci = cr[i];
+          for (std::size_t j = 0; j < len; ++j) si[j] += ci * cr[j];
         }
+      }
     }
     for (std::size_t i = 0; i < k; ++i)
     {
@@ -241,7 +255,7 @@ namespace OpenMS::OpenDIA
     return w;
   }
 
-  double WhitenedNetwork::objective(const std::vector<const float*>& positive, const std::vector<const float*>& negative, double lambda,
+  OPENDIA_SIMD_CLONES double WhitenedNetwork::objective(const std::vector<const float*>& positive, const std::vector<const float*>& negative, double lambda,
                                     std::vector<double>* gradient, int threads) const
   {
     const std::size_t k = outputs(), np = positive.size(), nn = negative.size(), n = np + nn;
@@ -307,20 +321,28 @@ namespace OpenMS::OpenDIA
           g_c2[e] += gu2[e];
         }
         std::fill(ga.begin(), ga.end(), 0.0);
+        // Element-wise in j (each element keeps its order over e and r); restrict lets the compiler vectorise.
+        double* __restrict const gap = ga.data();
+        const double* __restrict const ap = a;
         for (std::size_t e = 0; e < embed_; ++e)
         {
-          if (gu2[e] == 0.0) continue;
+          const double ge = gu2[e];
+          if (ge == 0.0) continue;
+          double* __restrict const gw = g_w2 + e * hidden_;
+          const double* __restrict const we = w2 + e * hidden_;
           for (std::size_t j = 0; j < hidden_; ++j)
           {
-            g_w2[e * hidden_ + j] += gu2[e] * a[j];
-            ga[j] += w2[e * hidden_ + j] * gu2[e];
+            gw[j] += ge * ap[j];
+            gap[j] += we[j] * ge;
           }
         }
         for (std::size_t j = 0; j < hidden_; ++j)
         {
           if (!(a[j] > 0.0)) continue;
           g_c1[j] += ga[j];
-          for (std::size_t i = 0; i < dimension_; ++i) g_w1[j * dimension_ + i] += ga[j] * z[i];
+          double* __restrict const gw = g_w1 + j * dimension_;
+          const double gj = ga[j];
+          for (std::size_t i = 0; i < dimension_; ++i) gw[i] += gj * z[i];
         }
       }
     }

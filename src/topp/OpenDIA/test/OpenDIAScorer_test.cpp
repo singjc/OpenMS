@@ -123,6 +123,10 @@ int main()
       const auto w1 = WhitenedNetwork::readout(hp, hn, k, 1e-2, o1, 1);
       const auto w4 = WhitenedNetwork::readout(hp, hn, k, 1e-2, o4, 4);
       check(w1 == w4 && o1 == o4, "readout independent of thread count");
+      // Also above the 1-thread case with more threads than entry rows per thread.
+      double o1b = 0.0;
+      const auto w1b = WhitenedNetwork::readout(hp, hn, k, 1e-2, o1b, 16);
+      check(w1b == w1 && o1b == o1, "readout identical for 1 and 16 threads");
     }
   }
 
