@@ -1,0 +1,25 @@
+    27.94%  [.] OpenMS::OpenDIA::FragmentGridCollector::consumeSpectrum(OpenMS::MSSpectrum&)
+    22.34%  [.] OpenMS::OpenDIA::CalibrationCollector::consumeSpectrum(OpenMS::MSSpectrum&) [clone ._omp_fn.0]
+     4.68%  [.] OpenMS::OpenDIA::TraceCollector::consumeMS1_(OpenMS::MSSpectrum&)
+     3.46%  [.] OpenMS::OpenDIA::TraceCollector::consumeMS1_(OpenMS::MSSpectrum&) [clone ._omp_fn.0]
+     3.18%  [.] __memmove_avx_unaligned_erms
+     3.12%  [.] OpenMS::OpenDIA::FragmentGridCollector::lane_(double, double)
+     2.62%  [.] OpenMS::OpenDIA::TraceCollector::consumeSpectrum(OpenMS::MSSpectrum&)
+     2.14%  [.] OpenMS::OpenDIA::CalibrationCollector::consumeSpectrum(OpenMS::MSSpectrum&)
+     2.00%  [.] OpenMS::OpenDIA::TraceCollector::openEvidence_(unsigned long)
+     1.98%  [.] OpenMS::OpenDIA::TraceCollector::consumeSpectrum(OpenMS::MSSpectrum&) [clone ._omp_fn.0]
+     1.88%  [.] _int_malloc
+     1.24%  [.] OpenMS::OpenDIA::FragmentGridCollector::consumeSpectrum(OpenMS::MSSpectrum&) [clone ._omp_fn.0]
+     1.24%  [.] _int_free
+     1.02%  [.] OpenMS::OpenDIA::TraceCollector::tensor_(unsigned long)
+     0.99%  [.] OpenMS::OpenDIA::StreamSearch::flushBatch_()
+     0.80%  [.] OpenMS::OpenDIA::WhitenedNetwork::readout(std::vector<double, std::allocator<double> > const&, std::vector<double, std::allocator<doub
+     0.80%  [.] OpenMS::OpenDIA::WhitenedNetwork::objective(std::vector<float const*, std::allocator<float const*> > const&, std::vector<float const*,
+     0.75%  [.] OpenMS::OpenDIA::WhitenedNetwork::embed(OpenMS::OpenDIA::WhitenedNetwork::Transposed const&, float const*, double*, double*, double*) 
+     0.75%  [.] malloc
+     0.64%  [.] OpenMS::OpenDIA::FragmentGridCollector::close_(unsigned int)
+     0.63%  [.] OpenMS::OpenDIA::InterferenceResolver::compute(std::vector<OpenMS::OpenDIA::InterferenceResolver::Precursor, std::allocator<OpenMS::Op
+     0.61%  [.] OpenMS::OpenDIA::TraceCollector::countByIons_(OpenMS::MSSpectrum const&, unsigned long, double)
+     0.60%  [.] malloc_consolidate
+     0.60%  [.] OpenMS::OpenDIA::StreamSearch::matchChunk_(OpenMS::OpenDIA::StreamSearch::GridCell const&, OpenMS::OpenDIA::StreamSearch::Chunk const&
+     0.54%  [.] void std::__introsort_loop<__gnu_cxx::__normal_iterator<unsigned int*, std::vector<unsigned int, std::allocator<unsigned int> > >, lon
