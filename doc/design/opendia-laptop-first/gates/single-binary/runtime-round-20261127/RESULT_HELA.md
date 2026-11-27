@@ -46,7 +46,26 @@ Result: every `ifg` and `prev` output is `cmp`-identical to `base_r1` of the A/B
   - On both D and H it is the per-window state: the feature table, `RunWindow` and the search candidates, at extraction and in the first scorer fold (H r1 reached 21.4 GB there).
   - On H, calibration peaks at 14.7 GB.
 
+## Follow-up: streaming windowed calibration (OpenMS `a251c23b40`)
+
+The change applies to the windowed (second) calibration pass, which Astral uses with a panel of 300k targets and 300k decoys:
+- **Search on close:** a member's stage-3 search runs as soon as the run passes its collection window, batched and in parallel, instead of after the whole pass.
+- **Trace cut:** the member's traces are then cut to the ±64-spectrum slice around its best apex, which is all that stage 4 reads.
+- **Deferred reserve:** the trace capacity is reserved at the member's first spectrum instead of at panel setup, so only open members hold it.
+
+Ranges, traces and candidates are the same as before.
+
+| Check | Result |
+|---|---|
+| Astral raw01 seed0 (laptop), byte identity | 3/3 SAME ([evidence/cal2/](evidence/cal2/)) |
+| Astral calibration pass-2 RSS | 10.9 to 7.8 GB |
+| Astral run peak RSS | **10.6 to 7.9 GB** (now set by calibration pass 1); wall 7:11 (descriptive) |
+| HeLa D, codon 44865425 (cn-005) | 3/3 SAME against `D_base_r1`, file set same; 11:26, 16.4 GiB |
+| HeLa H, codon 44865426 (cn-007) | 3/3 SAME against `H_base_r1`, file set same; 14:14, 21.2 GiB |
+
+HeLa uses only the whole-run pass, so its memory is unchanged. The run checks that the refactored stage-3 path still gives identical output there. The scripts and hashes are in [cal-evidence/](cal-evidence/).
+
 ## What is left for memory (no change made)
 
 - Per-window state that scales with the window count: the feature table (45 floats per window), `RunWindow` with its `SearchCandidate` (about 100 B) and the search candidates before the population filter. Shrinking these needs a lighter `RunWindow` or features built per group. Both change internal layouts, but not outputs.
-- On Astral, the peak is calibration pass 2, with 600k members' traces held over the run (about 10.4 GB).
+- On Astral, the peak is now the whole-run calibration pass 1. Its 80k-member panel holds traces over the full run (about 7.2 GB at the end of the pass), because stages 1 and 2 search the whole run. On H, pass 1 peaks at 14.7 GB for the same reason.
