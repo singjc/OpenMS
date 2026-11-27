@@ -1,0 +1,74 @@
+{"legacy_atol": 0.0, "legacy_rtol": 0.0, "output": "/home/singjc/.jcode/scratch/qpx-output-20261127/out_astral_qpx", "thresholds": {"peakgroup": 0.01, "peptide": 0.01, "protein": 0.01}}
+{"nulls": {"area": 0, "charge": 0, "decoy": 0, "discriminant_score": 0, "feature_id": 0, "genes": 336609, "global_q_value": 0, "pass_peakgroup": 0, "pass_peptide": 0, "pass_protein_group": 0, "peptide_global_q_value": 224, "peptide_run_q_value": 224, "precursor_id": 0, "protein_group_global_q_value": 224, "protein_group_run_q_value": 224, "proteins": 0, "quantity_type": 0, "rt_apex": 0, "rt_end": 0, "rt_start": 0, "run": 0, "run_q_value": 0, "sequence": 0, "unmodified_sequence": 0}, "parquet_bytes": 29654944, "rows": 336609, "table": "precursors", "tsv_bytes": 120835538}
+{"nulls": {"LFQ_Astral_DIA_15min_50ng_Human_01": 0, "charge": 0, "genes": 2221, "precursor_id": 0, "proteins": 0, "sequence": 0, "unmodified_sequence": 0}, "parquet_bytes": 85320, "rows": 2221, "table": "precursor_matrix", "tsv_bytes": 227349}
+{"nulls": {"area": 167936, "decoy": 0, "discriminant_score": 0, "global_q_value": 201, "pass": 0, "proteins": 0, "quantity_type": 0, "run": 0, "run_q_value": 201, "unmodified_sequence": 0}, "parquet_bytes": 4299927, "rows": 169643, "table": "peptides", "tsv_bytes": 29564489}
+{"nulls": {"LFQ_Astral_DIA_15min_50ng_Human_01": 0, "proteins": 0, "unmodified_sequence": 0}, "parquet_bytes": 49629, "rows": 1652, "table": "peptide_matrix", "tsv_bytes": 123236}
+{"nulls": {"area": 167936, "decoy": 0, "discriminant_score": 0, "global_q_value": 201, "pass": 0, "protein_group": 0, "proteins": 0, "quantity_type": 0, "run": 0, "run_q_value": 201}, "parquet_bytes": 4806794, "rows": 169643, "table": "protein_groups", "tsv_bytes": 35516560}
+{"nulls": {"LFQ_Astral_DIA_15min_50ng_Human_01": 0, "protein_group": 0, "proteins": 0}, "parquet_bytes": 54272, "rows": 1652, "table": "protein_group_matrix", "tsv_bytes": 172633}
+{"canonical_view": "feature", "string_extensions_decoded": 17}
+{"file": "/home/singjc/.jcode/scratch/qpx-output-20261127/out_astral_qpx/qpx/opendia.feature.parquet", "independent_producer_ids": 1675700}
+{"canonical_view": "qpx_pg", "string_extensions_decoded": 3}
+{"file": "/home/singjc/.jcode/scratch/qpx-output-20261127/out_astral_qpx/qpx/opendia.pg.parquet", "independent_pg_ids": 169643}
+PASS nonnull identity feature(feature_id)
+PASS unique feature(feature_id)
+PASS nonnull identity candidates(feature_id)
+PASS unique candidates(feature_id)
+PASS nonnull identity precursors(feature_id)
+PASS unique precursors(feature_id)
+PASS nonnull identity precursors(run,precursor_id)
+PASS unique precursors(run,precursor_id)
+PASS nonnull identity feature(run_file_name,opendia_precursor_id,opendia_candidate_row)
+PASS unique feature(run_file_name,opendia_precursor_id,opendia_candidate_row)
+PASS canonical QPX versus full diagnostic candidate IDs and exact values
+PASS unfiltered retained report equals canonical QPX winners
+PASS per-feature peak-group plus corresponding-level pass flags
+PASS raw MS2 area semantics
+PASS nonnull identity precursor_matrix(precursor_id)
+PASS unique precursor_matrix(precursor_id)
+PASS nonnull identity expected_precursor(id,run)
+PASS unique expected_precursor(id,run)
+PASS precursor_matrix: exact eligible cells and real zeros
+PASS precursor_matrix: no rows without eligible cells
+{"eligible_cells": 2221, "matrix": "precursor_matrix", "real_zero_cells": 0}
+PASS nonnull identity peptides(unmodified_sequence,run,decoy)
+PASS unique peptides(unmodified_sequence,run,decoy)
+PASS nonnull identity peptide_matrix(unmodified_sequence)
+PASS unique peptide_matrix(unmodified_sequence)
+PASS nonnull identity expected_peptide(id,run)
+PASS unique expected_peptide(id,run)
+PASS peptide_matrix: exact eligible cells and real zeros
+PASS peptide_matrix: no rows without eligible cells
+{"eligible_cells": 1652, "matrix": "peptide_matrix", "real_zero_cells": 0}
+PASS peptides: independent level pass flags
+PASS nonnull identity protein_groups(protein_group,run,decoy)
+PASS unique protein_groups(protein_group,run,decoy)
+PASS nonnull identity protein_group_matrix(protein_group)
+PASS unique protein_group_matrix(protein_group)
+PASS nonnull identity expected_protein_group(id,run)
+PASS unique expected_protein_group(id,run)
+PASS protein_group_matrix: exact eligible cells and real zeros
+PASS protein_group_matrix: no rows without eligible cells
+{"eligible_cells": 1652, "matrix": "protein_group_matrix", "real_zero_cells": 0}
+PASS protein_groups: independent level pass flags
+PASS eligible target peptide metadata available for independent sum validation
+PASS peptide raw areas sum eligible precursor winners exactly once
+PASS resolved protein areas sum eligible unique-group precursor evidence independently of peptide q
+PASS canonical decoy group accessions carry the declared prefix
+PASS nonnull identity pg_long(id,run,decoy)
+PASS unique pg_long(id,run,decoy)
+PASS canonical QPX protein-group evidence matches unfiltered entity long table
+PASS nonnull identity legacy_winners(run,precursor_id)
+PASS unique legacy_winners(run,precursor_id)
+PASS retained candidate identity versus legacy candidate rows
+PASS retained identity and metadata versus legacy
+PASS retained full-precision area/RT/score/q versus legacy
+PASS nonnull identity legacy_combined(id,run)
+PASS unique legacy_combined(id,run)
+PASS precursor matrix exactly equals legacy combined target cells
+BYTE_IDENTICAL LFQ_Astral_DIA_15min_50ng_Human_01.calibration.json
+BYTE_IDENTICAL LFQ_Astral_DIA_15min_50ng_Human_01.precursors.tsv
+BYTE_IDENTICAL precursors.tsv
+PASS every XIPM map links to the actual exported QPX winner candidate
+{"bytes": 2807075, "maps": 15799, "missing_mobility_points": 151462, "ms1_maps": 2257, "ms2_maps": 13542, "points": 151462, "xipm": "/home/singjc/.jcode/scratch/qpx-output-20261127/out_astral_qpx/LFQ_Astral_DIA_15min_50ng_Human_01.xipm"}
+{"candidate_rows": 1675700, "peptide_entity_runs": 169643, "protein_group_entity_runs": 169643, "qpx_files": {"qpx/opendia.feature.parquet": 181767499, "qpx/opendia.pg.parquet": 7647426, "qpx/opendia.provenance.parquet": 7497, "qpx/opendia.run.parquet": 14066, "qpx/opendia.sample.parquet": 4876, "qpx/opendia/LFQ_Astral_DIA_15min_50ng_Human_01.candidates.parquet": 305994388}, "retained_decoys": 168192, "retained_winners": 336609}
+ACCEPTANCE_PASS: numeric evidence, independent matrices, nulls and file integrity

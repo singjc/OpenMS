@@ -1,0 +1,60 @@
+Internal ctest changing into directory: /home/singjc/Documents/github/OpenMS-r1-full-ninja-build
+Test project /home/singjc/Documents/github/OpenMS-r1-full-ninja-build
+      Start  970: TOPPWRITEINI_OpenDIA
+      Start  743: OpenDIAPreparation_prediction_test
+      Start  753: OpenDIAGBM_test
+      Start  740: OpenDIAPeakMapExport_test
+ 1/27 Test  #970: TOPPWRITEINI_OpenDIA ...................   Passed    0.01 sec
+      Start  755: OpenDIAMzIndex_test
+ 2/27 Test  #740: OpenDIAPeakMapExport_test ..............   Passed    0.27 sec
+      Start  747: OpenDIACalibration_test
+ 3/27 Test  #755: OpenDIAMzIndex_test ....................   Passed    0.54 sec
+      Start  749: OpenDIASpectrumCache_test
+ 4/27 Test  #749: OpenDIASpectrumCache_test ..............   Passed    0.09 sec
+      Start  739: OpenDIAReportExport_test
+ 5/27 Test  #739: OpenDIAReportExport_test ...............   Passed    0.06 sec
+      Start  741: OpenDIAAnnotations_test
+ 6/27 Test  #741: OpenDIAAnnotations_test ................   Passed    0.05 sec
+      Start  744: OpenDIAWorkflow_test
+ 7/27 Test  #744: OpenDIAWorkflow_test ...................   Passed    0.06 sec
+      Start  750: OpenDIAPeakPicker_test
+ 8/27 Test  #750: OpenDIAPeakPicker_test .................   Passed    0.30 sec
+      Start  738: OpenDIAQpxExport_test
+ 9/27 Test  #738: OpenDIAQpxExport_test ..................   Passed    0.15 sec
+      Start  752: OpenDIAScorer_test
+10/27 Test  #747: OpenDIACalibration_test ................   Passed    1.16 sec
+      Start  748: OpenDIAPeakFeatures_test
+11/27 Test  #748: OpenDIAPeakFeatures_test ...............   Passed    0.01 sec
+      Start  757: OpenDIALibraryParquet_test
+12/27 Test  #757: OpenDIALibraryParquet_test .............   Passed    0.04 sec
+      Start  754: OpenDIAFragmentGrid_test
+13/27 Test  #752: OpenDIAScorer_test .....................   Passed    0.27 sec
+      Start  746: OpenDIATraces_test
+14/27 Test  #754: OpenDIAFragmentGrid_test ...............   Passed    0.10 sec
+      Start  742: OpenDIAPreparation_test
+15/27 Test  #742: OpenDIAPreparation_test ................   Passed    0.03 sec
+      Start  737: OpenDIAQuantification_test
+16/27 Test  #737: OpenDIAQuantification_test .............   Passed    0.03 sec
+      Start  745: OpenDIASearch_test
+17/27 Test  #746: OpenDIATraces_test .....................   Passed    0.16 sec
+      Start  751: OpenDIAInterference_test
+18/27 Test  #751: OpenDIAInterference_test ...............   Passed    0.06 sec
+      Start  756: OpenDIARTRefine_test
+19/27 Test  #745: OpenDIASearch_test .....................   Passed    0.13 sec
+      Start  758: OpenDIA_no_openswath
+20/27 Test  #756: OpenDIARTRefine_test ...................   Passed    0.03 sec
+      Start  759: OpenDIA_fails_closed_on_tiny_library
+21/27 Test  #759: OpenDIA_fails_closed_on_tiny_library ...   Passed    0.01 sec
+      Start  760: OpenDIA_rejects_duplicate_run_names
+22/27 Test  #760: OpenDIA_rejects_duplicate_run_names ....   Passed    0.01 sec
+      Start 1180: TOPPWRITECTD_OpenDIA
+23/27 Test  #758: OpenDIA_no_openswath ...................   Passed    0.05 sec
+      Start  971: TOPPWRITEINI_OpenDIA_SectionName
+24/27 Test #1180: TOPPWRITECTD_OpenDIA ...................   Passed    0.02 sec
+25/27 Test  #971: TOPPWRITEINI_OpenDIA_SectionName .......   Passed    0.01 sec
+26/27 Test  #753: OpenDIAGBM_test ........................   Passed    1.87 sec
+27/27 Test  #743: OpenDIAPreparation_prediction_test .....   Passed   12.44 sec
+
+100% tests passed, 0 tests failed out of 27
+
+Total Test time (real) =  12.51 sec

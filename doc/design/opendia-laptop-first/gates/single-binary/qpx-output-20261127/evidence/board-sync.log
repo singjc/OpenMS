@@ -1,0 +1,13 @@
+create draft "R-WP6: QPX evidence, configurable precursor/peptide/protein reports and optional native XIPM (OpenMS ba3125b20f)" [Done]
+  status -> Done
+drafts not in BOARD.md (left untouched):
+  R-WP4: PRECHECK_BLEND (frozen): -gbm_blend 0.5 vs the default on Astral 01/02/03 (03 held out) and HeLa D/H r ≈ 7 (held out), 5 seeds each; pass needs bound ≤ 1 % on Astral and ≥ 0.98x N@FDP_c 1 % everywhere, HeLa lower bound ≤ +0.10 pp
+  R-WP4: Next FDR fix (evidence sharing or GBM feature change) and relabelled evaluator; needs a new held-out set
+  R-WP4: Next FDR fix: A raises IDs but not calibration; B ruled out on dev. Choice of next step (A on HeLa plus a held-out set, or a different calibration fix)
+  R-WP4: PRECHECK_EVSHARE (frozen): -evidence_share vs the default on Astral raw 03, HeLa D, H and two new PXD027359 HeLa diaPASEF raws (N1 25186 50 ng 5.6 min, N2 7546 400 ng TIMS01), 5 seeds each, corrected labels. Pass = no median N@FDP_c 1 % los...
+  R-WP4: Calibration fix search (local, label-free, dev data only): candidates are network-only TDC for GBM-promoted IDs, per-stratum TDC by co-isolation exposure, decoy matching of borrowing exposure
+  R-WP4: Next FDR step: a label-free feature or competition step aimed at the 4+ shared-fragment class on diaPASEF; needs a new held-out set (N2 used, N1 unusable)
+  R-WP4: Next FDR step: the remaining excess sits in non-borrowing entrapments (DIAG_STEPA 0-1 class; residual P 0.52-0.53; GBM shift on H). Direction needs user decision
+  R-WP4: PRECHECK_RTNULL: species-independent causal control of RT refinement, existing -no_rt_refine versus fixed G0 references on D/H seeds 0-4. Freeze before 10 remote jobs. Original labels and <= 1 % combined / >= 1.00x IDs bars retained; PXD017...
+  R-WP4: PRECHECK_RTNULL: species-independent causal control of RT refinement, existing -no_rt_refine versus fixed G0 references on D/H seeds 0-4. Frozen and pushed as 83eed8ac1a before jobs 44052409-44052418; all ten RUNNING at 20:19 UTC. Original ...
+2 actions

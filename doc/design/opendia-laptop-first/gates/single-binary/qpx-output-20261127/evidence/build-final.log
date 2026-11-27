@@ -1,0 +1,34 @@
+[1/18] Preparing Thermo vendor packages
+[2/18] Building CXX object src/topp/OpenDIA/CMakeFiles/OpenDIA_impl.dir/source/results/Annotations.cpp.o
+[3/18] Building CXX object src/topp/OpenDIA/CMakeFiles/OpenDIA.dir/OpenDIA.cpp.o
+[4/18] Building CXX object src/topp/OpenDIA/CMakeFiles/OpenDIA_impl.dir/source/results/ReportExport.cpp.o
+[5/18] Building CXX object src/tests/class_tests/openms/topp_OpenDIA_tests/CMakeFiles/OpenDIAQpxExport_test.dir/QpxExport_test.cpp.o
+/home/singjc/Documents/github/OpenMS-r1-sparse-experiment/src/topp/OpenDIA/test/QpxExport_test.cpp: In function ‘std::shared_ptr<arrow::Table> {anonymous}::read(const std::filesystem::__cxx11::path&)’:
+/home/singjc/Documents/github/OpenMS-r1-sparse-experiment/src/topp/OpenDIA/test/QpxExport_test.cpp:40:34: warning: ‘arrow::Status parquet::arrow::FileReader::ReadTable(std::shared_ptr<arrow::Table>*)’ is deprecated: Deprecated in 24.0.0. Use arrow::Result version instead. [-Wdeprecated-declarations]
+   40 |   auto status = reader->ReadTable(&table);
+      |                 ~~~~~~~~~~~~~~~~~^~~~~~~~
+In file included from /home/singjc/Documents/github/OpenMS-r1-sparse-experiment/src/topp/OpenDIA/test/QpxExport_test.cpp:15:
+/home/singjc/Documents/github/openms-build/vcpkg_installed/x64-linux/include/parquet/arrow/reader.h:242:19: note: declared here
+  242 |   ::arrow::Status ReadTable(std::shared_ptr<::arrow::Table>* out);
+      |                   ^~~~~~~~~
+[6/18] Building CXX object src/topp/OpenDIA/CMakeFiles/OpenDIA_impl.dir/source/results/QpxExport.cpp.o
+[7/18] Building CXX object src/tests/class_tests/openms/topp_OpenDIA_tests/CMakeFiles/OpenDIAReportExport_test.dir/ReportExport_test.cpp.o
+/home/singjc/Documents/github/OpenMS-r1-sparse-experiment/src/topp/OpenDIA/test/ReportExport_test.cpp: In function ‘std::shared_ptr<arrow::Table> {anonymous}::readParquet(const std::filesystem::__cxx11::path&)’:
+/home/singjc/Documents/github/OpenMS-r1-sparse-experiment/src/topp/OpenDIA/test/ReportExport_test.cpp:83:28: warning: ‘arrow::Status parquet::arrow::FileReader::ReadTable(std::shared_ptr<arrow::Table>*)’ is deprecated: Deprecated in 24.0.0. Use arrow::Result version instead. [-Wdeprecated-declarations]
+   83 |     check(reader->ReadTable(&table));
+      |           ~~~~~~~~~~~~~~~~~^~~~~~~~
+In file included from /home/singjc/Documents/github/OpenMS-r1-sparse-experiment/src/topp/OpenDIA/test/ReportExport_test.cpp:8:
+/home/singjc/Documents/github/openms-build/vcpkg_installed/x64-linux/include/parquet/arrow/reader.h:242:19: note: declared here
+  242 |   ::arrow::Status ReadTable(std::shared_ptr<::arrow::Table>* out);
+      |                   ^~~~~~~~~
+[8/18] Linking CXX static library lib/libOpenDIA_impl.a
+[9/18] Linking CXX executable bin/OpenDIA
+[10/18] Linking CXX executable src/tests/class_tests/bin/OpenDIAQuantification_test
+[11/18] Building CXX object src/tests/class_tests/openms/topp_OpenDIA_tests/CMakeFiles/OpenDIAPeakMapExport_test.dir/PeakMapExport_test.cpp.o
+[12/18] Linking CXX executable src/tests/class_tests/bin/OpenDIAQpxExport_test
+[13/18] Linking CXX executable src/tests/class_tests/bin/OpenDIAReportExport_test
+[14/18] Linking CXX executable src/tests/class_tests/bin/OpenDIAPeakMapExport_test
+[15/18] Building CXX object src/tests/class_tests/openms/topp_OpenDIA_tests/CMakeFiles/OpenDIASpectrumCache_test.dir/SpectrumCache_test.cpp.o
+[16/18] Linking CXX executable src/tests/class_tests/bin/OpenDIASpectrumCache_test
+[17/18] Building CXX object src/tests/class_tests/openms/topp_OpenDIA_tests/CMakeFiles/OpenDIAAnnotations_test.dir/Annotations_test.cpp.o
+[18/18] Linking CXX executable src/tests/class_tests/bin/OpenDIAAnnotations_test

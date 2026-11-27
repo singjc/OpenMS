@@ -1,0 +1,39 @@
+{
+  "upstream_revision": "2dadc0e120cf8b868aab0c4b6489f047efc19561",
+  "dataset": "/home/singjc/Documents/github/OpenMS-r1-full-ninja-build/src/tests/class_tests/openms/topp_OpenDIA_tests/OpenDIAQpxExport_test_data/conformance",
+  "views": {
+    "feature": {
+      "is_valid": true,
+      "issues": [
+        {
+          "structure": "feature",
+          "check": "identity_not_checked",
+          "severity": "info",
+          "column": "feature_id",
+          "message": "Not all feature_id values are derived (footer identity_source), so they were not re-derived"
+        }
+      ]
+    },
+    "pg": {
+      "is_valid": true,
+      "issues": []
+    },
+    "sample": {
+      "is_valid": true,
+      "issues": []
+    },
+    "run": {
+      "is_valid": true,
+      "issues": []
+    },
+    "provenance": {
+      "is_valid": true,
+      "issues": []
+    }
+  },
+  "producer_identity": {
+    "rows": 3,
+    "stale": 0
+  },
+  "conformance_passed": true
+}

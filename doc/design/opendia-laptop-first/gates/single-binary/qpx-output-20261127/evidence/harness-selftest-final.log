@@ -1,0 +1,17 @@
+SELFTEST_PASS baseline all gates
+SELFTEST_PASS old_typed all gates
+SELFTEST_PASS producer_hash_changed independent producer feature_id hash mismatch
+SELFTEST_PASS canonical_decimal_changed canonical QPX versus full diagnostic candidate IDs and exact values
+SELFTEST_PASS canonical_bad_decimal Could not convert string
+SELFTEST_PASS pg_hash_changed independent protein-group pg_id hash mismatch
+SELFTEST_PASS null_becomes_zero precursor_matrix: exact eligible cells
+SELFTEST_PASS candidate_missing canonical QPX versus full diagnostic candidate IDs
+SELFTEST_PASS peptide_double_count peptide raw areas sum eligible precursor winners
+SELFTEST_PASS protein_crossgated_by_peptide resolved protein areas sum eligible unique-group precursor evidence independently of peptide q
+SELFTEST_PASS legacy_candidate_changed retained candidate identity versus legacy candidate rows
+SELFTEST_PASS bad_xipm_lengths unequal XIPM point array lengths
+SELFTEST_PASS bad_xipm_link every XIPM map links to the actual exported QPX winner
+SELFTEST_PASS optional_xipm_unavailable all gates
+SELFTEST_PASS optional_xipm_unavailable --require-xipm requested
+SELFTEST_PASS baseline threshold contradicts stored metadata
+HARNESS_SELFTEST_PASS: new canonical and old typed positive fixtures plus thirteen corruption/unavailable gates

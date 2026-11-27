@@ -1,0 +1,26 @@
+ba3125b20f Add QPX evidence, configurable quantification reports and optional XIPM export
+ src/topp/OpenDIA/CMakeLists.txt                    |  10 +
+ src/topp/OpenDIA/OpenDIA.cpp                       | 121 +++--
+ src/topp/OpenDIA/README.md                         |  77 ++-
+ src/topp/OpenDIA/include/io/PeakMapExport.h        |  26 +
+ src/topp/OpenDIA/include/io/SpectrumCache.h        |   5 +-
+ src/topp/OpenDIA/include/results/Annotations.h     |  10 +
+ src/topp/OpenDIA/include/results/QpxExport.h       |  25 +
+ src/topp/OpenDIA/include/results/Quantification.h  |  55 ++
+ src/topp/OpenDIA/include/results/ReportExport.h    |  14 +
+ src/topp/OpenDIA/include/workflow/Workflow.h       |   6 +
+ src/topp/OpenDIA/source/io/PeakMapExport.cpp       | 357 ++++++++++++
+ src/topp/OpenDIA/source/io/SpectrumCache.cpp       |  38 +-
+ src/topp/OpenDIA/source/results/Annotations.cpp    | 115 ++++
+ src/topp/OpenDIA/source/results/QpxExport.cpp      | 599 +++++++++++++++++++++
+ src/topp/OpenDIA/source/results/Quantification.cpp | 282 ++++++++++
+ src/topp/OpenDIA/source/results/ReportExport.cpp   | 371 +++++++++++++
+ src/topp/OpenDIA/source/workflow/Workflow.cpp      |  32 +-
+ src/topp/OpenDIA/test/Annotations_test.cpp         | 132 +++++
+ src/topp/OpenDIA/test/CMakeLists.txt               |  13 +
+ src/topp/OpenDIA/test/PeakMapExport_test.cpp       | 340 ++++++++++++
+ src/topp/OpenDIA/test/QpxExport_test.cpp           | 324 +++++++++++
+ src/topp/OpenDIA/test/Quantification_test.cpp      | 258 +++++++++
+ src/topp/OpenDIA/test/ReportExport_test.cpp        | 344 ++++++++++++
+ src/topp/OpenDIA/test/SpectrumCache_test.cpp       |  12 +
+ 24 files changed, 3500 insertions(+), 66 deletions(-)
