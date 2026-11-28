@@ -1,0 +1,405 @@
+FDRBench - FDR Control Evaluation Tool for Proteomics
+https://github.com/Noble-Lab/FDRBench
+
+Checking for duplicates and then random shuffling
+2026-11-28 12:19:12 [INFO ] main.java.FDR.DBGear[getEnzymeByIndex:56] - Use enzyme:Trypsin (no P rule)
+Enzyme: Trypsin (no P rule)
+Finished protein digestion for 20431 proteins
+A total of 673564 peptides are generated from 20431 proteins
+Fix C terminal amino acid
+Invalid protein ID: sp|O00370|LORF2_HUMAN
+Invalid description: LINE-1 retrotransposable element ORF2 protein OS=Homo sapiens OX=9606 PE=1 SV=1
+Use description: LINE-1 retrotransposable element ORF2 protein OS=Homo sapiens OX=9606 PE=1 SV=1 GN=LORF2_HUMAN_i280_p_target
+Invalid protein ID: sp|P0DOX5|IGG1_HUMAN
+Invalid description: Immunoglobulin gamma-1 heavy chain OS=Homo sapiens OX=9606 PE=1 SV=2
+Use description: Immunoglobulin gamma-1 heavy chain OS=Homo sapiens OX=9606 PE=1 SV=2 GN=IGG1_HUMAN_i2490_p_target
+Invalid protein ID: sp|Q9N2K0|ENH1_HUMAN
+Invalid description: HERV-H_2q24.3 provirus ancestral Env polyprotein OS=Homo sapiens OX=9606 PE=2 SV=1
+Use description: HERV-H_2q24.3 provirus ancestral Env polyprotein OS=Homo sapiens OX=9606 PE=2 SV=1 GN=ENH1_HUMAN_i12642_p_target
+Invalid protein ID: sp|P0DOX3|IGD_HUMAN
+Invalid description: Immunoglobulin delta heavy chain OS=Homo sapiens OX=9606 PE=1 SV=1
+Use description: Immunoglobulin delta heavy chain OS=Homo sapiens OX=9606 PE=1 SV=1 GN=IGD_HUMAN_i14996_p_target
+Invalid protein ID: sp|P0DOX4|IGE_HUMAN
+Invalid description: Immunoglobulin epsilon heavy chain OS=Homo sapiens OX=9606 PE=1 SV=1
+Use description: Immunoglobulin epsilon heavy chain OS=Homo sapiens OX=9606 PE=1 SV=1 GN=IGE_HUMAN_i14997_p_target
+Invalid protein ID: sp|P0DOX6|IGM_HUMAN
+Invalid description: Immunoglobulin mu heavy chain OS=Homo sapiens OX=9606 PE=1 SV=2
+Use description: Immunoglobulin mu heavy chain OS=Homo sapiens OX=9606 PE=1 SV=2 GN=IGM_HUMAN_i14998_p_target
+Invalid protein ID: sp|P69208|MORN_HUMAN
+Invalid description: Morphogenetic neuropeptide OS=Homo sapiens OX=9606 PE=1 SV=1
+Use description: Morphogenetic neuropeptide OS=Homo sapiens OX=9606 PE=1 SV=1 GN=MORN_HUMAN_i15133_p_target
+Invalid protein ID: sp|Q9N2J8|ENH3_HUMAN
+Invalid description: HERV-H_2q24.1 provirus ancestral Env polyprotein OS=Homo sapiens OX=9606 PE=2 SV=1
+Use description: HERV-H_2q24.1 provirus ancestral Env polyprotein OS=Homo sapiens OX=9606 PE=2 SV=1 GN=ENH3_HUMAN_i16327_p_target
+Invalid protein ID: sp|C0HM83|SHMOS_HUMAN
+Invalid description: Protein SHMOOSE OS=Homo sapiens OX=9606 PE=1 SV=1
+Use description: Protein SHMOOSE OS=Homo sapiens OX=9606 PE=1 SV=1 GN=SHMOS_HUMAN_i16986_p_target
+Invalid protein ID: sp|C9JQL5|DSA2D_HUMAN
+Invalid description: Putative dispanin subfamily A member 2d OS=Homo sapiens OX=9606 PE=5 SV=1
+Use description: Putative dispanin subfamily A member 2d OS=Homo sapiens OX=9606 PE=5 SV=1 GN=DSA2D_HUMAN_i17000_p_target
+Invalid protein ID: sp|P0DOX2|IGA2_HUMAN
+Invalid description: Immunoglobulin alpha-2 heavy chain OS=Homo sapiens OX=9606 PE=1 SV=2
+Use description: Immunoglobulin alpha-2 heavy chain OS=Homo sapiens OX=9606 PE=1 SV=2 GN=IGA2_HUMAN_i17159_p_target
+Invalid protein ID: sp|P0DOX7|IGK_HUMAN
+Invalid description: Immunoglobulin kappa light chain OS=Homo sapiens OX=9606 PE=1 SV=1
+Use description: Immunoglobulin kappa light chain OS=Homo sapiens OX=9606 PE=1 SV=1 GN=IGK_HUMAN_i17160_p_target
+Invalid protein ID: sp|P0DOX8|IGL1_HUMAN
+Invalid description: Immunoglobulin lambda-1 light chain OS=Homo sapiens OX=9606 PE=1 SV=1
+Use description: Immunoglobulin lambda-1 light chain OS=Homo sapiens OX=9606 PE=1 SV=1 GN=IGL1_HUMAN_i17161_p_target
+Invalid protein ID: sp|A6NDX4|YO011_HUMAN
+Invalid description: Putative transmembrane protein ENSP00000320207 OS=Homo sapiens OX=9606 PE=5 SV=1
+Use description: Putative transmembrane protein ENSP00000320207 OS=Homo sapiens OX=9606 PE=5 SV=1 GN=YO011_HUMAN_i18917_p_target
+Invalid protein ID: sp|A6NJR5|SPDL3_HUMAN
+Invalid description: Putative speedy protein-like protein 3 OS=Homo sapiens OX=9606 PE=5 SV=3
+Use description: Putative speedy protein-like protein 3 OS=Homo sapiens OX=9606 PE=5 SV=3 GN=SPDL3_HUMAN_i18983_p_target
+Invalid protein ID: sp|A6NNC1|P12LL_HUMAN
+Invalid description: Putative POM121-like protein 1-like OS=Homo sapiens OX=9606 PE=5 SV=3
+Use description: Putative POM121-like protein 1-like OS=Homo sapiens OX=9606 PE=5 SV=3 GN=P12LL_HUMAN_i19012_p_target
+Invalid protein ID: sp|A8MTW9|YB043_HUMAN
+Invalid description: Putative uncharacterized protein ENSP00000380674 OS=Homo sapiens OX=9606 PE=5 SV=2
+Use description: Putative uncharacterized protein ENSP00000380674 OS=Homo sapiens OX=9606 PE=5 SV=2 GN=YB043_HUMAN_i19032_p_target
+Invalid protein ID: sp|A8MUN3|YQ048_HUMAN
+Invalid description: Putative uncharacterized protein ENSP00000381830 OS=Homo sapiens OX=9606 PE=5 SV=1
+Use description: Putative uncharacterized protein ENSP00000381830 OS=Homo sapiens OX=9606 PE=5 SV=1 GN=YQ048_HUMAN_i19034_p_target
+Invalid protein ID: sp|A8MVJ9|HPF1L_HUMAN
+Invalid description: Putative histone PARylation factor 1-like OS=Homo sapiens OX=9606 PE=5 SV=1
+Use description: Putative histone PARylation factor 1-like OS=Homo sapiens OX=9606 PE=5 SV=1 GN=HPF1L_HUMAN_i19040_p_target
+Invalid protein ID: sp|A8MWL6|SNG2L_HUMAN
+Invalid description: Putative synaptogyrin-2 like protein OS=Homo sapiens OX=9606 PE=5 SV=1
+Use description: Putative synaptogyrin-2 like protein OS=Homo sapiens OX=9606 PE=5 SV=1 GN=SNG2L_HUMAN_i19043_p_target
+Invalid protein ID: sp|P02728|GLEM_HUMAN
+Invalid description: Erythrocyte membrane glycopeptide OS=Homo sapiens OX=9606 PE=1 SV=1
+Use description: Erythrocyte membrane glycopeptide OS=Homo sapiens OX=9606 PE=1 SV=1 GN=GLEM_HUMAN_i19177_p_target
+Invalid protein ID: sp|P02729|GLUR_HUMAN
+Invalid description: Urine glycopeptide OS=Homo sapiens OX=9606 PE=1 SV=1
+Use description: Urine glycopeptide OS=Homo sapiens OX=9606 PE=1 SV=1 GN=GLUR_HUMAN_i19178_p_target
+Invalid protein ID: sp|P22103|PNEU_HUMAN
+Invalid description: Pneumadin OS=Homo sapiens OX=9606 PE=1 SV=1
+Use description: Pneumadin OS=Homo sapiens OX=9606 PE=1 SV=1 GN=PNEU_HUMAN_i19321_p_target
+Invalid protein ID: sp|Q1T7F1|CCB42_HUMAN
+Invalid description: Putative chemokine-related protein B42 OS=Homo sapiens OX=9606 PE=5 SV=1
+Use description: Putative chemokine-related protein B42 OS=Homo sapiens OX=9606 PE=5 SV=1 GN=CCB42_HUMAN_i19384_p_target
+Invalid protein ID: sp|Q3C1V9|YK041_HUMAN
+Invalid description: Putative uncharacterized protein ENSP00000334305 OS=Homo sapiens OX=9606 PE=5 SV=2
+Use description: Putative uncharacterized protein ENSP00000334305 OS=Homo sapiens OX=9606 PE=5 SV=2 GN=YK041_HUMAN_i19398_p_target
+Invalid protein ID: sp|Q5BKY6|YV018_HUMAN
+Invalid description: Putative uncharacterized protein DKFZp434K191 OS=Homo sapiens OX=9606 PE=1 SV=1
+Use description: Putative uncharacterized protein DKFZp434K191 OS=Homo sapiens OX=9606 PE=1 SV=1 GN=YV018_HUMAN_i19452_p_target
+Invalid protein ID: sp|Q5W150|YT011_HUMAN
+Invalid description: Putative uncharacterized protein MGC163334 OS=Homo sapiens OX=9606 PE=1 SV=1
+Use description: Putative uncharacterized protein MGC163334 OS=Homo sapiens OX=9606 PE=1 SV=1 GN=YT011_HUMAN_i19572_p_target
+Invalid protein ID: sp|Q6Q795|VBPC1_HUMAN
+Invalid description: Putative viral protein-binding protein C1 OS=Homo sapiens OX=9606 PE=5 SV=1
+Use description: Putative viral protein-binding protein C1 OS=Homo sapiens OX=9606 PE=5 SV=1 GN=VBPC1_HUMAN_i19620_p_target
+Invalid protein ID: sp|Q6ZN92|DUTL_HUMAN
+Invalid description: Putative inactive deoxyuridine 5'-triphosphate nucleotidohydrolase-like protein FLJ16323 OS=Homo sapiens OX=9606 PE=5 SV=1
+Use description: Putative inactive deoxyuridine 5'-triphosphate nucleotidohydrolase-like protein FLJ16323 OS=Homo sapiens OX=9606 PE=5 SV=1 GN=DUTL_HUMAN_i19647_p_target
+Invalid protein ID: sp|Q6ZQT0|YD023_HUMAN
+Invalid description: Putative uncharacterized protein FLJ45035 OS=Homo sapiens OX=9606 PE=5 SV=1
+Use description: Putative uncharacterized protein FLJ45035 OS=Homo sapiens OX=9606 PE=5 SV=1 GN=YD023_HUMAN_i19653_p_target
+Invalid protein ID: sp|Q6ZSR3|YO027_HUMAN
+Invalid description: Putative uncharacterized protein FLJ45275, mitochondrial OS=Homo sapiens OX=9606 PE=5 SV=1
+Use description: Putative uncharacterized protein FLJ45275, mitochondrial OS=Homo sapiens OX=9606 PE=5 SV=1 GN=YO027_HUMAN_i19665_p_target
+Invalid protein ID: sp|Q6ZSR9|YJ005_HUMAN
+Invalid description: Uncharacterized protein FLJ45252 OS=Homo sapiens OX=9606 PE=1 SV=2
+Use description: Uncharacterized protein FLJ45252 OS=Homo sapiens OX=9606 PE=1 SV=2 GN=YJ005_HUMAN_i19666_p_target
+Invalid protein ID: sp|Q6ZTK2|YP015_HUMAN
+Invalid description: Putative uncharacterized protein LOC400499 OS=Homo sapiens OX=9606 PE=2 SV=1
+Use description: Putative uncharacterized protein LOC400499 OS=Homo sapiens OX=9606 PE=2 SV=1 GN=YP015_HUMAN_i19672_p_target
+Invalid protein ID: sp|Q8N1Y9|YI025_HUMAN
+Invalid description: Putative uncharacterized protein FLJ37218 OS=Homo sapiens OX=9606 PE=5 SV=2
+Use description: Putative uncharacterized protein FLJ37218 OS=Homo sapiens OX=9606 PE=5 SV=2 GN=YI025_HUMAN_i19765_p_target
+Invalid protein ID: sp|Q8N9W7|YO010_HUMAN
+Invalid description: Putative transmembrane protein FLJ36131 OS=Homo sapiens OX=9606 PE=5 SV=1
+Use description: Putative transmembrane protein FLJ36131 OS=Homo sapiens OX=9606 PE=5 SV=1 GN=YO010_HUMAN_i19832_p_target
+Invalid protein ID: sp|Q8TAT8|YK045_HUMAN
+Invalid description: Putative uncharacterized protein LOC644613 OS=Homo sapiens OX=9606 PE=5 SV=2
+Use description: Putative uncharacterized protein LOC644613 OS=Homo sapiens OX=9606 PE=5 SV=2 GN=YK045_HUMAN_i19878_p_target
+Invalid protein ID: sp|A1L4Q6|YK033_HUMAN
+Invalid description: Putative uncharacterized protein FLJ41423 OS=Homo sapiens OX=9606 PE=5 SV=1
+Use description: Putative uncharacterized protein FLJ41423 OS=Homo sapiens OX=9606 PE=5 SV=1 GN=YK033_HUMAN_i20143_p_target
+Invalid protein ID: sp|A4D1N5|YG018_HUMAN
+Invalid description: Putative uncharacterized protein FLJ40288 OS=Homo sapiens OX=9606 PE=2 SV=1
+Use description: Putative uncharacterized protein FLJ40288 OS=Homo sapiens OX=9606 PE=2 SV=1 GN=YG018_HUMAN_i20146_p_target
+Invalid protein ID: sp|A6NDN8|UBIML_HUMAN
+Invalid description: Putative ubiquitin-like protein FUBI-like protein ENSP00000310146 OS=Homo sapiens OX=9606 PE=4 SV=2
+Use description: Putative ubiquitin-like protein FUBI-like protein ENSP00000310146 OS=Homo sapiens OX=9606 PE=4 SV=2 GN=UBIML_HUMAN_i20150_p_target
+Invalid protein ID: sp|A6NHS1|YK042_HUMAN
+Invalid description: Putative uncharacterized protein ENSP00000347057 OS=Homo sapiens OX=9606 PE=5 SV=3
+Use description: Putative uncharacterized protein ENSP00000347057 OS=Homo sapiens OX=9606 PE=5 SV=3 GN=YK042_HUMAN_i20155_p_target
+Invalid protein ID: sp|A6NL46|YF016_HUMAN
+Invalid description: Putative UPF0607 protein ENSP00000332738 OS=Homo sapiens OX=9606 PE=3 SV=3
+Use description: Putative UPF0607 protein ENSP00000332738 OS=Homo sapiens OX=9606 PE=3 SV=3 GN=YF016_HUMAN_i20160_p_target
+Invalid protein ID: sp|A8MT66|YU005_HUMAN
+Invalid description: Putative uncharacterized protein ENSP00000383407 OS=Homo sapiens OX=9606 PE=5 SV=1
+Use description: Putative uncharacterized protein ENSP00000383407 OS=Homo sapiens OX=9606 PE=5 SV=1 GN=YU005_HUMAN_i20166_p_target
+Invalid protein ID: sp|A8MU10|YQ047_HUMAN
+Invalid description: Putative uncharacterized protein ENSP00000381562 OS=Homo sapiens OX=9606 PE=4 SV=1
+Use description: Putative uncharacterized protein ENSP00000381562 OS=Homo sapiens OX=9606 PE=4 SV=1 GN=YQ047_HUMAN_i20169_p_target
+Invalid protein ID: sp|A8MUA0|YB057_HUMAN
+Invalid description: Putative UPF0607 protein ENSP00000381514 OS=Homo sapiens OX=9606 PE=3 SV=1
+Use description: Putative UPF0607 protein ENSP00000381514 OS=Homo sapiens OX=9606 PE=3 SV=1 GN=YB057_HUMAN_i20171_p_target
+Invalid protein ID: sp|A8MUI8|YA034_HUMAN
+Invalid description: Putative UPF0607 protein ENSP00000383783 OS=Homo sapiens OX=9606 PE=3 SV=2
+Use description: Putative UPF0607 protein ENSP00000383783 OS=Homo sapiens OX=9606 PE=3 SV=2 GN=YA034_HUMAN_i20172_p_target
+Invalid protein ID: sp|A8MUU9|YV023_HUMAN
+Invalid description: Putative uncharacterized protein ENSP00000383309 OS=Homo sapiens OX=9606 PE=5 SV=3
+Use description: Putative uncharacterized protein ENSP00000383309 OS=Homo sapiens OX=9606 PE=5 SV=3 GN=YV023_HUMAN_i20173_p_target
+Invalid protein ID: sp|A8MV72|YH009_HUMAN
+Invalid description: Putative UPF0607 protein ENSP00000382826 OS=Homo sapiens OX=9606 PE=5 SV=2
+Use description: Putative UPF0607 protein ENSP00000382826 OS=Homo sapiens OX=9606 PE=5 SV=2 GN=YH009_HUMAN_i20175_p_target
+Invalid protein ID: sp|A8MVM7|YD021_HUMAN
+Invalid description: Putative uncharacterized protein ENSP00000382790 OS=Homo sapiens OX=9606 PE=5 SV=3
+Use description: Putative uncharacterized protein ENSP00000382790 OS=Homo sapiens OX=9606 PE=5 SV=3 GN=YD021_HUMAN_i20176_p_target
+Invalid protein ID: sp|A8MWP4|YU008_HUMAN
+Invalid description: Putative uncharacterized protein ENSP00000401716 OS=Homo sapiens OX=9606 PE=5 SV=1
+Use description: Putative uncharacterized protein ENSP00000401716 OS=Homo sapiens OX=9606 PE=5 SV=1 GN=YU008_HUMAN_i20178_p_target
+Invalid protein ID: sp|A8MX80|YM017_HUMAN
+Invalid description: Putative UPF0607 protein ENSP00000383144 OS=Homo sapiens OX=9606 PE=3 SV=2
+Use description: Putative UPF0607 protein ENSP00000383144 OS=Homo sapiens OX=9606 PE=3 SV=2 GN=YM017_HUMAN_i20179_p_target
+Invalid protein ID: sp|A8MZ25|YQ037_HUMAN
+Invalid description: Putative uncharacterized protein FLJ38767 OS=Homo sapiens OX=9606 PE=5 SV=1
+Use description: Putative uncharacterized protein FLJ38767 OS=Homo sapiens OX=9606 PE=5 SV=1 GN=YQ037_HUMAN_i20183_p_target
+Invalid protein ID: sp|P01358|GAJU_HUMAN
+Invalid description: Gastric juice peptide 1 OS=Homo sapiens OX=9606 PE=1 SV=1
+Use description: Gastric juice peptide 1 OS=Homo sapiens OX=9606 PE=1 SV=1 GN=GAJU_HUMAN_i20211_p_target
+Invalid protein ID: sp|P01858|TUFT_HUMAN
+Invalid description: Phagocytosis-stimulating peptide OS=Homo sapiens OX=9606 PE=1 SV=1
+Use description: Phagocytosis-stimulating peptide OS=Homo sapiens OX=9606 PE=1 SV=1 GN=TUFT_HUMAN_i20212_p_target
+Invalid protein ID: sp|P0C879|YJ018_HUMAN
+Invalid description: Putative uncharacterized protein FLJ43185 OS=Homo sapiens OX=9606 PE=5 SV=1
+Use description: Putative uncharacterized protein FLJ43185 OS=Homo sapiens OX=9606 PE=5 SV=1 GN=YJ018_HUMAN_i20218_p_target
+Invalid protein ID: sp|P0C880|YT014_HUMAN
+Invalid description: Putative uncharacterized protein FLJ40606 OS=Homo sapiens OX=9606 PE=5 SV=1
+Use description: Putative uncharacterized protein FLJ40606 OS=Homo sapiens OX=9606 PE=5 SV=1 GN=YT014_HUMAN_i20219_p_target
+Invalid protein ID: sp|P0DMU3|F231L_HUMAN
+Invalid description: FAM231A/C-like protein LOC102723383 OS=Homo sapiens OX=9606 PE=3 SV=1
+Use description: FAM231A/C-like protein LOC102723383 OS=Homo sapiens OX=9606 PE=3 SV=1 GN=F231L_HUMAN_i20230_p_target
+Invalid protein ID: sp|Q0VFX4|YL016_HUMAN
+Invalid description: Putative uncharacterized protein LOC100128554 OS=Homo sapiens OX=9606 PE=2 SV=1
+Use description: Putative uncharacterized protein LOC100128554 OS=Homo sapiens OX=9606 PE=2 SV=1 GN=YL016_HUMAN_i20248_p_target
+Invalid protein ID: sp|Q499Y3|YJ016_HUMAN
+Invalid description: Putative uncharacterized protein C10orf88-like OS=Homo sapiens OX=9606 PE=2 SV=2
+Use description: Putative uncharacterized protein C10orf88-like OS=Homo sapiens OX=9606 PE=2 SV=2 GN=YJ016_HUMAN_i20257_p_target
+Invalid protein ID: sp|Q56UQ5|TPT1L_HUMAN
+Invalid description: TPT1-like protein OS=Homo sapiens OX=9606 PE=1 SV=2
+Use description: TPT1-like protein OS=Homo sapiens OX=9606 PE=1 SV=2 GN=TPT1L_HUMAN_i20261_p_target
+Invalid protein ID: sp|Q5PR19|YI024_HUMAN
+Invalid description: Putative UPF0607 protein LOC392364 OS=Homo sapiens OX=9606 PE=2 SV=3
+Use description: Putative UPF0607 protein LOC392364 OS=Homo sapiens OX=9606 PE=2 SV=3 GN=YI024_HUMAN_i20263_p_target
+Invalid protein ID: sp|Q5VSD8|YI029_HUMAN
+Invalid description: Putative uncharacterized protein LOC401522 OS=Homo sapiens OX=9606 PE=4 SV=2
+Use description: Putative uncharacterized protein LOC401522 OS=Homo sapiens OX=9606 PE=4 SV=2 GN=YI029_HUMAN_i20274_p_target
+Invalid protein ID: sp|Q6AWC8|YK026_HUMAN
+Invalid description: Putative uncharacterized protein LOC100129027 OS=Homo sapiens OX=9606 PE=5 SV=1
+Use description: Putative uncharacterized protein LOC100129027 OS=Homo sapiens OX=9606 PE=5 SV=1 GN=YK026_HUMAN_i20279_p_target
+Invalid protein ID: sp|Q6P435|SMG1L_HUMAN
+Invalid description: Putative uncharacterized SMG1-like protein OS=Homo sapiens OX=9606 PE=5 SV=1
+Use description: Putative uncharacterized SMG1-like protein OS=Homo sapiens OX=9606 PE=5 SV=1 GN=SMG1L_HUMAN_i20282_p_target
+Invalid protein ID: sp|Q6ZPA2|YS039_HUMAN
+Invalid description: Putative uncharacterized protein FLJ26174 OS=Homo sapiens OX=9606 PE=2 SV=1
+Use description: Putative uncharacterized protein FLJ26174 OS=Homo sapiens OX=9606 PE=2 SV=1 GN=YS039_HUMAN_i20291_p_target
+Invalid protein ID: sp|Q6ZQT7|YJ013_HUMAN
+Invalid description: Putative uncharacterized protein FLJ44672 OS=Homo sapiens OX=9606 PE=2 SV=1
+Use description: Putative uncharacterized protein FLJ44672 OS=Homo sapiens OX=9606 PE=2 SV=1 GN=YJ013_HUMAN_i20292_p_target
+Invalid protein ID: sp|Q6ZQY7|YO026_HUMAN
+Invalid description: Putative uncharacterized protein FLJ46792 OS=Homo sapiens OX=9606 PE=2 SV=1
+Use description: Putative uncharacterized protein FLJ46792 OS=Homo sapiens OX=9606 PE=2 SV=1 GN=YO026_HUMAN_i20293_p_target
+Invalid protein ID: sp|Q6ZR03|YU004_HUMAN
+Invalid description: Uncharacterized protein FLJ46757 OS=Homo sapiens OX=9606 PE=2 SV=1
+Use description: Uncharacterized protein FLJ46757 OS=Homo sapiens OX=9606 PE=2 SV=1 GN=YU004_HUMAN_i20294_p_target
+Invalid protein ID: sp|Q6ZR54|YN009_HUMAN
+Invalid description: Putative uncharacterized protein FLJ46641 OS=Homo sapiens OX=9606 PE=5 SV=1
+Use description: Putative uncharacterized protein FLJ46641 OS=Homo sapiens OX=9606 PE=5 SV=1 GN=YN009_HUMAN_i20295_p_target
+Invalid protein ID: sp|Q6ZRG5|YQ015_HUMAN
+Invalid description: Putative uncharacterized protein FLJ43944 OS=Homo sapiens OX=9606 PE=5 SV=1
+Use description: Putative uncharacterized protein FLJ43944 OS=Homo sapiens OX=9606 PE=5 SV=1 GN=YQ015_HUMAN_i20297_p_target
+Invalid protein ID: sp|Q6ZRM9|YG024_HUMAN
+Invalid description: Putative uncharacterized protein FLJ46235 OS=Homo sapiens OX=9606 PE=2 SV=1
+Use description: Putative uncharacterized protein FLJ46235 OS=Homo sapiens OX=9606 PE=2 SV=1 GN=YG024_HUMAN_i20298_p_target
+Invalid protein ID: sp|Q6ZRN7|YP029_HUMAN
+Invalid description: Putative uncharacterized protein FLJ46214 OS=Homo sapiens OX=9606 PE=2 SV=1
+Use description: Putative uncharacterized protein FLJ46214 OS=Homo sapiens OX=9606 PE=2 SV=1 GN=YP029_HUMAN_i20299_p_target
+Invalid protein ID: sp|Q6ZRP5|YD019_HUMAN
+Invalid description: Putative uncharacterized protein FLJ46204 OS=Homo sapiens OX=9606 PE=5 SV=2
+Use description: Putative uncharacterized protein FLJ46204 OS=Homo sapiens OX=9606 PE=5 SV=2 GN=YD019_HUMAN_i20300_p_target
+Invalid protein ID: sp|Q6ZRU5|YQ032_HUMAN
+Invalid description: Putative uncharacterized protein FLJ46089 OS=Homo sapiens OX=9606 PE=5 SV=2
+Use description: Putative uncharacterized protein FLJ46089 OS=Homo sapiens OX=9606 PE=5 SV=2 GN=YQ032_HUMAN_i20301_p_target
+Invalid protein ID: sp|Q6ZRX8|YL004_HUMAN
+Invalid description: Putative uncharacterized protein FLJ45999 OS=Homo sapiens OX=9606 PE=5 SV=1
+Use description: Putative uncharacterized protein FLJ45999 OS=Homo sapiens OX=9606 PE=5 SV=1 GN=YL004_HUMAN_i20302_p_target
+Invalid protein ID: sp|Q6ZS46|YF009_HUMAN
+Invalid description: Putative uncharacterized protein FLJ45840 OS=Homo sapiens OX=9606 PE=5 SV=2
+Use description: Putative uncharacterized protein FLJ45840 OS=Homo sapiens OX=9606 PE=5 SV=2 GN=YF009_HUMAN_i20303_p_target
+Invalid protein ID: sp|Q6ZS49|YQ050_HUMAN
+Invalid description: Putative uncharacterized protein FLJ45831 OS=Homo sapiens OX=9606 PE=5 SV=1
+Use description: Putative uncharacterized protein FLJ45831 OS=Homo sapiens OX=9606 PE=5 SV=1 GN=YQ050_HUMAN_i20304_p_target
+Invalid protein ID: sp|Q6ZS52|YF013_HUMAN
+Invalid description: Putative uncharacterized protein FLJ45825 OS=Homo sapiens OX=9606 PE=5 SV=1
+Use description: Putative uncharacterized protein FLJ45825 OS=Homo sapiens OX=9606 PE=5 SV=1 GN=YF013_HUMAN_i20305_p_target
+Invalid protein ID: sp|Q6ZS92|YD022_HUMAN
+Invalid description: Putative uncharacterized protein FLJ45721 OS=Homo sapiens OX=9606 PE=5 SV=2
+Use description: Putative uncharacterized protein FLJ45721 OS=Homo sapiens OX=9606 PE=5 SV=2 GN=YD022_HUMAN_i20306_p_target
+Invalid protein ID: sp|Q6ZSA8|YS025_HUMAN
+Invalid description: Putative uncharacterized protein FLJ45684 OS=Homo sapiens OX=9606 PE=5 SV=2
+Use description: Putative uncharacterized protein FLJ45684 OS=Homo sapiens OX=9606 PE=5 SV=2 GN=YS025_HUMAN_i20307_p_target
+Invalid protein ID: sp|Q6ZSN1|YI023_HUMAN
+Invalid description: Putative uncharacterized protein FLJ45355 OS=Homo sapiens OX=9606 PE=2 SV=1
+Use description: Putative uncharacterized protein FLJ45355 OS=Homo sapiens OX=9606 PE=2 SV=1 GN=YI023_HUMAN_i20310_p_target
+Invalid protein ID: sp|Q6ZSR6|YP007_HUMAN
+Invalid description: Putative uncharacterized protein FLJ45256 OS=Homo sapiens OX=9606 PE=2 SV=3
+Use description: Putative uncharacterized protein FLJ45256 OS=Homo sapiens OX=9606 PE=2 SV=3 GN=YP007_HUMAN_i20311_p_target
+Invalid protein ID: sp|Q6ZSV7|YF010_HUMAN
+Invalid description: Putative uncharacterized protein FLJ45177 OS=Homo sapiens OX=9606 PE=2 SV=1
+Use description: Putative uncharacterized protein FLJ45177 OS=Homo sapiens OX=9606 PE=2 SV=1 GN=YF010_HUMAN_i20312_p_target
+Invalid protein ID: sp|Q6ZTC4|YT009_HUMAN
+Invalid description: Putative uncharacterized protein FLJ44790 OS=Homo sapiens OX=9606 PE=2 SV=1
+Use description: Putative uncharacterized protein FLJ44790 OS=Homo sapiens OX=9606 PE=2 SV=1 GN=YT009_HUMAN_i20313_p_target
+Invalid protein ID: sp|Q6ZTI0|YK032_HUMAN
+Invalid description: Putative uncharacterized protein FLJ44636 OS=Homo sapiens OX=9606 PE=5 SV=1
+Use description: Putative uncharacterized protein FLJ44636 OS=Homo sapiens OX=9606 PE=5 SV=1 GN=YK032_HUMAN_i20314_p_target
+Invalid protein ID: sp|Q6ZUG5|YC006_HUMAN
+Invalid description: Uncharacterized protein FLJ43738 OS=Homo sapiens OX=9606 PE=1 SV=1
+Use description: Uncharacterized protein FLJ43738 OS=Homo sapiens OX=9606 PE=1 SV=1 GN=YC006_HUMAN_i20317_p_target
+Invalid protein ID: sp|Q6ZUT4|YL014_HUMAN
+Invalid description: Putative uncharacterized protein FLJ43343 OS=Homo sapiens OX=9606 PE=5 SV=1
+Use description: Putative uncharacterized protein FLJ43343 OS=Homo sapiens OX=9606 PE=5 SV=1 GN=YL014_HUMAN_i20318_p_target
+Invalid protein ID: sp|Q6ZVH6|YK004_HUMAN
+Invalid description: Putative uncharacterized protein FLJ42569 OS=Homo sapiens OX=9606 PE=2 SV=1
+Use description: Putative uncharacterized protein FLJ42569 OS=Homo sapiens OX=9606 PE=2 SV=1 GN=YK004_HUMAN_i20320_p_target
+Invalid protein ID: sp|Q6ZVL8|YP033_HUMAN
+Invalid description: Putative uncharacterized protein FLJ42384 OS=Homo sapiens OX=9606 PE=2 SV=1
+Use description: Putative uncharacterized protein FLJ42384 OS=Homo sapiens OX=9606 PE=2 SV=1 GN=YP033_HUMAN_i20321_p_target
+Invalid protein ID: sp|Q6ZVQ6|YS045_HUMAN
+Invalid description: Putative uncharacterized protein FLJ42213 OS=Homo sapiens OX=9606 PE=2 SV=1
+Use description: Putative uncharacterized protein FLJ42213 OS=Homo sapiens OX=9606 PE=2 SV=1 GN=YS045_HUMAN_i20322_p_target
+Invalid protein ID: sp|Q6ZVU0|YK022_HUMAN
+Invalid description: Putative uncharacterized protein FLJ42102 OS=Homo sapiens OX=9606 PE=5 SV=1
+Use description: Putative uncharacterized protein FLJ42102 OS=Homo sapiens OX=9606 PE=5 SV=1 GN=YK022_HUMAN_i20323_p_target
+Invalid protein ID: sp|Q6ZWC4|YS043_HUMAN
+Invalid description: Putative uncharacterized protein LOC100128429 OS=Homo sapiens OX=9606 PE=5 SV=1
+Use description: Putative uncharacterized protein LOC100128429 OS=Homo sapiens OX=9606 PE=5 SV=1 GN=YS043_HUMAN_i20324_p_target
+Invalid protein ID: sp|Q86TA4|YB049_HUMAN
+Invalid description: Putative uncharacterized protein FLJ44553 OS=Homo sapiens OX=9606 PE=5 SV=2
+Use description: Putative uncharacterized protein FLJ44553 OS=Homo sapiens OX=9606 PE=5 SV=2 GN=YB049_HUMAN_i20326_p_target
+Invalid protein ID: sp|Q8IYB0|YK038_HUMAN
+Invalid description: Putative uncharacterized protein MGC39545 OS=Homo sapiens OX=9606 PE=5 SV=2
+Use description: Putative uncharacterized protein MGC39545 OS=Homo sapiens OX=9606 PE=5 SV=2 GN=YK038_HUMAN_i20331_p_target
+Invalid protein ID: sp|Q8IZM0|CNG1O_HUMAN
+Invalid description: Putative CNGA1-overlapping antisense gene protein OS=Homo sapiens OX=9606 PE=5 SV=1
+Use description: Putative CNGA1-overlapping antisense gene protein OS=Homo sapiens OX=9606 PE=5 SV=1 GN=CNG1O_HUMAN_i20332_p_target
+Invalid protein ID: sp|Q8N1X5|YF001_HUMAN
+Invalid description: Uncharacterized protein FLJ37310 OS=Homo sapiens OX=9606 PE=1 SV=1
+Use description: Uncharacterized protein FLJ37310 OS=Homo sapiens OX=9606 PE=1 SV=1 GN=YF001_HUMAN_i20335_p_target
+Invalid protein ID: sp|Q8N2B8|YB035_HUMAN
+Invalid description: Putative uncharacterized protein FLJ33534 OS=Homo sapiens OX=9606 PE=2 SV=1
+Use description: Putative uncharacterized protein FLJ33534 OS=Homo sapiens OX=9606 PE=2 SV=1 GN=YB035_HUMAN_i20337_p_target
+Invalid protein ID: sp|Q8N377|YJ004_HUMAN
+Invalid description: Putative uncharacterized protein LOC387726 OS=Homo sapiens OX=9606 PE=5 SV=2
+Use description: Putative uncharacterized protein LOC387726 OS=Homo sapiens OX=9606 PE=5 SV=2 GN=YJ004_HUMAN_i20339_p_target
+Invalid protein ID: sp|Q8N3U1|YS014_HUMAN
+Invalid description: Putative uncharacterized protein LOC400692 OS=Homo sapiens OX=9606 PE=2 SV=2
+Use description: Putative uncharacterized protein LOC400692 OS=Homo sapiens OX=9606 PE=2 SV=2 GN=YS014_HUMAN_i20340_p_target
+Invalid protein ID: sp|Q8N6K4|YP021_HUMAN
+Invalid description: Putative uncharacterized protein MGC34800 OS=Homo sapiens OX=9606 PE=2 SV=1
+Use description: Putative uncharacterized protein MGC34800 OS=Homo sapiens OX=9606 PE=2 SV=1 GN=YP021_HUMAN_i20343_p_target
+Invalid protein ID: sp|Q8N7P7|YH007_HUMAN
+Invalid description: Uncharacterized protein FLJ40521 OS=Homo sapiens OX=9606 PE=1 SV=1
+Use description: Uncharacterized protein FLJ40521 OS=Homo sapiens OX=9606 PE=1 SV=1 GN=YH007_HUMAN_i20346_p_target
+Invalid protein ID: sp|Q8N814|YG045_HUMAN
+Invalid description: Putative uncharacterized protein FLJ40140 OS=Homo sapiens OX=9606 PE=5 SV=1
+Use description: Putative uncharacterized protein FLJ40140 OS=Homo sapiens OX=9606 PE=5 SV=1 GN=YG045_HUMAN_i20348_p_target
+Invalid protein ID: sp|Q8N8P6|YX004_HUMAN
+Invalid description: Putative uncharacterized protein FLJ39060 OS=Homo sapiens OX=9606 PE=2 SV=1
+Use description: Putative uncharacterized protein FLJ39060 OS=Homo sapiens OX=9606 PE=2 SV=1 GN=YX004_HUMAN_i20351_p_target
+Invalid protein ID: sp|Q8N976|YG039_HUMAN
+Invalid description: Putative uncharacterized protein FLJ38264 OS=Homo sapiens OX=9606 PE=5 SV=1
+Use description: Putative uncharacterized protein FLJ38264 OS=Homo sapiens OX=9606 PE=5 SV=1 GN=YG039_HUMAN_i20353_p_target
+Invalid protein ID: sp|Q8N9G6|YJ012_HUMAN
+Invalid description: Putative UPF0607 protein FLJ37424 OS=Homo sapiens OX=9606 PE=2 SV=1
+Use description: Putative UPF0607 protein FLJ37424 OS=Homo sapiens OX=9606 PE=2 SV=1 GN=YJ012_HUMAN_i20354_p_target
+Invalid protein ID: sp|Q8N9L7|YV006_HUMAN
+Invalid description: Putative uncharacterized protein FLJ36925 OS=Homo sapiens OX=9606 PE=5 SV=1
+Use description: Putative uncharacterized protein FLJ36925 OS=Homo sapiens OX=9606 PE=5 SV=1 GN=YV006_HUMAN_i20355_p_target
+Invalid protein ID: sp|Q8N9P0|YF006_HUMAN
+Invalid description: Putative uncharacterized protein FLJ36797 OS=Homo sapiens OX=9606 PE=5 SV=1
+Use description: Putative uncharacterized protein FLJ36797 OS=Homo sapiens OX=9606 PE=5 SV=1 GN=YF006_HUMAN_i20356_p_target
+Invalid protein ID: sp|Q8NA96|YE027_HUMAN
+Invalid description: Putative uncharacterized protein FLJ35723 OS=Homo sapiens OX=9606 PE=5 SV=2
+Use description: Putative uncharacterized protein FLJ35723 OS=Homo sapiens OX=9606 PE=5 SV=2 GN=YE027_HUMAN_i20359_p_target
+Invalid protein ID: sp|Q8NAQ8|YP023_HUMAN
+Invalid description: Putative uncharacterized protein FLJ34945 OS=Homo sapiens OX=9606 PE=2 SV=1
+Use description: Putative uncharacterized protein FLJ34945 OS=Homo sapiens OX=9606 PE=2 SV=1 GN=YP023_HUMAN_i20362_p_target
+Invalid protein ID: sp|Q8NBF4|YG006_HUMAN
+Invalid description: Putative uncharacterized protein FLJ33307 OS=Homo sapiens OX=9606 PE=5 SV=1
+Use description: Putative uncharacterized protein FLJ33307 OS=Homo sapiens OX=9606 PE=5 SV=1 GN=YG006_HUMAN_i20363_p_target
+Invalid protein ID: sp|Q8NFD4|YI018_HUMAN
+Invalid description: Uncharacterized protein FLJ76381 OS=Homo sapiens OX=9606 PE=2 SV=1
+Use description: Uncharacterized protein FLJ76381 OS=Homo sapiens OX=9606 PE=2 SV=1 GN=YI018_HUMAN_i20365_p_target
+Invalid protein ID: sp|Q8TCH9|YV004_HUMAN
+Invalid description: Putative uncharacterized protein FLJ23865 OS=Homo sapiens OX=9606 PE=2 SV=1
+Use description: Putative uncharacterized protein FLJ23865 OS=Homo sapiens OX=9606 PE=2 SV=1 GN=YV004_HUMAN_i20367_p_target
+Invalid protein ID: sp|Q96IR3|YV007_HUMAN
+Invalid description: Putative uncharacterized protein MGC15705 OS=Homo sapiens OX=9606 PE=5 SV=1
+Use description: Putative uncharacterized protein MGC15705 OS=Homo sapiens OX=9606 PE=5 SV=1 GN=YV007_HUMAN_i20377_p_target
+Invalid protein ID: sp|Q96M66|YP010_HUMAN
+Invalid description: Putative uncharacterized protein FLJ32790 OS=Homo sapiens OX=9606 PE=2 SV=2
+Use description: Putative uncharacterized protein FLJ32790 OS=Homo sapiens OX=9606 PE=2 SV=2 GN=YP010_HUMAN_i20384_p_target
+Invalid protein ID: sp|Q96M85|YV008_HUMAN
+Invalid description: Putative uncharacterized protein FLJ32756 OS=Homo sapiens OX=9606 PE=2 SV=1
+Use description: Putative uncharacterized protein FLJ32756 OS=Homo sapiens OX=9606 PE=2 SV=1 GN=YV008_HUMAN_i20386_p_target
+Invalid protein ID: sp|Q96MF0|YO028_HUMAN
+Invalid description: Putative uncharacterized protein LOC100506887 OS=Homo sapiens OX=9606 PE=5 SV=2
+Use description: Putative uncharacterized protein LOC100506887 OS=Homo sapiens OX=9606 PE=5 SV=2 GN=YO028_HUMAN_i20387_p_target
+Invalid protein ID: sp|Q96MT0|YJ006_HUMAN
+Invalid description: Putative uncharacterized protein FLJ31958 OS=Homo sapiens OX=9606 PE=1 SV=1
+Use description: Putative uncharacterized protein FLJ31958 OS=Homo sapiens OX=9606 PE=1 SV=1 GN=YJ006_HUMAN_i20390_p_target
+Invalid protein ID: sp|Q96NJ1|YI001_HUMAN
+Invalid description: Uncharacterized protein FLJ30774 OS=Homo sapiens OX=9606 PE=2 SV=1
+Use description: Uncharacterized protein FLJ30774 OS=Homo sapiens OX=9606 PE=2 SV=1 GN=YI001_HUMAN_i20393_p_target
+Invalid protein ID: sp|Q9BRP9|YK016_HUMAN
+Invalid description: Putative uncharacterized protein MGC13053 OS=Homo sapiens OX=9606 PE=5 SV=2
+Use description: Putative uncharacterized protein MGC13053 OS=Homo sapiens OX=9606 PE=5 SV=2 GN=YK016_HUMAN_i20397_p_target
+Invalid protein ID: sp|Q9BTK2|YX002_HUMAN
+Invalid description: Putative uncharacterized protein LOC642776 OS=Homo sapiens OX=9606 PE=5 SV=2
+Use description: Putative uncharacterized protein LOC642776 OS=Homo sapiens OX=9606 PE=5 SV=2 GN=YX002_HUMAN_i20399_p_target
+Invalid protein ID: sp|Q9H521|YM006_HUMAN
+Invalid description: Putative uncharacterized protein LOC645739 OS=Homo sapiens OX=9606 PE=5 SV=1
+Use description: Putative uncharacterized protein LOC645739 OS=Homo sapiens OX=9606 PE=5 SV=1 GN=YM006_HUMAN_i20411_p_target
+Invalid protein ID: sp|Q9H8V8|YD018_HUMAN
+Invalid description: Putative uncharacterized protein FLJ13197 OS=Homo sapiens OX=9606 PE=5 SV=1
+Use description: Putative uncharacterized protein FLJ13197 OS=Homo sapiens OX=9606 PE=5 SV=1 GN=YD018_HUMAN_i20415_p_target
+Invalid protein ID: sp|Q9HAA7|YG046_HUMAN
+Invalid description: Putative uncharacterized protein FLJ11871 OS=Homo sapiens OX=9606 PE=5 SV=1
+Use description: Putative uncharacterized protein FLJ11871 OS=Homo sapiens OX=9606 PE=5 SV=1 GN=YG046_HUMAN_i20416_p_target
+Invalid protein ID: sp|Q9UF83|YM012_HUMAN
+Invalid description: Uncharacterized protein DKFZp434B061 OS=Homo sapiens OX=9606 PE=1 SV=2
+Use description: Uncharacterized protein DKFZp434B061 OS=Homo sapiens OX=9606 PE=1 SV=2 GN=YM012_HUMAN_i20422_p_target
+Invalid protein ID: sp|Q9UFV3|YO007_HUMAN
+Invalid description: Putative uncharacterized protein DKFZp434L187 OS=Homo sapiens OX=9606 PE=5 SV=2
+Use description: Putative uncharacterized protein DKFZp434L187 OS=Homo sapiens OX=9606 PE=5 SV=2 GN=YO007_HUMAN_i20423_p_target
+Invalid protein ID: sp|Q9Y3F1|TA6P_HUMAN
+Invalid description: Putative TAP2-associated 6.5 kDa polypeptide OS=Homo sapiens OX=9606 PE=5 SV=1
+Use description: Putative TAP2-associated 6.5 kDa polypeptide OS=Homo sapiens OX=9606 PE=5 SV=1 GN=TA6P_HUMAN_i20429_p_target
+The number of peptides that are checked for duplicates then randomly selected: 24010
+The total number of target peptides used to generate random peptides: 673545
+2026-11-28 12:19:16 [INFO ] main.java.FDR.FDREval[generate_protein_entrapment_database:2584] - Time used for protein digestion:4 s.
+================== parameters ==================
+2026-11-28 12:19:16 [INFO ] main.java.FDR.DBGear[getEnzymeByIndex:56] - Use enzyme:Trypsin (no P rule)
+Enzyme: Trypsin (no P rule)
+Max allowed missed cleavages: 0
+Peptide length range: 7 - 35
+Clip N-terminal M: false
+Fix N/C terminal amino acid: Only fix C terminal amino acid
+Add decoy: false
+Convert I to L: true
+N fold:1
+No shared peptides between target and entrapment proteins when using foreign species: false
+Reverse order of generated random peptides:false
+Max number of tries for generating decoy peptides: 20
+For DIA-NN: true
+Use Uniprot format protein ID: true
+Global random seed: 2000
+================================================
+4.92 s 2291560 KB
