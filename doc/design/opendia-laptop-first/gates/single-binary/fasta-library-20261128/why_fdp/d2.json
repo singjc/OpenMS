@@ -1,0 +1,74 @@
+{
+ "FbP": {
+  "kept_entrapment": {
+   "pairs": 356402,
+   "survey_target_gt_decoy": 178775,
+   "survey_decoy_gt_target": 177627,
+   "frac_target": 0.5016105409060555
+  },
+  "kept_human": {
+   "pairs": 367294,
+   "survey_target_gt_decoy": 190583,
+   "survey_decoy_gt_target": 176711,
+   "frac_target": 0.5188840547354435
+  },
+  "accepted_entrapment": {
+   "target_won": {
+    "survey_target_gt_decoy": 75,
+    "survey_decoy_ge_target": 10
+   },
+   "decoy_won": {
+    "survey_target_gt_decoy": 8,
+    "survey_decoy_ge_target": 43
+   }
+  }
+ },
+ "FbV1": {
+  "kept_entrapment": {
+   "pairs": 377532,
+   "survey_target_gt_decoy": 190371,
+   "survey_decoy_gt_target": 187161,
+   "frac_target": 0.504251295254442
+  },
+  "kept_human": {
+   "pairs": 393789,
+   "survey_target_gt_decoy": 206555,
+   "survey_decoy_gt_target": 187234,
+   "frac_target": 0.5245321733212457
+  },
+  "accepted_entrapment": {
+   "target_won": {
+    "survey_target_gt_decoy": 118,
+    "survey_decoy_ge_target": 11
+   },
+   "decoy_won": {
+    "survey_target_gt_decoy": 8,
+    "survey_decoy_ge_target": 54
+   }
+  }
+ },
+ "FbPp": {
+  "kept_entrapment": {
+   "pairs": 330075,
+   "survey_target_gt_decoy": 148626,
+   "survey_decoy_gt_target": 145016,
+   "frac_target": 0.5061469408327147
+  },
+  "kept_human": {
+   "pairs": 410729,
+   "survey_target_gt_decoy": 193343,
+   "survey_decoy_gt_target": 173194,
+   "frac_target": 0.527485629008804
+  },
+  "accepted_entrapment": {
+   "target_won": {
+    "survey_target_gt_decoy": 129,
+    "survey_decoy_ge_target": 20
+   },
+   "decoy_won": {
+    "survey_target_gt_decoy": 30,
+    "survey_decoy_ge_target": 70
+   }
+  }
+ }
+}
