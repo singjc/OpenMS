@@ -227,6 +227,18 @@ namespace
     require(P::selectPairs(s, tie, 0) == std::vector<std::uint32_t>({0, 1, 2, 3, 4}), "K = 0 keeps every pair");
     require(P::selectPairs(s, tie, 2) == std::vector<std::uint32_t>({3, 4}), "top K, ties by hash");
     require(P::selectPairs(s, tie, 10) == std::vector<std::uint32_t>({1, 2, 3, 4}), "S = 0 pairs are never kept");
+    // pooledStatistic: sibling max over the same modified sequence, plus 0.5 x the protein's top-3 mean; absent pairs
+    // (empty sequence) stay 0.
+    {
+      const std::vector<double> st{1.0, 3.0, 0.0, 2.0, 5.0};
+      const std::vector<std::string> seq{"PEPTIDEK", "PEPTIDEK", "OTHERK", "THIRDK", ""};
+      const std::vector<std::vector<std::string>> prot{{"A"}, {"A"}, {"A", "B"}, {"B"}, {"A"}};
+      const auto pooled = P::pooledStatistic(st, seq, prot, 0.5);
+      // protein A: top-3 of {1, 3, 0} = 4/3; B: {0, 2} = 1.
+      require(std::abs(pooled[0] - (3.0 + 0.5 * 4.0 / 3.0)) < 1e-12 && std::abs(pooled[1] - pooled[0]) < 1e-12, "siblings share the max");
+      require(std::abs(pooled[2] - (0.0 + 0.5 * 4.0 / 3.0)) < 1e-12, "a pair takes its best protein");
+      require(std::abs(pooled[3] - (2.0 + 0.5 * 1.0)) < 1e-12 && pooled[4] == 0.0, "absent pairs stay 0");
+    }
   }
 
   void writerTests(const fs::path& dir)

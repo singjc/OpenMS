@@ -27,6 +27,8 @@ namespace OpenMS::OpenDIA
     bool survey_only = false;                      ///< Stop after the survey statistics (design stage).
     /// PLAN_SURVEY: also write <stem>.survey.features.tsv, the best survey candidate's features per precursor and run.
     bool survey_features = false;
+    /// PLAN_SURVEY +pool: select on Preparation::pooledStatistic of the survey statistic. Default off.
+    bool survey_pool = false;
   };
 
   struct FastaLibraryPaths

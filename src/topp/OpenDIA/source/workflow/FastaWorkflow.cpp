@@ -226,7 +226,7 @@ namespace OpenMS::OpenDIA
     paths.search = stem + ".library.search.parquet";
     const std::string final_key = (survey_key.empty() ? candidates_key : survey_key) + "final=2\nprefilter_pairs=" +
                                   std::to_string(options.prefilter_pairs) + "\nfragments=" + std::to_string(f.count) + "\nmin_fragments=" +
-                                  std::to_string(f.min_count) + "\n";
+                                  std::to_string(f.min_count) + "\n" + (options.survey_pool ? "survey_pool=1\n" : "");
     if (cached(paths.library, final_key) && cached(paths.search, final_key))
     {
       say("FASTA library: reusing " + paths.library);
@@ -235,6 +235,32 @@ namespace OpenMS::OpenDIA
     std::vector<bool> keep;
     if (options.prefilter_pairs > 0)
     {
+      if (options.survey_pool)
+      {
+        // PLAN_SURVEY +pool: the target's modified sequence and proteins per pair, from the survey library.
+        struct Targets final : LibraryVisitor
+        {
+          std::vector<std::string> sequence;
+          std::vector<std::vector<std::string>> proteins;
+          std::string_view last;
+          void reset() override { sequence.clear(); proteins.clear(); last = {}; }
+          void fragment(const FragmentView& f, const PrecursorView& c) override
+          {
+            if (c.id == last) return;
+            last = c.id;
+            if (f.decoy) return;
+            const std::size_t k = std::stoull(std::string(c.id)) / 2;
+            if (k >= sequence.size()) { sequence.resize(k + 1); proteins.resize(k + 1); }
+            sequence[k] = c.sequence;
+            proteins[k].assign(c.proteins->begin(), c.proteins->end());
+          }
+        } targets;
+        visitParquetLibrary(paths.candidates, targets);
+        targets.sequence.resize(statistic.size());
+        targets.proteins.resize(statistic.size());
+        statistic = Preparation::pooledStatistic(statistic, targets.sequence, targets.proteins);
+        say("FASTA prefilter: pooled statistic (charge siblings + 0.5 x protein top-3)");
+      }
       const auto selected = Preparation::selectPairs(statistic, tie, options.prefilter_pairs);
       keep.assign(statistic.size(), false);
       for (const auto k : selected) keep[k] = true;

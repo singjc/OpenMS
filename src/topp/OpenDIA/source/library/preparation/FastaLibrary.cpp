@@ -423,6 +423,40 @@ namespace OpenMS::OpenDIA::Preparation
     return pairs;
   }
 
+  std::vector<double> pooledStatistic(const std::vector<double>& statistic, const std::vector<std::string>& sequence,
+                                      const std::vector<std::vector<std::string>>& proteins, double protein_weight)
+  {
+    const std::size_t n = statistic.size();
+    if (sequence.size() != n || proteins.size() != n) invalid("pooledStatistic: one sequence and protein list per pair", std::to_string(n));
+    std::unordered_map<std::string_view, double> sibling;
+    std::unordered_map<std::string_view, std::vector<double>> per_protein;
+    for (std::size_t k = 0; k < n; ++k)
+    {
+      if (sequence[k].empty()) continue;  // pair absent from the survey library
+      auto& s = sibling[sequence[k]];
+      s = std::max(s, statistic[k]);
+      for (const auto& p : proteins[k]) per_protein[p].push_back(statistic[k]);
+    }
+    std::unordered_map<std::string_view, double> evidence;
+    for (auto& [p, v] : per_protein)
+    {
+      const std::size_t top = std::min<std::size_t>(3, v.size());
+      std::partial_sort(v.begin(), v.begin() + static_cast<std::ptrdiff_t>(top), v.end(), std::greater<>());
+      double sum = 0.0;
+      for (std::size_t i = 0; i < top; ++i) sum += v[i];
+      evidence[p] = top ? sum / static_cast<double>(top) : 0.0;
+    }
+    std::vector<double> out(n, 0.0);
+    for (std::size_t k = 0; k < n; ++k)
+    {
+      if (sequence[k].empty()) continue;
+      double e = 0.0;
+      for (const auto& p : proteins[k]) e = std::max(e, evidence[p]);
+      out[k] = sibling[sequence[k]] + protein_weight * e;
+    }
+    return out;
+  }
+
   std::string modelPath(const PredictionSettings& settings, const std::string& name)
   {
     if (!settings.model_directory.empty()) return settings.model_directory + "/" + name;

@@ -215,6 +215,8 @@ protected:
     registerFlag_("survey_normalized", "Advanced: FASTA library: survey co-elution on fragments scaled to their own maximum (PLAN_SURVEY V2)", true);
     registerFlag_("survey_features", "Advanced: FASTA library: also write <fasta stem>.survey.features.tsv (best survey candidate per "
                   "precursor and run)", true);
+    registerFlag_("survey_pool", "Advanced: FASTA library: select pairs on the survey statistic pooled over charge siblings plus 0.5 x "
+                  "the protein's top-3 mean (PLAN_SURVEY +pool)", true);
     registerInputFile_("scoring_lib", "<file>", "", "Optional library (PQP or OpenDIA .parquet) with up to 12 scoring fragments per precursor "
                        "(same precursor IDs); default: the search fragments", false);
     setValidFormats_("scoring_lib", {"pqp", "parquet"});
@@ -521,6 +523,7 @@ protected:
       fo.survey_only = getFlag_("survey_only");
       fo.fragments.predicted_survey = getFlag_("survey_predicted");
       fo.survey_features = getFlag_("survey_features");
+      fo.survey_pool = getFlag_("survey_pool");
       options.survey_normalized_coelution = getFlag_("survey_normalized");
       writeLogInfo_("FASTA library: " + fasta + " instrument=" + p.instrument + " nce=" + std::to_string(p.nce) + " im=" +
                     (p.predict_im ? "on" : "off") + " prefilter_pairs=" + std::to_string(fo.prefilter_pairs));

@@ -143,6 +143,17 @@ namespace OpenMS::OpenDIA::Preparation
   */
   std::vector<std::uint32_t> selectPairs(const std::vector<double>& statistic, const std::vector<std::uint64_t>& tie, std::size_t keep);
 
+  /**
+    @brief PLAN_SURVEY +pool: per pair, the largest @p statistic over the pairs with the same target modified sequence
+    (charge siblings) plus @p protein_weight x the protein evidence, the largest over the pair's proteins of the mean
+    of that protein's top 3 pair statistics. @p sequence and @p proteins are the target's, per pair (label-free
+    attributes: the result is a symmetric function of each pair's max(target, decoy)). A pair with an empty @p sequence
+    (absent from the survey library) gets 0 and contributes nothing; a present pair with statistic 0 may be lifted by its
+    siblings and proteins.
+  */
+  std::vector<double> pooledStatistic(const std::vector<double>& statistic, const std::vector<std::string>& sequence,
+                                      const std::vector<std::vector<std::string>>& proteins, double protein_weight = 0.5);
+
   /// PeptDeep settings of a FASTA library.
   struct PredictionSettings
   {
