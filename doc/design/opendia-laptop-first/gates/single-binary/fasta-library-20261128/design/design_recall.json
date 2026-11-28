@@ -1,0 +1,17 @@
+{
+ "pairs": 3433234,
+ "pairs_with_candidate": 2821990,
+ "empirical_ids": 27410,
+ "empirical_in_candidates": 26185,
+ "empirical_with_candidate": 26122,
+ "recall": {
+  "100000": 0.24529310674050028,
+  "200000": 0.32220737063204125,
+  "300000": 0.3804468206988734,
+  "500000": 0.47271338552606457,
+  "800000": 0.581019667748711
+ },
+ "k_star": 800000,
+ "target_stat_greater": 1438719,
+ "decoy_stat_greater": 1383270
+}

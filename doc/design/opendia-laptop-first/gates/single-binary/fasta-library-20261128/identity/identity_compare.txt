@@ -1,0 +1,17 @@
+BYTE_IDENTICAL 20200505_Evosep_200SPD_SG06-16_MLHeLa_200ng_py8_S3-A1_1_2737.precursors.tsv
+BYTE_IDENTICAL precursors.tsv
+BYTE_IDENTICAL 20200505_Evosep_200SPD_SG06-16_MLHeLa_200ng_py8_S3-A1_1_2737.calibration.json
+SAME peptide_matrix.tsv
+DIFF peptides.tsv
+SAME precursor_matrix.tsv
+DIFF precursors.tsv
+SAME protein_group_matrix.tsv
+SAME protein_groups.tsv
+SAME peptide_matrix.parquet
+DIFF peptides.parquet
+SAME precursor_matrix.parquet
+DIFF precursors.parquet
+SAME protein_group_matrix.parquet
+SAME protein_groups.parquet
+
+--- Command finished with exit code: 0 ---
