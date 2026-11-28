@@ -1,0 +1,2 @@
+Submitted 2026-11-28T12:25:32Z, after PLAN_ENTRAP_FDRBENCH (10a8e7586c) and before results:
+FbF 45301910, FbP 45301912, FbV1 45301913, FbPp 45301914. Codon sha256 check: both FASTAs and SIF v4 OK.
