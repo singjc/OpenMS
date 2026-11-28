@@ -7,10 +7,9 @@ Pair k is precursors 2k (target) and 2k+1 (decoy); survey pair statistics are ma
 
 Primary: recall at K = 800k of the truth IDs. Secondary: recall of charge 3-4, the empirical E_c (D only), the
 excess target wins among kept pairs. +pool: max over charge siblings of S, plus 0.5 x the protein's top-3 mean.
-+learn: 3-fold logistic score (folds by FNV-1a of the unmodified sequence mod 3), positives = targets whose
-precursor is in the TRUTH of the other run, negatives = decoys... no: labels must not use the evaluation truth.
-So +learn uses target (1) vs decoy (0) labels on the survey features, cross-fitted by family fold; the pair
-statistic is max(f(T), f(D)). That keeps it a symmetric function of the pair for the selection.
++learn: target (1) vs decoy (0) logistic score on the survey features, 3-fold cross-fitted by family (FNV-1a of
+the unmodified sequence mod 3); the pair statistic is max(f(T), f(D)), a symmetric function of the pair. It uses
+no truth labels.
 """
 import csv, gzip, json, re, sys, collections, glob
 import numpy as np
@@ -91,7 +90,6 @@ def metrics(stat, T, D, tr, charge, empm):
 
 def learned(feat_path, n, charge, plain):
     """3-fold cross-fitted logistic target-vs-decoy score per precursor; pair stat = max(f(T), f(D))."""
-    rows = collections.defaultdict(dict)
     cols = ["coelution", "support", "matched_scans", "apex_rt_error_s", "fwhm_s", "apex_intensity", "peaks_in_window"]
     X = np.zeros((2 * n, len(cols) + 4)); have = np.zeros(2 * n, bool)
     with gzip.open(feat_path, "rt") as f:
@@ -125,6 +123,7 @@ def learned(feat_path, n, charge, plain):
 
 
 R = {"K": K}
+ref_traml = {}  # pair index -> TRAML_ID from V0 (pairs dropped by a variant have an empty TRAML_ID and S = 0)
 for run, tarm in (("D", "F"), ("H", "FH")):
     for V in ("V0", "V1", "V2", "V3"):
         d = f"{root}/{V}-{run}"
@@ -132,6 +131,9 @@ for run, tarm in (("D", "F"), ("H", "FH")):
         if not s or not glob.glob(f"{truth_dir}/{tarm}/precursors.slim.tsv.gz"):
             continue
         traml, T, D = load_survey(s[0])
+        if V == "V0":
+            ref_traml[run] = traml
+        traml = [t if t else ref_traml[run][k] for k, t in enumerate(traml)]
         n = len(traml)
         charge = np.array([int(t.rsplit("/", 1)[1]) for t in traml])
         modseq = [t.rsplit("/", 1)[0] for t in traml]

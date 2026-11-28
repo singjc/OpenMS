@@ -1,0 +1,61 @@
+{
+ "K": 800000,
+ "V0-H": {
+  "base": {
+   "recall": 0.7037,
+   "recall_charge34": 0.509,
+   "excess_target_wins": 32254,
+   "kept": 800000
+  },
+  "truth_ids": 52847,
+  "pool": {
+   "recall": 0.7591,
+   "recall_charge34": 0.7182,
+   "excess_target_wins": 35018,
+   "kept": 800000
+  },
+  "learn": {
+   "recall": 0.6725,
+   "recall_charge34": 0.5332,
+   "excess_target_wins": 34058,
+   "kept": 800000,
+   "excess_target_wins_learned_score": 33106
+  },
+  "learn+pool": {
+   "recall": 0.7397,
+   "recall_charge34": 0.7154,
+   "excess_target_wins": 35324,
+   "kept": 800000
+  },
+  "wall": "11:37.89"
+ },
+ "V1-H": {
+  "base": {
+   "recall": 0.8017,
+   "recall_charge34": 0.7036,
+   "excess_target_wins": 41381,
+   "kept": 800000
+  },
+  "truth_ids": 52847,
+  "pool": {
+   "recall": 0.8505,
+   "recall_charge34": 0.8633,
+   "excess_target_wins": 42298,
+   "kept": 800000
+  },
+  "learn": {
+   "recall": 0.7658,
+   "recall_charge34": 0.6694,
+   "excess_target_wins": 40734,
+   "kept": 800000,
+   "excess_target_wins_learned_score": 40404
+  },
+  "learn+pool": {
+   "recall": 0.8274,
+   "recall_charge34": 0.8403,
+   "excess_target_wins": 41335,
+   "kept": 800000
+  },
+  "wall": "15:30.95"
+ }
+}

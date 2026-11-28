@@ -1,0 +1,135 @@
+{
+ "K": 800000,
+ "V0-D": {
+  "base": {
+   "recall": 0.5964,
+   "recall_charge34": 0.3875,
+   "excess_target_wins": 18744,
+   "kept": 800000,
+   "recall_E": 0.581
+  },
+  "truth_ids": 25121,
+  "pool": {
+   "recall": 0.7573,
+   "recall_charge34": 0.723,
+   "excess_target_wins": 20797,
+   "kept": 800000,
+   "recall_E": 0.597
+  },
+  "learn": {
+   "recall": 0.6125,
+   "recall_charge34": 0.4677,
+   "excess_target_wins": 21992,
+   "kept": 800000,
+   "recall_E": 0.5347,
+   "excess_target_wins_learned_score": 21924
+  },
+  "learn+pool": {
+   "recall": 0.7656,
+   "recall_charge34": 0.7498,
+   "excess_target_wins": 20400,
+   "kept": 800000,
+   "recall_E": 0.5809
+  },
+  "wall": "6:32.13"
+ },
+ "V1-D": {
+  "base": {
+   "recall": 0.7056,
+   "recall_charge34": 0.5386,
+   "excess_target_wins": 26106,
+   "kept": 800000,
+   "recall_E": 0.6591
+  },
+  "truth_ids": 25121,
+  "pool": {
+   "recall": 0.8779,
+   "recall_charge34": 0.8727,
+   "excess_target_wins": 26202,
+   "kept": 800000,
+   "recall_E": 0.6895
+  },
+  "learn": {
+   "recall": 0.7117,
+   "recall_charge34": 0.5754,
+   "excess_target_wins": 27400,
+   "kept": 800000,
+   "recall_E": 0.6175,
+   "excess_target_wins_learned_score": 28200
+  },
+  "learn+pool": {
+   "recall": 0.8789,
+   "recall_charge34": 0.8805,
+   "excess_target_wins": 26497,
+   "kept": 800000,
+   "recall_E": 0.6714
+  },
+  "wall": "14:26.71"
+ },
+ "V2-D": {
+  "base": {
+   "recall": 0.5983,
+   "recall_charge34": 0.3945,
+   "excess_target_wins": 19274,
+   "kept": 800000,
+   "recall_E": 0.5811
+  },
+  "truth_ids": 25121,
+  "pool": {
+   "recall": 0.756,
+   "recall_charge34": 0.7255,
+   "excess_target_wins": 21544,
+   "kept": 800000,
+   "recall_E": 0.5956
+  },
+  "learn": {
+   "recall": 0.6166,
+   "recall_charge34": 0.4758,
+   "excess_target_wins": 22053,
+   "kept": 800000,
+   "recall_E": 0.5369,
+   "excess_target_wins_learned_score": 22628
+  },
+  "learn+pool": {
+   "recall": 0.7729,
+   "recall_charge34": 0.7575,
+   "excess_target_wins": 21006,
+   "kept": 800000,
+   "recall_E": 0.5903
+  },
+  "wall": "5:04.36"
+ },
+ "V3-D": {
+  "base": {
+   "recall": 0.7079,
+   "recall_charge34": 0.5429,
+   "excess_target_wins": 26756,
+   "kept": 800000,
+   "recall_E": 0.6594
+  },
+  "truth_ids": 25121,
+  "pool": {
+   "recall": 0.8801,
+   "recall_charge34": 0.8772,
+   "excess_target_wins": 26496,
+   "kept": 800000,
+   "recall_E": 0.6896
+  },
+  "learn": {
+   "recall": 0.7094,
+   "recall_charge34": 0.5644,
+   "excess_target_wins": 28302,
+   "kept": 800000,
+   "recall_E": 0.6217,
+   "excess_target_wins_learned_score": 29528
+  },
+  "learn+pool": {
+   "recall": 0.8828,
+   "recall_charge34": 0.8828,
+   "excess_target_wins": 27140,
+   "kept": 800000,
+   "recall_E": 0.6789
+  },
+  "wall": "12:42.90"
+ }
+}

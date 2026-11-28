@@ -24,7 +24,7 @@ O=$W/survey_v3/$VAR-$RUN
 test ! -e $O || { echo "exists $O"; exit 1; }
 mkdir -p $O
 echo "node $(hostname) cpu $(lscpu | grep 'Model name' | sed 's/.*: *//') variant $VAR run $RUN"
-sha256sum $SIF $FASTA 2>/dev/null; sha256sum $SIF
+sha256sum $SIF $HUMAN
 SC=${TMPDIR:-/tmp}/survey-$SLURM_JOB_ID; mkdir -p $SC
 /usr/bin/time -v -o $O.time singularity exec --cleanenv --no-home --home $SC:/tmp --env TMPDIR=/tmp --bind $C --bind $SC:/tmp \
   $SIF OpenDIA -in $IN -fasta $HUMAN -library_cache $O -out_dir $O -threads 16 -survey_only -survey_features $X \
