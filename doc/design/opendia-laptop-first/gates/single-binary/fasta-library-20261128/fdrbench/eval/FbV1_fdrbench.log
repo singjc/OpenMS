@@ -1,0 +1,18 @@
+FDRBench - FDR Control Evaluation Tool for Proteomics
+https://github.com/Noble-Lab/FDRBench
+
+FDP level: precursor
+Use combined entrapment method ...
+Use both q_value and score for ranking
+# of peptides: 15084
+The number of unique FDR values: 701
+
+
+================== parameters ==================
+FDR level:precursor level FDR
+Score column name: score
+Score higher is better: true
+r ratio:0.9994012382639613
+Pick a representative protein:Pick the first one in the group
+Global random seed: 2000
+================================================

@@ -1,0 +1,156 @@
+node hl-codon-cn-048.ebi.ac.uk cpu AMD EPYC 9555 64-Core Processor arm FbV1
+e1915832a272391e409448a08c813a600058b91230d4d85e84900b92b871047b  /nfs/research/juan/singj/opendia/fasta-20261128/opendia-fasta-v4-20261128.sif
+4d6272d48b9a25c7761e8a016ddbd7458fc179a870782d675c6300412d4ef20f  /nfs/research/juan/singj/opendia/fasta-20261128/fasta/human_fdrbench.fasta
+FbV1 exit=0 45:14.32 maxrss_kb=35684560
+FASTA library: /nfs/research/juan/singj/opendia/fasta-20261128/fasta/human_fdrbench.fasta instrument=timsTOF nce=30.000000 im=on prefilter_pairs=800000
+FASTA: proteins=40862 peptides=2630176 skipped_nonstandard=138 seconds=2.073536
+FASTA candidates: target_peptidoforms=3444350 pairs=6855713 target_peptides=2547971 dropped_no_decoy=2470 dropped_collision=5296 seconds=12.414903
+FASTA RT: peptidoforms=6707386 seconds=75.468615
+FASTA 1/K0: precursors=13711426 seconds=164.096877
+FASTA survey library: predicted 50000/6817150 pairs, seconds=10.770942
+FASTA survey library: predicted 100000/6817150 pairs, seconds=17.869471
+FASTA survey library: predicted 150000/6817150 pairs, seconds=25.020297
+FASTA survey library: predicted 200000/6817150 pairs, seconds=31.629006
+FASTA survey library: predicted 250000/6817150 pairs, seconds=38.705234
+FASTA survey library: predicted 300000/6817150 pairs, seconds=45.458881
+FASTA survey library: predicted 350000/6817150 pairs, seconds=52.545186
+FASTA survey library: predicted 400000/6817150 pairs, seconds=59.147833
+FASTA survey library: predicted 450000/6817150 pairs, seconds=66.233218
+FASTA survey library: predicted 500000/6817150 pairs, seconds=72.951177
+FASTA survey library: predicted 550000/6817150 pairs, seconds=80.169264
+FASTA survey library: predicted 600000/6817150 pairs, seconds=86.808726
+FASTA survey library: predicted 650000/6817150 pairs, seconds=93.877621
+FASTA survey library: predicted 700000/6817150 pairs, seconds=100.546199
+FASTA survey library: predicted 750000/6817150 pairs, seconds=107.675371
+FASTA survey library: predicted 800000/6817150 pairs, seconds=114.601439
+FASTA survey library: predicted 850000/6817150 pairs, seconds=121.677918
+FASTA survey library: predicted 900000/6817150 pairs, seconds=128.438906
+FASTA survey library: predicted 950000/6817150 pairs, seconds=135.598368
+FASTA survey library: predicted 1000000/6817150 pairs, seconds=142.246892
+FASTA survey library: predicted 1050000/6817150 pairs, seconds=149.277751
+FASTA survey library: predicted 1100000/6817150 pairs, seconds=155.979579
+FASTA survey library: predicted 1150000/6817150 pairs, seconds=163.117131
+FASTA survey library: predicted 1200000/6817150 pairs, seconds=170.195504
+FASTA survey library: predicted 1250000/6817150 pairs, seconds=176.887503
+FASTA survey library: predicted 1300000/6817150 pairs, seconds=183.977829
+FASTA survey library: predicted 1350000/6817150 pairs, seconds=190.645296
+FASTA survey library: predicted 1400000/6817150 pairs, seconds=197.654062
+FASTA survey library: predicted 1450000/6817150 pairs, seconds=204.496220
+FASTA survey library: predicted 1500000/6817150 pairs, seconds=211.572949
+FASTA survey library: predicted 1550000/6817150 pairs, seconds=218.194985
+FASTA survey library: predicted 1600000/6817150 pairs, seconds=225.282317
+FASTA survey library: predicted 1650000/6817150 pairs, seconds=232.036749
+FASTA survey library: predicted 1700000/6817150 pairs, seconds=239.109448
+FASTA survey library: predicted 1750000/6817150 pairs, seconds=245.753454
+FASTA survey library: predicted 1800000/6817150 pairs, seconds=252.842346
+FASTA survey library: predicted 1850000/6817150 pairs, seconds=259.501577
+FASTA survey library: predicted 1900000/6817150 pairs, seconds=266.535294
+FASTA survey library: predicted 1950000/6817150 pairs, seconds=273.206268
+FASTA survey library: predicted 2000000/6817150 pairs, seconds=280.300828
+FASTA survey library: predicted 2050000/6817150 pairs, seconds=286.995442
+FASTA survey library: predicted 2100000/6817150 pairs, seconds=293.939134
+FASTA survey library: predicted 2150000/6817150 pairs, seconds=301.047399
+FASTA survey library: predicted 2200000/6817150 pairs, seconds=307.660917
+FASTA survey library: predicted 2250000/6817150 pairs, seconds=314.647645
+FASTA survey library: predicted 2300000/6817150 pairs, seconds=321.239812
+FASTA survey library: predicted 2350000/6817150 pairs, seconds=328.316814
+FASTA survey library: predicted 2400000/6817150 pairs, seconds=335.015079
+FASTA survey library: predicted 2450000/6817150 pairs, seconds=342.090745
+FASTA survey library: predicted 2500000/6817150 pairs, seconds=348.652296
+FASTA survey library: predicted 2550000/6817150 pairs, seconds=355.677361
+FASTA survey library: predicted 2600000/6817150 pairs, seconds=362.338850
+FASTA survey library: predicted 2650000/6817150 pairs, seconds=369.385196
+FASTA survey library: predicted 2700000/6817150 pairs, seconds=375.966514
+FASTA survey library: predicted 2750000/6817150 pairs, seconds=383.048711
+FASTA survey library: predicted 2800000/6817150 pairs, seconds=389.738746
+FASTA survey library: predicted 2850000/6817150 pairs, seconds=396.803517
+FASTA survey library: predicted 2900000/6817150 pairs, seconds=403.541265
+FASTA survey library: predicted 2950000/6817150 pairs, seconds=410.730362
+FASTA survey library: predicted 3000000/6817150 pairs, seconds=417.363878
+FASTA survey library: predicted 3050000/6817150 pairs, seconds=424.408511
+FASTA survey library: predicted 3100000/6817150 pairs, seconds=431.166459
+FASTA survey library: predicted 3150000/6817150 pairs, seconds=438.163477
+FASTA survey library: predicted 3200000/6817150 pairs, seconds=445.158408
+FASTA survey library: predicted 3250000/6817150 pairs, seconds=451.856706
+FASTA survey library: predicted 3300000/6817150 pairs, seconds=458.892966
+FASTA survey library: predicted 3350000/6817150 pairs, seconds=465.550242
+FASTA survey library: predicted 3400000/6817150 pairs, seconds=472.490278
+FASTA survey library: predicted 3450000/6817150 pairs, seconds=479.175660
+FASTA survey library: predicted 3500000/6817150 pairs, seconds=486.138412
+FASTA survey library: predicted 3550000/6817150 pairs, seconds=492.735099
+FASTA survey library: predicted 3600000/6817150 pairs, seconds=499.819105
+FASTA survey library: predicted 3650000/6817150 pairs, seconds=506.490968
+FASTA survey library: predicted 3700000/6817150 pairs, seconds=513.513839
+FASTA survey library: predicted 3750000/6817150 pairs, seconds=520.201523
+FASTA survey library: predicted 3800000/6817150 pairs, seconds=527.237357
+FASTA survey library: predicted 3850000/6817150 pairs, seconds=533.825107
+FASTA survey library: predicted 3900000/6817150 pairs, seconds=540.902203
+FASTA survey library: predicted 3950000/6817150 pairs, seconds=547.610230
+FASTA survey library: predicted 4000000/6817150 pairs, seconds=554.653310
+FASTA survey library: predicted 4050000/6817150 pairs, seconds=561.302257
+FASTA survey library: predicted 4100000/6817150 pairs, seconds=568.387030
+FASTA survey library: predicted 4150000/6817150 pairs, seconds=575.372553
+FASTA survey library: predicted 4200000/6817150 pairs, seconds=582.072093
+FASTA survey library: predicted 4250000/6817150 pairs, seconds=589.091832
+FASTA survey library: predicted 4300000/6817150 pairs, seconds=595.812231
+FASTA survey library: predicted 4350000/6817150 pairs, seconds=602.876627
+FASTA survey library: predicted 4400000/6817150 pairs, seconds=609.564930
+FASTA survey library: predicted 4450000/6817150 pairs, seconds=616.613518
+FASTA survey library: predicted 4500000/6817150 pairs, seconds=623.371173
+FASTA survey library: predicted 4550000/6817150 pairs, seconds=630.378959
+FASTA survey library: predicted 4600000/6817150 pairs, seconds=637.082838
+FASTA survey library: predicted 4650000/6817150 pairs, seconds=644.195254
+FASTA survey library: predicted 4700000/6817150 pairs, seconds=650.934789
+FASTA survey library: predicted 4750000/6817150 pairs, seconds=658.036828
+FASTA survey library: predicted 4800000/6817150 pairs, seconds=664.829414
+FASTA survey library: predicted 4850000/6817150 pairs, seconds=671.883061
+FASTA survey library: predicted 4900000/6817150 pairs, seconds=678.583868
+FASTA survey library: predicted 4950000/6817150 pairs, seconds=685.658350
+FASTA survey library: predicted 5000000/6817150 pairs, seconds=692.313937
+FASTA survey library: predicted 5050000/6817150 pairs, seconds=699.405702
+FASTA survey library: predicted 5100000/6817150 pairs, seconds=706.134883
+FASTA survey library: predicted 5150000/6817150 pairs, seconds=713.192931
+FASTA survey library: predicted 5200000/6817150 pairs, seconds=720.273650
+FASTA survey library: predicted 5250000/6817150 pairs, seconds=726.970090
+FASTA survey library: predicted 5300000/6817150 pairs, seconds=734.077122
+FASTA survey library: predicted 5350000/6817150 pairs, seconds=740.831279
+FASTA survey library: predicted 5400000/6817150 pairs, seconds=747.954282
+FASTA survey library: predicted 5450000/6817150 pairs, seconds=754.686017
+FASTA survey library: predicted 5500000/6817150 pairs, seconds=761.776833
+FASTA survey library: predicted 5550000/6817150 pairs, seconds=768.515139
+FASTA survey library: predicted 5600000/6817150 pairs, seconds=775.660159
+FASTA survey library: predicted 5650000/6817150 pairs, seconds=782.449396
+FASTA survey library: predicted 5700000/6817150 pairs, seconds=789.489255
+FASTA survey library: predicted 5750000/6817150 pairs, seconds=796.223801
+FASTA survey library: predicted 5800000/6817150 pairs, seconds=803.362683
+FASTA survey library: predicted 5850000/6817150 pairs, seconds=810.201314
+FASTA survey library: predicted 5900000/6817150 pairs, seconds=817.254746
+FASTA survey library: predicted 5950000/6817150 pairs, seconds=823.938620
+FASTA survey library: predicted 6000000/6817150 pairs, seconds=830.981176
+FASTA survey library: predicted 6050000/6817150 pairs, seconds=837.714367
+FASTA survey library: predicted 6100000/6817150 pairs, seconds=844.760745
+FASTA survey library: predicted 6150000/6817150 pairs, seconds=851.578951
+FASTA survey library: predicted 6200000/6817150 pairs, seconds=858.657843
+FASTA survey library: predicted 6250000/6817150 pairs, seconds=865.617750
+FASTA survey library: predicted 6300000/6817150 pairs, seconds=872.284402
+FASTA survey library: predicted 6350000/6817150 pairs, seconds=879.405597
+FASTA survey library: predicted 6400000/6817150 pairs, seconds=886.066711
+FASTA survey library: predicted 6450000/6817150 pairs, seconds=893.427282
+FASTA survey library: predicted 6500000/6817150 pairs, seconds=900.052748
+FASTA survey library: predicted 6550000/6817150 pairs, seconds=907.079878
+FASTA survey library: predicted 6600000/6817150 pairs, seconds=913.618254
+FASTA survey library: predicted 6650000/6817150 pairs, seconds=920.547976
+FASTA survey library: predicted 6700000/6817150 pairs, seconds=927.221645
+FASTA survey library: predicted 6750000/6817150 pairs, seconds=934.261671
+FASTA survey library: predicted 6800000/6817150 pairs, seconds=940.842931
+FASTA survey library: predicted 6817150/6817150 pairs, seconds=943.442335
+FASTA survey library: /nfs/research/juan/singj/opendia/fasta-20261128/cache_fb/FbV1/human_fdrbench.candidates.parquet precursors=13604010 panel_pairs=38563 dropped_without_fragments=53708 seconds=943.841130
+FASTA survey: library precursors=13604010 calibration pairs=38563
+FASTA survey: run 1/1: /nfs/research/juan/singj/opendia/entlib-hela-20261118/data/20200505_Evosep_200SPD_SG06-16_MLHeLa_200ng_py8_S3-A1_1_2737.d
+  Calibration: passes=1 used anchors=213 rss_mb=14008 peak_mb=16142
+FASTA prefilter: kept 800000 of 6855713 pairs (5531653 with a survey candidate)
+FASTA final library: predicting MS2 for 800000 pairs (7419 calibration panel pairs first)
+FASTA final library: /nfs/research/juan/singj/opendia/fasta-20261128/cache_fb/FbV1/human_fdrbench.library.parquet pairs=771321 (dropped below 3 fragments: 28679) fragments=15916617 seconds=129.857879
+FASTA library: calibration pairs=7419
+  Calibration: passes=1 used anchors=220 rss_mb=2754 peak_mb=34848
+Combined: 14994 target precursors at global q <= 0.010000, 14994 run-level rows; seconds=2707.715402

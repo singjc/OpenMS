@@ -1,0 +1,42 @@
+{
+ "candidates_FbF": {
+  "entrapment_targets": 3427194,
+  "human_targets": 3428519,
+  "ratio": 0.9996135357569843
+ },
+ "library_FbF": {
+  "entrapment_targets": 3026240,
+  "human_targets": 3028139,
+  "ratio": 0.9993728821563344
+ },
+ "candidates_FbP": {
+  "entrapment_targets": 3427194,
+  "human_targets": 3428519,
+  "ratio": 0.9996135357569843
+ },
+ "library_FbP": {
+  "entrapment_targets": 356402,
+  "human_targets": 367294,
+  "ratio": 0.9703452819811922
+ },
+ "candidates_FbV1": {
+  "entrapment_targets": 3399984,
+  "human_targets": 3402021,
+  "ratio": 0.9994012382639613
+ },
+ "library_FbV1": {
+  "entrapment_targets": 377532,
+  "human_targets": 393789,
+  "ratio": 0.9587164699877345
+ },
+ "candidates_FbPp": {
+  "entrapment_targets": 3399984,
+  "human_targets": 3402021,
+  "ratio": 0.9994012382639613
+ },
+ "library_FbPp": {
+  "entrapment_targets": 330075,
+  "human_targets": 410729,
+  "ratio": 0.8036320785724894
+ }
+}
