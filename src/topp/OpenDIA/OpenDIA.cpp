@@ -7,6 +7,7 @@
 // --------------------------------------------------------------------------
 
 #include <workflow/Workflow.h>
+#include <workflow/FastaWorkflow.h>
 #include <library/preparation/Preparation.h>
 #include <results/Annotations.h>
 #include <results/QpxExport.h>
@@ -162,8 +163,53 @@ protected:
   {
     registerInputFileList_("in", "<files>", {}, "DIA runs (Thermo raw, mzML, ...)");
     registerInputFile_("lib", "<file>", "", "Library (PQP or OpenDIA .parquet) with decoys named DECOY_<target TRAML_ID> (search fragments, "
-                       "up to 6 per precursor). A PQP is converted once to <stem>.opendia.parquet next to it, which later runs read instead");
+                       "up to 6 per precursor). A PQP is converted once to <stem>.opendia.parquet next to it, which later runs read instead. "
+                       "Either -lib or -fasta", false);
     setValidFormats_("lib", {"pqp", "parquet"});
+    registerInputFile_("fasta", "<file>", "", "Instead of -lib: build one fixed library from this FASTA for all runs (PLAN_FASTA). "
+                       "In silico digestion with one pseudo-reversed decoy per target peptidoform, PeptDeep RT (and CCS), a "
+                       "survey of every run with theoretical fragments that keeps the -prefilter_pairs best target-decoy pairs (by "
+                       "the larger co-elution of target and decoy, so both are treated alike), then PeptDeep fragment intensities "
+                       "for the kept pairs only. Cached in -library_cache. Needs a WITH_ONNX build", false);
+    setValidFormats_("fasta", {"fasta"});
+    registerStringOption_("enzyme", "<name>", "Trypsin/P", "FASTA library: digestion enzyme (OpenMS enzyme name)", false);
+    registerIntOption_("missed_cleavages", "<n>", 1, "FASTA library: maximum missed cleavages", false);
+    setMinInt_("missed_cleavages", 0);
+    registerIntOption_("min_length", "<n>", 7, "FASTA library: minimum peptide length", false);
+    setMinInt_("min_length", 4);
+    registerIntOption_("max_length", "<n>", 30, "FASTA library: maximum peptide length", false);
+    setMinInt_("max_length", 4);
+    registerIntOption_("min_charge", "<z>", 2, "FASTA library: minimum precursor charge", false);
+    setMinInt_("min_charge", 1);
+    registerIntOption_("max_charge", "<z>", 4, "FASTA library: maximum precursor charge", false);
+    setMinInt_("max_charge", 1);
+    registerDoubleOption_("min_mz", "<m/z>", 400.0, "FASTA library: minimum precursor m/z", false);
+    registerDoubleOption_("max_mz", "<m/z>", 1200.0, "FASTA library: maximum precursor m/z", false);
+    registerStringList_("fixed_mods", "<mods>", {"Carbamidomethyl (C)"}, "FASTA library: fixed modifications (UniMod names, residue modifications only)", false);
+    registerStringList_("variable_mods", "<mods>", {"Oxidation (M)"}, "FASTA library: variable modifications (UniMod names, residue "
+                        "modifications only: a terminal modification leaves no pseudo-reversed decoy)", false);
+    registerIntOption_("max_variable_mods", "<n>", 1, "FASTA library: maximum variable modifications per peptide", false);
+    setMinInt_("max_variable_mods", 0);
+    registerIntOption_("fragments", "<n>", 12, "FASTA library: predicted fragments per precursor in the library (b/y, ordinal >= 3); "
+                       "the search uses the top 6, scoring the top 12", false);
+    setMinInt_("fragments", 3);
+    setMaxInt_("fragments", 99);
+    registerDoubleOption_("fragment_min_mz", "<m/z>", 200.0, "FASTA library: minimum fragment m/z", false);
+    registerDoubleOption_("fragment_max_mz", "<m/z>", 1800.0, "FASTA library: maximum fragment m/z", false);
+    registerIntOption_("prefilter_pairs", "<n>", 0, "FASTA library: target-decoy pairs kept by the survey prefilter and predicted "
+                       "(0 = no prefilter, every candidate pair is predicted)", false);
+    setMinInt_("prefilter_pairs", 0);
+    registerStringOption_("instrument", "<name>", "auto", "FASTA library: PeptDeep instrument (auto: timsTOF for .d runs, SciexTOF for "
+                          ".wiff, QE otherwise)", false);
+    setValidStrings_("instrument", {"auto", "QE", "Lumos", "timsTOF", "SciexTOF", "ThermoTOF"});
+    registerDoubleOption_("nce", "<nce>", 30.0, "FASTA library: PeptDeep normalized collision energy", false);
+    registerStringOption_("library_im", "<mode>", "auto", "FASTA library: predict precursor 1/K0 from PeptDeep CCS (auto: for .d runs)", false);
+    setValidStrings_("library_im", {"auto", "on", "off"});
+    registerStringOption_("library_cache", "<dir>", "", "FASTA library: directory of the cached libraries (default: out_dir). A library "
+                          "built earlier with the same FASTA, settings, runs, models and OpenMS revision is reused", false);
+    registerStringOption_("model_dir", "<dir>", "", "FASTA library: directory with peptdeep_{rt,ms2,ccs}_dynamic.onnx; empty uses the "
+                          "installed models", false, true);
+    registerFlag_("survey_only", "Advanced: FASTA library: stop after the survey and write <fasta stem>.survey.tsv (design stage)", true);
     registerInputFile_("scoring_lib", "<file>", "", "Optional library (PQP or OpenDIA .parquet) with up to 12 scoring fragments per precursor "
                        "(same precursor IDs); default: the search fragments", false);
     setValidFormats_("scoring_lib", {"pqp", "parquet"});
@@ -373,39 +419,6 @@ protected:
       }
     }
 
-    std::string lib_path = getStringOption_("lib");
-    if (getStringOption_("decoys") == "predict")
-    {
-      if (!getStringOption_("scoring_lib").empty())
-      {
-        writeLogError_("-decoys predict does not support -scoring_lib (its decoys would not match the predicted ones).");
-        return ILLEGAL_PARAMETERS;
-      }
-      if (OpenDIA::isParquetLibrary(lib_path))
-      {
-        writeLogError_("-decoys predict needs a PQP -lib (the prediction format boundary uses the PQP reader/writer).");
-        return ILLEGAL_PARAMETERS;
-      }
-      const std::string cache = getStringOption_("decoy_cache");
-      lib_path = predictDecoys_(lib_path, cache.empty() ? out_dir : cache);
-    }
-    writeLogInfo_("Reading library " + lib_path);
-    OpenDIA::AnalysisLibrary library =
-      OpenDIA::AnalysisLibrary::read(lib_path, getStringOption_("scoring_lib"), [this](const std::string& line) { writeLogInfo_(line); });
-    std::size_t library_rss = 0;
-    SysInfo::getProcessMemoryConsumption(library_rss);
-    writeLogInfo_("Library: precursors=" + std::to_string(library.precursors.size()) + " pairs=" + std::to_string(library.pairs) +
-                  " rss_mb=" + std::to_string(library_rss / 1024));
-
-    const auto genes = OpenDIA::readGeneAnnotations(lib_path);
-    const OpenDIA::ReportingOptions reporting{q_cut, getDoubleOption_("peptide_q"), getDoubleOption_("protein_q"), getStringOption_("inference_context")};
-    const bool legacy_outputs = getFlag_("legacy_outputs");
-    const std::string legacy_dir = out_dir + "/legacy";
-    const std::string qpx_dir = out_dir + "/qpx";
-    std::filesystem::create_directories(qpx_dir);
-    ParamXMLFile().store(out_dir + "/parameters.ini", getParam_());
-    if (legacy_outputs) std::filesystem::create_directories(legacy_dir);
-
     OpenDIA::RunOptions options;
     options.threads = std::max(1, getIntOption_("threads"));
     options.seed = static_cast<std::uint64_t>(getIntOption_("seed"));
@@ -437,6 +450,111 @@ protected:
     }
     options.extraction_groups = static_cast<std::size_t>(getIntOption_("extraction_groups"));
     options.extraction_parallel = static_cast<std::size_t>(getIntOption_("extraction_parallel"));
+
+    std::string lib_path = getStringOption_("lib");
+    std::string scoring_path = getStringOption_("scoring_lib");
+    const std::string fasta = getStringOption_("fasta");
+    if (lib_path.empty() == fasta.empty())
+    {
+      writeLogError_("Give either -lib or -fasta.");
+      return ILLEGAL_PARAMETERS;
+    }
+    if (!fasta.empty())
+    {
+      if (!scoring_path.empty() || getStringOption_("decoys") != "library")
+      {
+        writeLogError_("-fasta builds its own decoys and scoring fragments: -scoring_lib and -decoys predict do not apply.");
+        return ILLEGAL_PARAMETERS;
+      }
+      OpenDIA::FastaLibraryOptions fo;
+      fo.fasta = fasta;
+      const std::string cache = getStringOption_("library_cache");
+      fo.cache_dir = cache.empty() ? out_dir : cache;
+      auto& c = fo.candidates;
+      c.enzyme = getStringOption_("enzyme");
+      c.missed_cleavages = getIntOption_("missed_cleavages");
+      c.min_length = getIntOption_("min_length");
+      c.max_length = getIntOption_("max_length");
+      c.min_charge = getIntOption_("min_charge");
+      c.max_charge = getIntOption_("max_charge");
+      c.min_mz = getDoubleOption_("min_mz");
+      c.max_mz = getDoubleOption_("max_mz");
+      c.fixed_mods.assign(getStringList_("fixed_mods").begin(), getStringList_("fixed_mods").end());
+      c.variable_mods.assign(getStringList_("variable_mods").begin(), getStringList_("variable_mods").end());
+      c.max_variable_mods = getIntOption_("max_variable_mods");
+      // Instrument and mobility from the run type: all runs must agree.
+      const auto kind = [](const std::string& run)
+      {
+        std::string e = std::filesystem::path(run).extension().string();
+        std::transform(e.begin(), e.end(), e.begin(), [](unsigned char x) { return static_cast<char>(std::tolower(x)); });
+        return e == ".d" ? std::string("timsTOF") : e == ".wiff" || e == ".wiff2" ? std::string("SciexTOF") : std::string("QE");
+      };
+      std::set<std::string> kinds;
+      for (const auto& in : inputs) kinds.insert(kind(in));
+      auto& p = fo.prediction;
+      p.model_directory = getStringOption_("model_dir");
+      p.instrument = getStringOption_("instrument");
+      if (p.instrument == "auto")
+      {
+        if (kinds.size() != 1)
+        {
+          writeLogError_("-instrument auto needs runs of one kind (.d, .wiff or other); set -instrument.");
+          return ILLEGAL_PARAMETERS;
+        }
+        p.instrument = *kinds.begin();
+      }
+      p.nce = static_cast<float>(getDoubleOption_("nce"));
+      const std::string im = getStringOption_("library_im");
+      p.predict_im = im == "on" || (im == "auto" && kinds.size() == 1 && *kinds.begin() == "timsTOF");
+      p.threads = options.threads;
+      fo.fragments.count = static_cast<std::size_t>(getIntOption_("fragments"));
+      fo.fragments.min_mz = getDoubleOption_("fragment_min_mz");
+      fo.fragments.max_mz = getDoubleOption_("fragment_max_mz");
+      fo.prefilter_pairs = static_cast<std::size_t>(getIntOption_("prefilter_pairs"));
+      fo.panel_pairs = options.calibration.panel_targets;
+      fo.survey_only = getFlag_("survey_only");
+      writeLogInfo_("FASTA library: " + fasta + " instrument=" + p.instrument + " nce=" + std::to_string(p.nce) + " im=" +
+                    (p.predict_im ? "on" : "off") + " prefilter_pairs=" + std::to_string(fo.prefilter_pairs));
+      const auto paths = OpenDIA::buildFastaLibrary(fo, inputs, options, [this](const std::string& line) { writeLogInfo_(line); });
+      if (fo.survey_only)
+      {
+        writeLogInfo_("Survey only: " + paths.survey);
+        return EXECUTION_OK;
+      }
+      lib_path = paths.search;
+      scoring_path = paths.library;
+    }
+    if (getStringOption_("decoys") == "predict")
+    {
+      if (!scoring_path.empty())
+      {
+        writeLogError_("-decoys predict does not support -scoring_lib (its decoys would not match the predicted ones).");
+        return ILLEGAL_PARAMETERS;
+      }
+      if (OpenDIA::isParquetLibrary(lib_path))
+      {
+        writeLogError_("-decoys predict needs a PQP -lib (the prediction format boundary uses the PQP reader/writer).");
+        return ILLEGAL_PARAMETERS;
+      }
+      const std::string cache = getStringOption_("decoy_cache");
+      lib_path = predictDecoys_(lib_path, cache.empty() ? out_dir : cache);
+    }
+    writeLogInfo_("Reading library " + lib_path);
+    OpenDIA::AnalysisLibrary library =
+      OpenDIA::AnalysisLibrary::read(lib_path, scoring_path, [this](const std::string& line) { writeLogInfo_(line); });
+    std::size_t library_rss = 0;
+    SysInfo::getProcessMemoryConsumption(library_rss);
+    writeLogInfo_("Library: precursors=" + std::to_string(library.precursors.size()) + " pairs=" + std::to_string(library.pairs) +
+                  " rss_mb=" + std::to_string(library_rss / 1024));
+
+    const auto genes = OpenDIA::readGeneAnnotations(lib_path);
+    const OpenDIA::ReportingOptions reporting{q_cut, getDoubleOption_("peptide_q"), getDoubleOption_("protein_q"), getStringOption_("inference_context")};
+    const bool legacy_outputs = getFlag_("legacy_outputs");
+    const std::string legacy_dir = out_dir + "/legacy";
+    const std::string qpx_dir = out_dir + "/qpx";
+    std::filesystem::create_directories(qpx_dir);
+    ParamXMLFile().store(out_dir + "/parameters.ini", getParam_());
+    if (legacy_outputs) std::filesystem::create_directories(legacy_dir);
 
     // Best (calibrated) score of each precursor per run, for the global q-value.
     struct Hit

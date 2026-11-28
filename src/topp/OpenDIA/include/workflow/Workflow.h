@@ -212,7 +212,32 @@ namespace OpenMS::OpenDIA
     /// Analyse one run (raw, mzML, ...). The library is calibrated for each run on the fly (it is not changed).
     RunResult run(const std::string& path);
 
+    /// What survey() measured in one run.
+    struct Survey
+    {
+      std::vector<double> coelution;  ///< Per library precursor: the largest search candidate co-elution, 0 without a candidate.
+      std::string calibration_json;
+      std::vector<std::string> log;
+    };
+
+    /**
+      @brief Steps 1 and 2 only (the FASTA library prefilter): the unchanged calibration and the unchanged candidate
+      search with the calibrated tolerances (im_tolerance_scale applied as in run()). No extraction, no scoring.
+    */
+    Survey survey(const std::string& path);
+
   private:
+    /// Step 1 into @p result: calibration and the run's RT, m/z and 1/K0 tolerances. Returns the used anchors
+    /// (precursor ID, run RT).
+    std::vector<std::pair<std::string, double>> calibrate_(const std::string& path, RunResult& result, const Log& say,
+                                                           std::chrono::steady_clock::time_point t_run);
+    /// Step 2: the candidate search with the calibrated library. Returns the candidates and, per search precursor,
+    /// its library index.
+    std::pair<std::vector<SearchCandidate>, std::vector<std::uint32_t>> search_(const std::string& path, const CalibrationRT& cal,
+                                                                                const std::vector<double>& rt_correction,
+                                                                                double rt_tolerance_s, const Log& say);
+    /// Opens the run-local spectrum cache when RunOptions::spectrum_cache_dir is set.
+    void openCache_(const Log& say);
     /// Steps 2-6 into @p result (calibration set). @p rt_correction (seconds per precursor, empty = none) is added to
     /// the calibrated library RT.
     void searchAndScore_(const std::string& path, RunResult& result,

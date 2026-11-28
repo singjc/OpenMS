@@ -557,31 +557,20 @@ namespace OpenMS::OpenDIA
   {
   }
 
-  RunResult RunAnalysis::run(const std::string& path)
+  void RunAnalysis::openCache_(const Log& say)
   {
-    RunResult result;
-    result.run = path;
-    const auto say = [&](const std::string& line)
-    {
-      result.log.push_back(line + memoryNote());
-      if (log_) log_(result.log.back());
-    };
-    auto& lib = library_;
-    const auto t_run = std::chrono::steady_clock::now();
-    // Run-local spectrum cache (RunOptions::spectrum_cache_dir): written during the first read, replayed by the later
-    // passes, removed when the run ends (also on an exception).
-    struct CacheScope
-    {
-      std::unique_ptr<SpectrumCache>& cache;
-      ~CacheScope() { cache.reset(); }
-    } cache_scope{cache_};
     if (!options_.spectrum_cache_dir.empty())
     {
       const std::string dir = options_.spectrum_cache_dir + "/opendia_cache_" + File::getUniqueName(false);
       cache_ = std::make_unique<SpectrumCache>(dir);
       say("Spectrum cache: " + dir);
     }
+  }
 
+  std::vector<std::pair<std::string, double>> RunAnalysis::calibrate_(const std::string& path, RunResult& result, const Log& say,
+                                                                      std::chrono::steady_clock::time_point t_run)
+  {
+    auto& lib = library_;
     // 1. Calibration (uncalibrated library).
     const auto describe = [&lib](std::uint32_t pi, CalibrationPrecursor& out)
     {
@@ -643,6 +632,93 @@ namespace OpenMS::OpenDIA
     say("Calibration: rt_tolerance_s=" + std::to_string(cal.tolerance_s) + " ms2_offset_ppm=" + std::to_string(cal.ms2_offset_ppm) +
         " ms2_tolerance_ppm=" + std::to_string(cal.ms2_tolerance_ppm) + " boundary_half_widths=" + std::to_string(cal.boundary_half_widths) +
         " seconds=" + std::to_string(seconds(t_run)));
+    return anchors;
+  }
+
+  std::pair<std::vector<SearchCandidate>, std::vector<std::uint32_t>> RunAnalysis::search_(const std::string& path, const CalibrationRT& cal,
+                                                                                           const std::vector<double>& rt_correction,
+                                                                                           double rt_tolerance_s, const Log& say)
+  {
+    auto& lib = library_;
+    const auto t_search = std::chrono::steady_clock::now();
+    std::vector<std::uint32_t> search_to_library;
+    std::vector<SearchCandidate> candidates;
+    std::string search_io;
+    {
+      SearchOptions so;
+      so.rt_window_seconds = rt_tolerance_s;
+      so.fragment_tolerance_ppm = cal.ms2_tolerance_ppm;
+      if (cal.has_im) so.ion_mobility_tolerance_vssc = cal.im_tolerance;
+      so.ion_mobility_array_as_vssc = options_.im_array_as_vssc;
+      so.picker.max_peaks = options_.max_peaks;
+      so.picker.valley_fraction = options_.search_valley_fraction;
+      so.picker.boundary_half_widths = cal.boundary_half_widths;
+      so.min_transitions = options_.min_transitions;
+      // Candidates are kept in memory.
+      StreamSearch search(makeQueries(lib, cal, rt_correction), so);
+      search_io = readSpectra(path, search, {2}, cache_.get());
+      const auto t_finish = std::chrono::steady_clock::now();
+      search.finish();
+      search_io += " finish_s=" + std::to_string(seconds(t_finish));
+      candidates = search.candidates();
+      search_to_library.resize(search.precursorCount());
+      for (std::size_t p = 0; p < search.precursorCount(); ++p) search_to_library[p] = lib.find(search.precursorId(p));
+    }
+    say("Search: candidates=" + std::to_string(candidates.size()) + " seconds=" + std::to_string(seconds(t_search)) + search_io);
+    return {std::move(candidates), std::move(search_to_library)};
+  }
+
+  RunAnalysis::Survey RunAnalysis::survey(const std::string& path)
+  {
+    RunResult result;
+    result.run = path;
+    const auto say = [&](const std::string& line)
+    {
+      result.log.push_back(line + memoryNote());
+      if (log_) log_(result.log.back());
+    };
+    const auto t_run = std::chrono::steady_clock::now();
+    struct CacheScope
+    {
+      std::unique_ptr<SpectrumCache>& cache;
+      ~CacheScope() { cache.reset(); }
+    } cache_scope{cache_};
+    openCache_(say);
+    calibrate_(path, result, say, t_run);
+    const auto [candidates, search_to_library] = search_(path, result.calibration, {}, result.calibration.tolerance_s, say);
+    Survey survey;
+    survey.coelution.assign(library_.precursors.size(), 0.0);
+    for (const auto& c : candidates)
+    {
+      auto& best = survey.coelution[search_to_library[c.precursor]];
+      best = std::max(best, c.coelution);
+    }
+    survey.calibration_json = std::move(result.calibration_json);
+    survey.log = std::move(result.log);
+    return survey;
+  }
+
+  RunResult RunAnalysis::run(const std::string& path)
+  {
+    RunResult result;
+    result.run = path;
+    const auto say = [&](const std::string& line)
+    {
+      result.log.push_back(line + memoryNote());
+      if (log_) log_(result.log.back());
+    };
+    auto& lib = library_;
+    const auto t_run = std::chrono::steady_clock::now();
+    // Run-local spectrum cache (RunOptions::spectrum_cache_dir): written during the first read, replayed by the later
+    // passes, removed when the run ends (also on an exception).
+    struct CacheScope
+    {
+      std::unique_ptr<SpectrumCache>& cache;
+      ~CacheScope() { cache.reset(); }
+    } cache_scope{cache_};
+    openCache_(say);
+    const auto anchors = calibrate_(path, result, say, t_run);
+    const CalibrationRT& cal = result.calibration;
 
     // Visualization is separate from scoring and runs only once, on the final result, while the cache is alive.
     const auto export_maps = [&]
@@ -768,31 +844,7 @@ namespace OpenMS::OpenDIA
     const CalibrationRT& cal = result.calibration;
 
     // 2. Search with the calibrated library (RTs shifted by the per-precursor correction when given).
-    const auto t_search = std::chrono::steady_clock::now();
-    std::vector<std::uint32_t> search_to_library;
-    std::vector<SearchCandidate> candidates;
-    std::string search_io;
-    {
-      SearchOptions so;
-      so.rt_window_seconds = rt_tolerance_s;
-      so.fragment_tolerance_ppm = cal.ms2_tolerance_ppm;
-      if (cal.has_im) so.ion_mobility_tolerance_vssc = cal.im_tolerance;
-      so.ion_mobility_array_as_vssc = options_.im_array_as_vssc;
-      so.picker.max_peaks = options_.max_peaks;
-      so.picker.valley_fraction = options_.search_valley_fraction;
-      so.picker.boundary_half_widths = cal.boundary_half_widths;
-      so.min_transitions = options_.min_transitions;
-      // Candidates are kept in memory.
-      StreamSearch search(makeQueries(lib, cal, rt_correction), so);
-      search_io = readSpectra(path, search, {2}, cache_.get());
-      const auto t_finish = std::chrono::steady_clock::now();
-      search.finish();
-      search_io += " finish_s=" + std::to_string(seconds(t_finish));
-      candidates = search.candidates();
-      search_to_library.resize(search.precursorCount());
-      for (std::size_t p = 0; p < search.precursorCount(); ++p) search_to_library[p] = lib.find(search.precursorId(p));
-    }
-    say("Search: candidates=" + std::to_string(candidates.size()) + " seconds=" + std::to_string(seconds(t_search)) + search_io);
+    auto [candidates, search_to_library] = search_(path, cal, rt_correction, rt_tolerance_s, say);
 
     // 3. Population: every candidate of pairs whose best candidate has enough supporting fragments.
     std::vector<std::uint32_t> pair_support(lib.pairs, 0);

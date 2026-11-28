@@ -87,6 +87,52 @@ namespace OpenMS::OpenDIA::Preparation
     }
   }
 
+  bool pseudoReverse(std::string& sequence, std::vector<Modification>& modifications)
+  {
+    const int n = static_cast<int>(sequence.size());
+    if (std::any_of(modifications.begin(), modifications.end(), [n](const Modification& mod)
+        { return mod.location == -1 || mod.location == n || mod.location == n - 1; }))
+    {
+      return false;
+    }
+    if (!sequence.empty())
+    {
+      std::reverse(sequence.begin(), sequence.end() - 1);
+      for (auto& mod : modifications)
+      {
+        if (mod.location >= 0 && mod.location < n - 1) { mod.location = n - 2 - mod.location; }
+      }
+      if (sequence.back() == 'K') { sequence.back() = 'R'; }
+      else if (sequence.back() == 'R') { sequence.back() = 'K'; }
+      else
+      {
+        std::uint64_t hash = 14695981039346656037ULL;
+        for (char c : sequence)
+        {
+          hash ^= static_cast<std::uint64_t>(c);
+          hash *= 1099511628211ULL;
+        }
+        sequence.back() = std::string_view("ANDCEQGHILMFSTWYV")[hash % 17];
+      }
+    }
+    return true;
+  }
+
+  std::string uniModSequence(const std::string& sequence, const std::vector<Modification>& modifications)
+  {
+    const int n = static_cast<int>(sequence.size());
+    std::string out;
+    for (int loc = -1; loc <= n; ++loc)
+    {
+      if (loc >= 0 && loc < n) { out += sequence[loc]; }
+      for (const auto& mod : modifications)
+      {
+        if (mod.location == loc) { out += "(UniMod:" + std::to_string(mod.unimod_id) + ")"; }
+      }
+    }
+    return out;
+  }
+
   Assays decoySequences(const Assays& targets, ProgressLogger::LogType log_type)
   {
     Assays result;
@@ -127,42 +173,12 @@ namespace OpenMS::OpenDIA::Preparation
         continue;
       }
       std::string sequence = parsed.toUnmodifiedString();
-      const int n = static_cast<int>(sequence.size());
-      if (std::any_of(compound.modifications.begin(), compound.modifications.end(), [n](const Modification& mod)
-          { return mod.location == -1 || mod.location == n || mod.location == n - 1; }))
+      if (!pseudoReverse(sequence, compound.modifications))
       {
         excluded.insert(compound.id);
         continue;
       }
-      if (!sequence.empty())
-      {
-        std::reverse(sequence.begin(), sequence.end() - 1);
-        for (auto& mod : compound.modifications)
-        {
-          if (mod.location >= 0 && mod.location < n - 1) { mod.location = n - 2 - mod.location; }
-        }
-        if (sequence.back() == 'K') { sequence.back() = 'R'; }
-        else if (sequence.back() == 'R') { sequence.back() = 'K'; }
-        else
-        {
-          std::uint64_t hash = 14695981039346656037ULL;
-          for (char c : sequence)
-          {
-            hash ^= static_cast<std::uint64_t>(c);
-            hash *= 1099511628211ULL;
-          }
-          sequence.back() = std::string_view("ANDCEQGHILMFSTWYV")[hash % 17];
-        }
-      }
-      compound.sequence.clear();
-      for (int loc = -1; loc <= n; ++loc)
-      {
-        if (loc >= 0 && loc < n) { compound.sequence += sequence[loc]; }
-        for (const auto& mod : compound.modifications)
-        {
-          if (mod.location == loc) { compound.sequence += "(UniMod:" + std::to_string(mod.unimod_id) + ")"; }
-        }
-      }
+      compound.sequence = uniModSequence(sequence, compound.modifications);
       // Reserve before annotation, even if a later annotation excludes this compound.
       if (!sequences.insert(compound.sequence + std::to_string(compound.charge)).second)
       {

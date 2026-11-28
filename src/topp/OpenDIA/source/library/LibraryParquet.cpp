@@ -24,6 +24,7 @@
 #include <cctype>
 #include <chrono>
 #include <filesystem>
+#include <numeric>
 #include <unordered_set>
 
 namespace OpenMS::OpenDIA
@@ -329,6 +330,112 @@ namespace OpenMS::OpenDIA
       std::filesystem::remove(partial, ignored);
       throw;
     }
+  }
+
+  struct ParquetLibraryWriter::Impl
+  {
+    std::string path, partial;
+    std::shared_ptr<arrow::Schema> schema;
+    std::shared_ptr<arrow::io::FileOutputStream> out;
+    std::unique_ptr<parquet::arrow::FileWriter> writer;
+    Batch batch;
+    bool closed = false;
+
+    void flush(bool force)
+    {
+      if (batch.rows == 0 || (!force && batch.rows < ROW_GROUP)) return;
+      check(writer->WriteRecordBatch(*batch.finish(schema, partial)), partial);
+    }
+  };
+
+  ParquetLibraryWriter::ParquetLibraryWriter(const std::string& path, const std::vector<std::pair<std::string, std::string>>& metadata) :
+    impl_(std::make_unique<Impl>())
+  {
+    char host[256] = {};
+    ::gethostname(host, sizeof(host) - 1);
+    impl_->path = path;
+    impl_->partial = path + "." + host + "." + std::to_string(::getpid()) + ".tmp";
+    std::error_code ignored;
+    std::filesystem::remove(impl_->partial, ignored);
+    // The fragment count is not known up front; it is only a capacity hint for the readers, so it is left out.
+    std::vector<std::string> keys{FORMAT_KEY, SCHEMA_KEY};
+    std::vector<std::string> values{FORMAT_VALUE, SCHEMA_VALUE};
+    for (const auto& [k, v] : metadata)
+    {
+      keys.push_back(k);
+      values.push_back(v);
+    }
+    impl_->schema = schemaV1()->WithMetadata(arrow::key_value_metadata(keys, values));
+    auto out = arrow::io::FileOutputStream::Open(impl_->partial);
+    if (!out.ok()) notWritable(impl_->partial, out.status());
+    impl_->out = *out;
+    const auto properties = parquet::WriterProperties::Builder().compression(parquet::Compression::ZSTD)->max_row_group_length(ROW_GROUP)->build();
+    const auto arrow_properties = parquet::ArrowWriterProperties::Builder().store_schema()->build();
+    auto writer = parquet::arrow::FileWriter::Open(*impl_->schema, arrow::default_memory_pool(), impl_->out, properties, arrow_properties);
+    if (!writer.ok()) notWritable(impl_->partial, writer.status());
+    impl_->writer = std::move(*writer);
+  }
+
+  ParquetLibraryWriter::~ParquetLibraryWriter()
+  {
+    if (impl_ && !impl_->closed)
+    {
+      if (impl_->writer) (void)impl_->writer->Close();
+      if (impl_->out) (void)impl_->out->Close();
+      std::error_code ignored;
+      std::filesystem::remove(impl_->partial, ignored);
+    }
+  }
+
+  void ParquetLibraryWriter::add(const Precursor& p, const std::vector<Fragment>& fragments)
+  {
+    if (fragments.empty())
+      throw Exception::InvalidValue(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION, "Precursor without fragments", std::string(p.id));
+    if (precursors_ >= static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max()))
+      throw Exception::InvalidValue(__FILE__, __LINE__, OPENMS_PRETTY_FUNCTION, "Too many library precursors", std::string(p.id));
+    std::vector<std::uint32_t> order(fragments.size());
+    std::iota(order.begin(), order.end(), 0u);
+    std::stable_sort(order.begin(), order.end(), [&](auto a, auto b) { return fragments[a].intensity > fragments[b].intensity; });
+    std::vector<std::int32_t> rank(fragments.size());
+    for (std::size_t r = 0; r < order.size(); ++r) rank[order[r]] = static_cast<std::int32_t>(r + 1);
+    auto& b = impl_->batch;
+    const auto& path = impl_->partial;
+    const auto index = static_cast<std::int32_t>(precursors_);
+    for (std::size_t i = 0; i < fragments.size(); ++i)
+    {
+      const auto& f = fragments[i];
+      check(b.precursor_index.Append(index), path);
+      check(b.precursor_id.Append(p.id.data(), static_cast<std::int32_t>(p.id.size())), path);
+      check(b.traml_id.Append(p.traml_id.data(), static_cast<std::int32_t>(p.traml_id.size())), path);
+      ++b.rows;
+      check(b.decoy.Append(p.decoy), path);
+      check(b.precursor_mz.Append(p.mz), path);
+      check(b.precursor_charge.Append(p.charge), path);
+      check(b.library_rt.Append(p.rt), path);
+      check(b.precursor_im.Append(p.im), path);
+      check(b.sequence.Append(p.sequence.data(), static_cast<std::int32_t>(p.sequence.size())), path);
+      check(b.proteins.Append(), path);
+      for (const auto& protein : *p.proteins) check(b.protein->Append(protein), path);
+      check(b.transition_id.Append(f.transition_id), path);
+      check(b.product_mz.Append(f.product_mz), path);
+      check(b.library_intensity.Append(f.intensity), path);
+      check(b.fragment_type.Append(f.type.data(), static_cast<std::int32_t>(f.type.size())), path);
+      check(b.fragment_ordinal.Append(f.ordinal), path);
+      check(b.fragment_charge.Append(f.charge), path);
+      check(b.fragment_rank.Append(rank[i]), path);
+    }
+    ++precursors_;
+    fragments_ += fragments.size();
+    impl_->flush(false);
+  }
+
+  void ParquetLibraryWriter::close()
+  {
+    impl_->flush(true);
+    check(impl_->writer->Close(), impl_->partial);
+    check(impl_->out->Close(), impl_->partial);
+    std::filesystem::rename(impl_->partial, impl_->path);
+    impl_->closed = true;
   }
 
   std::unordered_map<std::string, std::string> readParquetLibraryMetadata(const std::string& path)

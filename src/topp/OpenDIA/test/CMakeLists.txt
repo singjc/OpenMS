@@ -38,6 +38,10 @@ add_executable(OpenDIASearch_test Search_test.cpp)
 target_link_libraries(OpenDIASearch_test PRIVATE OpenDIA_impl)
 add_test(NAME OpenDIASearch_test COMMAND OpenDIASearch_test)
 
+add_executable(OpenDIAFastaLibrary_test FastaLibrary_test.cpp)
+target_link_libraries(OpenDIAFastaLibrary_test PRIVATE OpenDIA_impl)
+add_test(NAME OpenDIAFastaLibrary_test COMMAND OpenDIAFastaLibrary_test ${CMAKE_CURRENT_BINARY_DIR}/OpenDIAFastaLibrary_test_data)
+
 add_executable(OpenDIATraces_test Traces_test.cpp)
 target_link_libraries(OpenDIATraces_test PRIVATE OpenDIA_impl)
 add_test(NAME OpenDIATraces_test COMMAND OpenDIATraces_test ${CMAKE_CURRENT_BINARY_DIR}/OpenDIATraces_test)

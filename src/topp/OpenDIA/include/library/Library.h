@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <functional>
 #include <limits>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -112,6 +113,49 @@ namespace OpenMS::OpenDIA
 
   /// True if @p path names an OpenDIA Parquet library by its extension (.parquet).
   bool isParquetLibrary(const std::string& path);
+
+  /**
+    @brief Writes an OpenDIA Parquet library (the format of writeParquetLibrary) one precursor at a time, so a library
+    much larger than memory can be written. Precursors get consecutive precursor_index values in call order.
+    The file appears under its name only after close(); until then it is written to a temporary name, which the
+    destructor removes if close() was not reached.
+  */
+  class ParquetLibraryWriter
+  {
+  public:
+    struct Precursor
+    {
+      std::string_view id, traml_id, sequence;
+      double mz = 0.0, rt = 0.0, im = -1.0;
+      int charge = 0;
+      bool decoy = false;
+      const std::vector<std::string>* proteins = nullptr;  ///< Never null.
+    };
+    struct Fragment
+    {
+      std::string transition_id;
+      double product_mz = 0.0, intensity = 0.0;
+      std::string_view type;
+      std::int16_t ordinal = -1;
+      std::int8_t charge = 0;
+    };
+    /// @throws Exception::FileNotWritable If the file cannot be opened.
+    ParquetLibraryWriter(const std::string& path, const std::vector<std::pair<std::string, std::string>>& metadata = {});
+    ~ParquetLibraryWriter();
+    ParquetLibraryWriter(const ParquetLibraryWriter&) = delete;
+    ParquetLibraryWriter& operator=(const ParquetLibraryWriter&) = delete;
+    /// One precursor with at least one fragment, in library order (fragment_rank by intensity, ties in this order).
+    void add(const Precursor& precursor, const std::vector<Fragment>& fragments);
+    /// Finish the file and rename it to its final name.
+    void close();
+    std::size_t precursors() const { return precursors_; }
+    std::size_t fragments() const { return fragments_; }
+
+  private:
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
+    std::size_t precursors_ = 0, fragments_ = 0;
+  };
 
   /**
     @brief Read the library at @p path, PQP or Parquet.

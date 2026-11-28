@@ -27,12 +27,14 @@ add_library(OpenDIA_impl STATIC
   source/scoring/GBM.cpp
   source/extraction/FragmentGrid.cpp
   source/workflow/Workflow.cpp
+  source/workflow/FastaWorkflow.cpp
   source/calibration/RTRefine.cpp
   source/library/Library.cpp
   source/library/LibraryParquet.cpp
   source/library/preparation/DecoySequences.cpp
   source/library/preparation/AssayPrediction.cpp
   source/library/preparation/Preparation.cpp
+  source/library/preparation/FastaLibrary.cpp
   source/results/Annotations.cpp
   source/results/EntityInference.cpp
   source/results/Quantification.cpp
@@ -49,6 +51,7 @@ add_library(OpenDIA_impl STATIC
   include/library/preparation/DecoySequences.h
   include/library/preparation/AssayPrediction.h
   include/library/preparation/Preparation.h
+  include/library/preparation/FastaLibrary.h
   include/library/Library.h
   include/extraction/MzIndex.h
   include/extraction/Search.h
@@ -63,7 +66,8 @@ add_library(OpenDIA_impl STATIC
   include/scoring/GBM.h
   include/extraction/FragmentGrid.h
   include/calibration/RTRefine.h
-  include/workflow/Workflow.h)
+  include/workflow/Workflow.h
+  include/workflow/FastaWorkflow.h)
 target_include_directories(OpenDIA_impl PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(OpenDIA_impl PUBLIC OpenMS::OpenMS_CLI)
 # OpenDIALibrary reads PQP files with the SQLite C API (the sqlite3 OpenMS itself is built with).
