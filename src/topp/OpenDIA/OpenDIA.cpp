@@ -479,8 +479,9 @@ protected:
       c.max_charge = getIntOption_("max_charge");
       c.min_mz = getDoubleOption_("min_mz");
       c.max_mz = getDoubleOption_("max_mz");
-      c.fixed_mods.assign(getStringList_("fixed_mods").begin(), getStringList_("fixed_mods").end());
-      c.variable_mods.assign(getStringList_("variable_mods").begin(), getStringList_("variable_mods").end());
+      const StringList fixed = getStringList_("fixed_mods"), variable = getStringList_("variable_mods");
+      c.fixed_mods.assign(fixed.begin(), fixed.end());
+      c.variable_mods.assign(variable.begin(), variable.end());
       c.max_variable_mods = getIntOption_("max_variable_mods");
       // Instrument and mobility from the run type: all runs must agree.
       const auto kind = [](const std::string& run)

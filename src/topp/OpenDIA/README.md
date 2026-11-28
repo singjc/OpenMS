@@ -39,6 +39,43 @@ Per run:
 Decoys come from the library, or with `-decoys predict` (`-decoy_model_dir`, `-decoy_cache`) pseudo-reversed decoys are
 predicted like the targets.
 
+**FASTA library** (`-fasta` instead of `-lib`; needs a WITH_ONNX build; PLAN_FASTA):
+
+```
+OpenDIA -in run1.d run2.d ... -fasta human.fasta -prefilter_pairs K -out_dir results -threads 16
+```
+
+One fixed library is built for all runs, then the analysis runs on it unchanged.
+1. **Candidates.** OpenMS digestion (`-enzyme` Trypsin/P, `-missed_cleavages` 1, `-min_length`/`-max_length` 7-30)
+   and modifications (`-fixed_mods` Carbamidomethyl (C), `-variable_mods` Oxidation (M), `-max_variable_mods` 1) give
+   target peptidoforms, each with every protein it occurs in. Each target gets one pseudo-reversed decoy (the
+   `decoySequences` rule, shared code), and each pair is kept at every charge (`-min_charge`/`-max_charge` 2-4) at which
+   the target m/z is in `-min_mz`/`-max_mz` (400-1200). A target with no admissible decoy, or whose decoy equals a
+   target or an earlier decoy, is dropped. The library holds complete pairs only. Only residue modifications with a
+   UniMod formula are accepted: a terminal modification leaves no pseudo-reversed decoy.
+2. **Coordinates.** PeptDeep RT for every peptidoform (library RT = 100 x PeptDeep RT; the calibration maps any
+   monotone scale) and, with `-library_im` (auto: for `.d` runs), CCS converted to 1/K0 for every precursor.
+3. **Survey library** (`<stem>.candidates.parquet`): 6 theoretical fragments per precursor (y1+ ordinal 3 to n-1, the 6
+   closest to y7, topped up with b1+ closest to b5). Up to 40,000 calibration panel pairs (charge 2, no variable
+   modification or missed cleavage, length 7-20, even stride over RT) get their top 6 predicted fragments instead, and
+   only they calibrate.
+4. **Survey** (`-prefilter_pairs K > 0`): per run, the unchanged calibration and candidate search, with no extraction or
+   scoring. Each pair's statistic is the largest search co-elution of its target *or* decoy over all runs, so targets
+   and decoys are selected alike. The K pairs with the largest statistic > 0 are kept (ties by FNV-1a of the target
+   TRAML_ID). `<stem>.survey.tsv` holds every pair's target and decoy statistic. `K = 0` predicts every pair.
+5. **Final library**: PeptDeep MS2 (`-instrument` auto: timsTOF for `.d`, SciexTOF for `.wiff`, QE otherwise; `-nce` 30)
+   for both members of each kept pair. b/y ions of ordinal >= 3, fragment charge <= max(1, min(2, z - 1)), m/z in
+   `-fragment_min_mz`/`-fragment_max_mz` (200-1800), top `-fragments` (12) by intensity. A pair is dropped if a member
+   has fewer than 3. `<stem>.library.parquet` holds them all (scoring uses the top 12) and
+   `<stem>.library.search.parquet` the top 6 (search).
+
+Every file has a `.key` next to it (FASTA SHA-1, settings, model SHA-1s, OpenMS revision; for the survey and final
+library also the search settings, K and each run's path and size). A file whose key matches is reused, so a study pays
+for prediction once (`-library_cache`, default `out_dir`). `-survey_only` stops after the survey.
+
+Caveat: the survey uses the same runs as the analysis. Selection by max(target, decoy) keeps a null pair's target and
+decoy exchangeable, but the entrapment check in PLAN_FASTA is the evidence that this holds in practice.
+
 **Library format.** `-lib` and `-scoring_lib` take a PQP or an OpenDIA Parquet library (`.parquet`). A PQP of at least
 100,000 fragments is converted once, without any option: `<stem>.opendia.parquet` is written next to it (temporary name,
 then rename) and later runs read it instead while the PQP keeps its size and modification time. If the directory is
@@ -172,9 +209,9 @@ the same module directories, with no `OpenDIA` prefix on header or implementatio
 
 | Module | Files |
 | --- | --- |
-| `workflow/` | `Workflow` |
+| `workflow/` | `Workflow`, `FastaWorkflow` |
 | `library/` | `Library`, `LibraryParquet` |
-| `library/preparation/` | `Assay`, `DecoySequences`, `AssayPrediction`, `Preparation` |
+| `library/preparation/` | `Assay`, `DecoySequences`, `AssayPrediction`, `Preparation`, `FastaLibrary` |
 | `io/` | `SpectrumCache`, `PeakMapExport` |
 | `results/` | `Annotations`, `Quantification`, `QpxExport`, `ReportExport` |
 | `calibration/` | `Calibration`, `RTMap`, `RTRefine` |
@@ -188,9 +225,9 @@ their module directory, so the mirrored layout does not require artificial heade
 
 Library preparation owns separate assay records, pseudo-reverse sequence generation and direct PeptDeep inference.
 `Preparation` composes these into the existing predicted-decoy workflow. It has no analysis-state or file-format
-ownership. The CLI alone adapts PQP records through `TransitionPQPFile`. Future FASTA prediction and assay generation
-can compose the same preparation components without coupling them to the compact analysis library. These future
-entry points are not implemented here.
+ownership. The CLI alone adapts PQP records through `TransitionPQPFile`. `FastaLibrary` composes the shared decoy rule
+and direct PeptDeep inference into FASTA candidates and the survey and final Parquet libraries (streamed with
+`ParquetLibraryWriter`); `FastaWorkflow` adds the survey (`RunAnalysis::survey`) and the cache.
 
 Tests remain flat in `test/`, with filenames such as `Workflow_test.cpp`, `FragmentGrid_cases.inc` and
 `no_openswath.cmake`. Build targets and CTest names retain their `OpenDIA` prefixes, independently of source filenames.
@@ -206,6 +243,10 @@ Run `ctest -R 'OpenDIA'` to include the TOPP INI/CTD checks as well as the core 
 - **`OpenDIAPreparation_test`:** sequence and annotation eligibility against the legacy decoy generator.
   With ONNX, **`OpenDIAPreparation_prediction_test`** also compares real-model assay predictions and fresh generated
   PQP bytes against the legacy preparation path. Legacy dependencies occur only in these test oracles.
+- **`OpenDIAFastaLibrary_test`:** the shared pseudo-reverse rule (also through `decoySequences`), ion ladders against
+  `AASequence`, the survey and predicted fragment rules, candidate pairs, proteins and modifications from a small
+  FASTA, the calibration panel stride, pair selection and the streaming Parquet writer. With ONNX, the survey and final
+  library round trip with real models.
 - **`OpenDIAWorkflow_test`:** compact-table grouping, top-twelve scoring, identities, moves and partial-cache fallback
   against an independent materialized library oracle, including shuffled/interleaved fragments.
 - **`OpenDIACalibration_test` and `OpenDIATraces_test`:** indexed and Library-based collector equivalence, including
