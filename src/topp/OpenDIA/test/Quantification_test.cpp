@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: BSD-3-Clause
 // $Maintainer: Justin Sing $
 
-#include <OpenMS/ANALYSIS/OPENSWATH/LevelContextInference.h>
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
@@ -91,56 +90,6 @@ std::string sequence(std::size_t i)
   }
   return result;
 }
-// Cross-check only: OpenDIA's EntityInference must equal the shared OpenMS LevelContextInference exactly.
-// The OpenDIA library itself does not depend on it.
-void compareNative(const std::vector<QuantifiedEntity>& entities, InferenceLevel level, InferenceContext context, std::size_t run_id = 0)
-{
-  std::vector<LevelContextInputRow> rows;
-  for (std::size_t e = 0; e < entities.size(); ++e)
-  {
-    double best = -std::numeric_limits<double>::infinity();
-    for (const auto& run : entities[e].runs)
-    {
-      best = std::max(best, run.score);
-      if (context == InferenceContext::Global || (context == InferenceContext::RunSpecific && run.run != run_id)) continue;
-      rows.push_back({static_cast<Int64>(run.run), std::to_string(run.run) + ":" + std::to_string(e), static_cast<Int64>(e), entities[e].decoy,
-                      run.score, context});
-    }
-    if (context == InferenceContext::Global && std::isfinite(best))
-      rows.push_back({std::nullopt, std::to_string(e), static_cast<Int64>(e), entities[e].decoy, best, context});
-  }
-  LevelContextInferenceConfig config;
-  config.level = level;
-  config.context = context;
-  // No paired competition and no changes to native ErrorEstimationConfig defaults.
-  const auto expected = LevelContextInference::infer(rows, config);
-  check(expected.size() == rows.size(), "native reference retains every entity including missing counterparts");
-  for (const auto& row : expected)
-  {
-    const auto& entity = entities.at(static_cast<std::size_t>(row.entity_id));
-    if (context == InferenceContext::Global)
-    {
-      near(entity.global_q_value, row.qvalue, "native global q");
-      near(entity.global_p_value, row.pvalue, "native global p");
-      near(entity.global_pep, row.pep, "native global PEP");
-      continue;
-    }
-    const auto& run
-      = *std::find_if(entity.runs.begin(), entity.runs.end(), [&](const auto& r) { return r.run == static_cast<std::size_t>(*row.run_id); });
-    if (context == InferenceContext::RunSpecific)
-    {
-      near(run.q_value, row.qvalue, "native run q");
-      near(run.p_value, row.pvalue, "native run p");
-      near(run.pep, row.pep, "native run PEP");
-    }
-    else
-    {
-      near(run.experiment_q_value, row.qvalue, "native experiment q");
-      near(run.experiment_p_value, row.pvalue, "native experiment p");
-      near(run.experiment_pep, row.pep, "native experiment PEP");
-    }
-  }
-}
 } // namespace
 
 int main()
@@ -161,13 +110,41 @@ int main()
   hit(runs[2], 0, 20, 0);
   auto result = quantify(stable, runs, permissive);
   check(result.peptides.size() == 320 && result.protein_groups.size() == 320, "actual target and decoy entities independent");
-  for (auto level : {InferenceLevel::Peptide, InferenceLevel::Protein})
+  // Exact statistics are checked against pinned PyProphet in OpenDIAEntityInferenceParity_test.
   {
-    const auto& entities = level == InferenceLevel::Peptide ? result.peptides : result.protein_groups;
-    compareNative(entities, level, InferenceContext::Global);
-    compareNative(entities, level, InferenceContext::ExperimentWide);
-    compareNative(entities, level, InferenceContext::RunSpecific, 0);
-    compareNative(entities, level, InferenceContext::RunSpecific, 1);
+    // Fixed reference from pinned PyProphet 4344e2b error_statistics with its defaults and
+    // lookup_values_from_error_table: 20 targets and 20 decoys in one run (pi0 = 1/11).
+    const float targets[20] = {4, 3.75, 3.5, 3.25, 3, 2.75, 2.5, 2.25, 2, 1.75, 1, .75, .5, .25, 0, -.25, -.5, -.75, -1, -1.25};
+    AnalysisLibrary reference;
+    std::vector<RunResult> one(1);
+    for (std::uint32_t i = 0; i < 20; ++i)
+    {
+      pair(reference, sequence(i), "P" + std::to_string(i), sequence(i + 1000), "rev_P" + std::to_string(i));
+      hit(one[0], 2 * i, targets[i]);
+      hit(one[0], 2 * i + 1, 1.25f - .25f * static_cast<float>(i));
+    }
+    const auto stats = quantify(reference, one, permissive);
+    check(stats.inference_warnings.empty(), "PyProphet reference fixture is estimable");
+    struct Expected { std::uint32_t precursor; double p, q, pep; };
+    for (const auto& e : {Expected{0, .05, 0.008264462809917357, 0.01712648449152709},
+                          Expected{24, .15, 0.020979020979020983, 0.05174042156663776},
+                          Expected{36, .45, 0.04306220095693781, 0.1510006430249648},
+                          Expected{39, .5, 0.04545454545454546, 0.1778696613075938}})
+    {
+      // One run: run-specific, experiment-wide and global are the same distribution.
+      for (const auto* entity : {&peptide(stats, e.precursor), &protein(stats, e.precursor)})
+      {
+        const auto& run = entity->runs.at(0);
+        near(run.p_value, e.p, "PyProphet run p");
+        near(run.q_value, e.q, "PyProphet run q");
+        near(run.pep, e.pep, "PyProphet run PEP");
+        near(run.experiment_q_value, e.q, "PyProphet experiment q");
+        near(run.experiment_pep, e.pep, "PyProphet experiment PEP");
+        near(entity->global_p_value, e.p, "PyProphet global p");
+        near(entity->global_q_value, e.q, "PyProphet global q");
+        near(entity->global_pep, e.pep, "PyProphet global PEP");
+      }
+    }
   }
   check(std::isfinite(peptide(result, 0).runs[0].q_value), "missing paired decoy does not exclude target from estimable distribution");
   check(std::isfinite(peptide(result, 3).runs[0].q_value), "missing paired target does not exclude decoy from estimable distribution");

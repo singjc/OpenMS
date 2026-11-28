@@ -15,8 +15,11 @@ namespace
 {
   using Math::MultipleTesting;
 
-  // PyProphet error_statistics defaults.
-  const std::vector<double> PI0_LAMBDA {0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45};
+  // PyProphet error_statistics defaults. pi0_lambda is np.arange(0.1, 0.5, 0.05), whose
+  // binary64 values are not the decimal literals (e.g. 0.15000000000000002). Empirical p-values
+  // are often exactly k/n, so p >= lambda at the boundary needs these exact values.
+  const std::vector<double> PI0_LAMBDA {0.1, 0.15000000000000002, 0.20000000000000004, 0.25000000000000006,
+                                        0.30000000000000004, 0.3500000000000001, 0.40000000000000013, 0.45000000000000007};
   constexpr double LFDR_ADJ = 1.5;
   constexpr double LFDR_EPS = 1e-8;
 
