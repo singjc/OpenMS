@@ -1,0 +1,20 @@
+level                 FbF  mean pre   excess              FbV1-FbF (CI)        pooled Te/De (CI)
+before             1.21 %    1.58 %   +0.37  +0.51 (+0.06, +0.96)      1.77 (1.58-1.99)  FbF 1.29
+share_ge_0.333     1.14 %    1.32 %   +0.18  +0.35 (-0.08, +0.79)      1.36 (1.21-1.52)  FbF 1.22
+share_ge_0.500     1.16 %    1.39 %   +0.24  +0.49 (+0.05, +0.93)      1.49 (1.33-1.67)  FbF 1.21
+share_ge_0.667     1.18 %    1.41 %   +0.24  +0.38 (-0.05, +0.82)      1.52 (1.36-1.71)  FbF 1.24
+
+before FbF:N=8074,Ne=49,1.21 % FbV1:N=14994,Ne=129,1.72 % FbV1_s1:N=14774,Ne=118,1.60 % FbV1_s2:N=14760,Ne=119,1.61 % FbV1_g1:N=14757,Ne=124,1.68 % FbP:N=11120,Ne=85,1.53 % FbP_g1:N=11307,Ne=83,1.47 % FbPp:N=20258,Ne=149,1.47 % Fe:N=9270,Ne=56,1.63 % Pe:N=13501,Ne=67,1.34 % Pep:N=23546,Ne=82,0.94 %
+share_ge_0.333 FbF:N=7912,Ne=45,1.14 % FbV1:N=15024,Ne=112,1.49 % FbV1_s1:N=14876,Ne=105,1.41 % FbV1_s2:N=14963,Ne=106,1.42 % FbV1_g1:N=14787,Ne=108,1.46 % FbP:N=11178,Ne=64,1.15 % FbP_g1:N=11210,Ne=62,1.11 % FbPp:N=20084,Ne=120,1.20 % Fe:N=9011,Ne=49,1.47 % Pe:N=13354,Ne=62,1.25 % Pep:N=23321,Ne=68,0.79 %
+share_ge_0.500 FbF:N=7956,Ne=46,1.16 % FbV1:N=15093,Ne=124,1.64 % FbV1_s1:N=14903,Ne=113,1.52 % FbV1_s2:N=14901,Ne=103,1.38 % FbV1_g1:N=14869,Ne=119,1.60 % FbP:N=11245,Ne=69,1.23 % FbP_g1:N=11245,Ne=66,1.17 % FbPp:N=20158,Ne=122,1.21 % Fe:N=9117,Ne=50,1.48 % Pe:N=13344,Ne=55,1.11 % Pep:N=23452,Ne=69,0.79 %
+share_ge_0.667 FbF:N=8001,Ne=47,1.18 % FbV1:N=15005,Ne=117,1.56 % FbV1_s1:N=14823,Ne=112,1.51 % FbV1_s2:N=14785,Ne=105,1.42 % FbV1_g1:N=14757,Ne=112,1.52 % FbP:N=11144,Ne=74,1.33 % FbP_g1:N=11237,Ne=72,1.28 % FbPp:N=20131,Ne=129,1.28 % Fe:N=9148,Ne=51,1.50 % Pe:N=13338,Ne=56,1.13 % Pep:N=23384,Ne=73,0.84 %
+
+share_ge_0.333  {'E1': True, 'E2': True, 'E3': True, 'E4': True} -> NC works
+   E3 human ratio: {'FbV1': 1.0032, 'FbV1_s1': 1.0078, 'FbV1_s2': 1.0148, 'FbV1_g1': 1.0031, 'FbP': 1.0072, 'FbP_g1': 0.9932, 'FbPp': 0.9928}
+   E4: {'Fe': {'dFDP_c': -0.0016, 'human_ratio': 0.9727}, 'Pe': {'dFDP_c': -0.0009, 'human_ratio': 0.9894}, 'Pep': {'dFDP_c': -0.0015, 'human_ratio': 0.991}}
+share_ge_0.500 (PRIMARY) {'E1': False, 'E2': False, 'E3': True, 'E4': True} -> rejected in this form (E1 fails)
+   E3 human ratio: {'FbV1': 1.007, 'FbV1_s1': 1.0091, 'FbV1_s2': 1.0107, 'FbV1_g1': 1.008, 'FbP': 1.0128, 'FbP_g1': 0.996, 'FbPp': 0.9964}
+   E4: {'Fe': {'dFDP_c': -0.0015, 'human_ratio': 0.984}, 'Pe': {'dFDP_c': -0.0023, 'human_ratio': 0.9892}, 'Pep': {'dFDP_c': -0.0015, 'human_ratio': 0.9965}}
+share_ge_0.667  {'E1': False, 'E2': False, 'E3': True, 'E4': True} -> rejected in this form (E1 fails)
+   E3 human ratio: {'FbV1': 1.0015, 'FbV1_s1': 1.0038, 'FbV1_s2': 1.0027, 'FbV1_g1': 1.0008, 'FbP': 1.0032, 'FbP_g1': 0.9947, 'FbPp': 0.9947}
+   E4: {'Fe': {'dFDP_c': -0.0013, 'human_ratio': 0.9873}, 'Pe': {'dFDP_c': -0.0021, 'human_ratio': 0.9887}, 'Pep': {'dFDP_c': -0.001, 'human_ratio': 0.9935}}
