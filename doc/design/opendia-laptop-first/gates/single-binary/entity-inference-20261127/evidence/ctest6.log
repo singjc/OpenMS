@@ -1,0 +1,83 @@
+Test project /home/singjc/Documents/github/OpenMS-r1-full-ninja-build
+      Start  737: OpenDIAQuantification_test
+      Start 2241: TOPP_OpenSwathInfer_1_prepare
+      Start  993: TOPPWRITEINI_OpenSwathInfer
+      Start  971: TOPPWRITEINI_OpenDIA
+ 1/39 Test  #993: TOPPWRITEINI_OpenSwathInfer ...............   Passed    0.01 sec
+      Start  744: OpenDIAPreparation_prediction_test
+ 2/39 Test  #971: TOPPWRITEINI_OpenDIA ......................   Passed    0.01 sec
+      Start  754: OpenDIAGBM_test
+ 3/39 Test #2241: TOPP_OpenSwathInfer_1_prepare .............   Passed    0.01 sec
+      Start 2242: TOPP_OpenSwathInfer_1
+ 4/39 Test  #737: OpenDIAQuantification_test ................   Passed    0.03 sec
+      Start  741: OpenDIAPeakMapExport_test
+ 5/39 Test #2242: TOPP_OpenSwathInfer_1 .....................   Passed    0.13 sec
+      Start 2243: TOPP_OpenSwathInfer_1_export
+ 6/39 Test  #741: OpenDIAPeakMapExport_test .................   Passed    0.27 sec
+      Start  676: OpenSwathPeptidoformInference_test
+ 7/39 Test #2243: TOPP_OpenSwathInfer_1_export ..............   Passed    0.16 sec
+      Start  772: OpenSwathInference_test
+ 8/39 Test  #676: OpenSwathPeptidoformInference_test ........   Passed    0.08 sec
+      Start  739: OpenDIAQpxExport_test
+ 9/39 Test  #772: OpenSwathInference_test ...................   Passed    0.08 sec
+      Start  740: OpenDIAReportExport_test
+10/39 Test  #740: OpenDIAReportExport_test ..................   Passed    0.09 sec
+      Start  748: OpenDIACalibration_test
+11/39 Test  #739: OpenDIAQpxExport_test .....................   Passed    0.19 sec
+      Start  756: OpenDIAMzIndex_test
+12/39 Test  #756: OpenDIAMzIndex_test .......................   Passed    0.56 sec
+      Start 2244: TOPP_OpenSwathInfer_1_out1
+13/39 Test #2244: TOPP_OpenSwathInfer_1_out1 ................   Passed    0.04 sec
+      Start  738: OpenDIAEntityInferenceParity_test
+14/39 Test  #738: OpenDIAEntityInferenceParity_test .........   Passed    0.07 sec
+      Start  750: OpenDIASpectrumCache_test
+15/39 Test  #750: OpenDIASpectrumCache_test .................   Passed    0.08 sec
+      Start  364: MultipleTesting_test
+16/39 Test  #364: MultipleTesting_test ......................   Passed    0.06 sec
+      Start 1192: TOPPWRITECTD_OpenSwathInfer
+17/39 Test #1192: TOPPWRITECTD_OpenSwathInfer ...............   Passed    0.02 sec
+      Start  751: OpenDIAPeakPicker_test
+18/39 Test  #748: OpenDIACalibration_test ...................   Passed    1.15 sec
+      Start  742: OpenDIAAnnotations_test
+19/39 Test  #742: OpenDIAAnnotations_test ...................   Passed    0.06 sec
+      Start  745: OpenDIAWorkflow_test
+20/39 Test  #751: OpenDIAPeakPicker_test ....................   Passed    0.30 sec
+      Start  753: OpenDIAScorer_test
+21/39 Test  #745: OpenDIAWorkflow_test ......................   Passed    0.06 sec
+      Start  743: OpenDIAPreparation_test
+22/39 Test  #743: OpenDIAPreparation_test ...................   Passed    0.03 sec
+      Start  994: TOPPWRITEINI_OpenSwathInfer_SectionName
+23/39 Test  #994: TOPPWRITEINI_OpenSwathInfer_SectionName ...   Passed    0.01 sec
+      Start  755: OpenDIAFragmentGrid_test
+24/39 Test  #755: OpenDIAFragmentGrid_test ..................   Passed    0.09 sec
+      Start  358: LevelContextInference_test
+25/39 Test  #358: LevelContextInference_test ................   Passed    0.02 sec
+      Start  747: OpenDIATraces_test
+26/39 Test  #754: OpenDIAGBM_test ...........................   Passed    1.90 sec
+      Start  758: OpenDIALibraryParquet_test
+27/39 Test  #753: OpenDIAScorer_test ........................   Passed    0.24 sec
+      Start  749: OpenDIAPeakFeatures_test
+28/39 Test  #758: OpenDIALibraryParquet_test ................   Passed    0.03 sec
+      Start  757: OpenDIARTRefine_test
+29/39 Test  #749: OpenDIAPeakFeatures_test ..................   Passed    0.01 sec
+      Start  746: OpenDIASearch_test
+30/39 Test  #757: OpenDIARTRefine_test ......................   Passed    0.02 sec
+      Start  752: OpenDIAInterference_test
+31/39 Test  #752: OpenDIAInterference_test ..................   Passed    0.05 sec
+      Start  760: OpenDIA_fails_closed_on_tiny_library
+32/39 Test  #760: OpenDIA_fails_closed_on_tiny_library ......   Passed    0.01 sec
+      Start  761: OpenDIA_rejects_duplicate_run_names
+33/39 Test  #747: OpenDIATraces_test ........................   Passed    0.16 sec
+      Start 1181: TOPPWRITECTD_OpenDIA
+34/39 Test  #761: OpenDIA_rejects_duplicate_run_names .......   Passed    0.02 sec
+      Start  972: TOPPWRITEINI_OpenDIA_SectionName
+35/39 Test  #972: TOPPWRITEINI_OpenDIA_SectionName ..........   Passed    0.01 sec
+      Start  759: OpenDIA_no_openswath
+36/39 Test #1181: TOPPWRITECTD_OpenDIA ......................   Passed    0.01 sec
+37/39 Test  #746: OpenDIASearch_test ........................   Passed    0.14 sec
+38/39 Test  #759: OpenDIA_no_openswath ......................   Passed    0.05 sec
+39/39 Test  #744: OpenDIAPreparation_prediction_test ........   Passed   12.40 sec
+
+100% tests passed, 0 tests failed out of 39
+
+Total Test time (real) =  12.49 sec

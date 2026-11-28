@@ -17,6 +17,22 @@ peptide/protein tables and matrices byte-identical to f0a62dfbf5; `inference.par
 identical in all 395,886 rows (only the method label metadata changed); checker
 ACCEPTANCE_PASS. Wherever the text below mentions LevelContextInference, read EntityInference.
 
+## Update: test cross-check removed, exact PyProphet lambdas (3e71a141b9)
+
+The test-only `LevelContextInference` comparison is gone. OpenDIA's code and tests no longer
+reference it. `Quantification_test` instead checks p, q and PEP in all three contexts against
+fixed values from pinned PyProphet 4344e2b.
+
+That reference caught a real mismatch. PyProphet's `pi0_lambda` is `np.arange(0.1, 0.5, 0.05)`,
+whose binary64 values are not the decimal literals (for example 0.15000000000000002).
+Empirical p-values are often exactly k/n, so `p >= lambda` can differ at a boundary: on the
+fixture, pi0 was 0.18 instead of PyProphet's 0.09. The larger parity fixture never hit a
+boundary, so it hadn't caught this. EntityInference now uses the exact `np.arange` values.
+
+Rechecked: 39/39 tests; parity 10/10 (q 1.1e-16, PEP 3.6e-15); Astral and diaPASEF 3/3 legacy
+byte-identical, QPX VALID, checker ACCEPTANCE_PASS on both. On real data the effect is tiny: q
+and PEP move by at most 2.2e-16 on diaPASEF, and Astral is unchanged. Counts at 1% are unchanged.
+
 ## What changed
 
 - The experimental picked peptide/protein estimator is gone. OpenDIA now calls OpenMS
