@@ -1,0 +1,9 @@
+FbF      all null pairs         n=2330168 mean shared-with-parent: target 0.228 decoy 0.053; share >= 50 %: target 0.065 decoy 0.000
+FbF      accepted, target won   n=     46 mean shared-with-parent: target 0.246 decoy 0.064; share >= 50 %: target 0.130 decoy 0.000
+FbF      accepted, decoy won    n=     37 mean shared-with-parent: target 0.155 decoy 0.049; share >= 50 %: target 0.000 decoy 0.000
+FbV1     all null pairs         n= 369064 mean shared-with-parent: target 0.222 decoy 0.055; share >= 50 %: target 0.067 decoy 0.000
+FbV1     accepted, target won   n=    128 mean shared-with-parent: target 0.324 decoy 0.068; share >= 50 %: target 0.234 decoy 0.000
+FbV1     accepted, decoy won    n=     60 mean shared-with-parent: target 0.256 decoy 0.075; share >= 50 %: target 0.133 decoy 0.000
+FbP      all null pairs         n= 346610 mean shared-with-parent: target 0.224 decoy 0.055; share >= 50 %: target 0.070 decoy 0.000
+FbP      accepted, target won   n=     85 mean shared-with-parent: target 0.339 decoy 0.071; share >= 50 %: target 0.259 decoy 0.000
+FbP      accepted, decoy won    n=     51 mean shared-with-parent: target 0.308 decoy 0.091; share >= 50 %: target 0.235 decoy 0.000
