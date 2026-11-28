@@ -270,6 +270,12 @@ protected:
     registerFlag_("no_rt_refine", "Advanced: skip the per-run RT refinement (PLAN_RTR): by default a ridge RT correction on sequence composition is fitted from the run's own q<=0.01 IDs after a first pass, then search, extraction and scoring run again with corrected RTs and a narrower RT window (about 1.8-1.9x wall time)", true);
     registerIntOption_("rt_refine_min_ids", "<n>", 500, "Advanced: skip the RT refinement with fewer training IDs", false, true);
     setMinInt_("rt_refine_min_ids", 1);
+    registerFlag_("claim_competition", "Advanced, experimental (PLAN_CLAIM_COMPETITION): in the RT-refined second pass add claim-competition "
+                  "features: shared-fragment signal of each window explained only by first-pass pair winners (q <= claim_q, targets and decoys "
+                  "alike) that outrank it and are of another peptide family", true);
+    registerDoubleOption_("claim_q", "<q>", 0.01, "Advanced, experimental: first-pass pooled q of claim-competition claimants", false, true);
+    setMinFloat_("claim_q", 0.0001);
+    setMaxFloat_("claim_q", 1.0);
     registerFlag_("no_spectrum_cache", "Advanced: read the run file on every pass instead of caching its MS1/MS2 spectra once in a temporary "
                   "directory (outputs are identical either way; the cache needs about 12 bytes per peak of free disk space)", true);
     registerStringOption_("spectrum_cache_dir", "<dir>", "", "Advanced: parent directory of the temporary spectrum cache (default: out_dir); "
@@ -449,6 +455,8 @@ protected:
     options.trace_tensor_gb = static_cast<std::size_t>(getIntOption_("trace_tensor_gb"));
     options.rt_refine = !getFlag_("no_rt_refine");
     options.rt_refine_min_ids = static_cast<std::size_t>(getIntOption_("rt_refine_min_ids"));
+    options.claim_competition = getFlag_("claim_competition");
+    options.claim_q = getDoubleOption_("claim_q");
     options.calibration.panel_targets = 40000;
     if (!getFlag_("no_spectrum_cache"))
     {

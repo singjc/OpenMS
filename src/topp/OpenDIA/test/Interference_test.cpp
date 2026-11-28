@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <limits>
 #include <random>
 #include <stdexcept>
 #include <vector>
@@ -149,6 +150,53 @@ namespace
     }
   }
 
+  /// Claim filter (PLAN_CLAIM_COMPETITION): only ranked windows claim, only from lower-ranked windows of other families.
+  void testClaimFilter()
+  {
+    auto pb = precursor(300.0, 0), pa = precursor(1300.0, 0);
+    pb.fragment_mz[0] = pa.fragment_mz[0] = 500.0;
+    const auto prof = gaussian(15.5, 2.0);
+    const auto b = window(0, pb, 100.0, prof), a = window(1, pa, 10.0, prof);
+    const auto plain = InterferenceResolver::compute({pb, pa}, {b, a}, 7.0, 30.0 / 32);
+    require(plain[4] > 0.0f && plain[0] > 0.0f, "unfiltered: b and a claim each other");
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    // b ranks above a: b claims a, a does not claim b (lower rank); identical numbers to the unfiltered claim on a.
+    std::vector<double> rank{2.0, 1.0}, own{2.0, 1.0};
+    std::vector<std::uint64_t> family{10, 20};
+    InterferenceResolver::ClaimFilter cf{&rank, &own, &family};
+    auto f = InterferenceResolver::compute({pb, pa}, {b, a}, 7.0, 30.0 / 32, 1, nullptr, 0.0, &cf);
+    require(f[4] == plain[4] && f[7] == plain[7], "higher-ranked claimant: same claim as unfiltered");
+    require(f[0] == 0.0f && f[3] == 0.0f, "lower-ranked window does not claim");
+    // b not a claimant (NaN rank): nothing claims.
+    rank = {nan, 1.0};
+    f = InterferenceResolver::compute({pb, pa}, {b, a}, 7.0, 30.0 / 32, 1, nullptr, 0.0, &cf);
+    require(f[4] == 0.0f && f[0] == 0.0f, "non-claimant claims nothing");
+    // Same family (e.g. the pair partner or a charge sibling): no claim even with a higher rank.
+    rank = {2.0, 1.0};
+    family = {10, 10};
+    f = InterferenceResolver::compute({pb, pa}, {b, a}, 7.0, 30.0 / 32, 1, nullptr, 0.0, &cf);
+    require(f[4] == 0.0f, "same family never claims");
+    // Label-blind: swapping which window is called target or decoy cannot matter (the filter has no labels); the
+    // result depends only on ranks, families and data. Equal ranks: neither claims.
+    family = {10, 20};
+    rank = {1.0, 1.0};
+    own = {1.0, 1.0};
+    f = InterferenceResolver::compute({pb, pa}, {b, a}, 7.0, 30.0 / 32, 1, nullptr, 0.0, &cf);
+    require(f[4] == 0.0f && f[0] == 0.0f, "equal rank: no claim");
+    // Thread independence with a filter.
+    rank = {2.0, 1.0};
+    own = {2.0, 1.0};
+    const auto one = InterferenceResolver::compute({pb, pa}, {b, a}, 7.0, 30.0 / 32, 1, nullptr, 0.0, &cf);
+    const auto four = InterferenceResolver::compute({pb, pa}, {b, a}, 7.0, 30.0 / 32, 4, nullptr, 0.0, &cf);
+    require(one == four, "filtered result independent of thread count");
+    // Bad filter sizes throw.
+    std::vector<double> short_rank{1.0};
+    InterferenceResolver::ClaimFilter bad{&short_rank, &own, &family};
+    bool threw = false;
+    try { InterferenceResolver::compute({pb, pa}, {b, a}, 7.0, 30.0 / 32, 1, nullptr, 0.0, &bad); } catch (const std::invalid_argument&) { threw = true; }
+    require(threw, "mis-sized filter throws");
+  }
+
   /// Brute-force reference (all pairs) against the sweep, on random data; also thread independence.
   void testRandomAgainstBruteForce()
   {
@@ -266,6 +314,7 @@ int main()
   {
     testExplainedShare();
     testNoOverlapNoSharedNoUnshared();
+    testClaimFilter();
     testRandomAgainstBruteForce();
   }
   catch (const std::exception& error)

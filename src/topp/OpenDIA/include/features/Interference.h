@@ -75,6 +75,20 @@ namespace OpenMS::OpenDIA
       std::array<double, BINS> profile{};           ///< Summed fragment intensity per grid bin.
     };
 
+    /**
+      @brief Optional claimant filter (claim competition, PLAN_CLAIM_COMPETITION). Indexed like the windows.
+
+      With a filter only windows with a finite rank are claimants, and b claims from a only when rank[b] > own[a] and
+      family[b] != family[a] (a charge sibling, modified form or the pair partner of a never claims). The same rule
+      applies to target and decoy windows; the filter reads no labels.
+    */
+    struct ClaimFilter
+    {
+      const std::vector<double>* rank = nullptr;          ///< Claimant rank per window; NaN = not a claimant.
+      const std::vector<double>* own = nullptr;           ///< Rank of the window's own precursor (claims need rank[b] > own[a]).
+      const std::vector<std::uint64_t>* family = nullptr; ///< Peptide family per window.
+    };
+
     struct Statistics
     {
       std::size_t pairs_tested = 0;          ///< Overlapping window pairs of different precursors in one isolation window.
@@ -93,12 +107,17 @@ namespace OpenMS::OpenDIA
       @param[out] stats Optional counts.
       @param[in] im_link_width If > 0, two precursors that both have a 1/K0 link only if their 1/K0 differ by at most this
                  (their mobility extraction windows overlap); 0 links on m/z alone.
+      @param[in] claims Optional claimant filter (nullptr: every window claims, as before).
       @return windows.size() x FEATURES, row-major.
-      @throws std::invalid_argument On a non-positive tolerance, bin width or thread count, or a bad precursor index.
+      @throws std::invalid_argument On a non-positive tolerance, bin width or thread count, a bad precursor index, or a
+              filter whose vectors are missing or not sized like the windows.
     */
     static std::vector<float> compute(const std::vector<Precursor>& precursors, const std::vector<Window>& windows,
                                       double fragment_tolerance_ppm, double rt_bin_seconds, int threads = 1, Statistics* stats = nullptr,
-                                      double im_link_width = 0.0);
+                                      double im_link_width = 0.0, const ClaimFilter* claims = nullptr);
+
+    /// Claim-competition feature names (the same four quantities with the claimant filter), in output order.
+    static const std::array<const char*, FEATURES>& claimFeatureNames();
 
     /// Feature column names, in output order.
     static const std::array<const char*, FEATURES>& featureNames();

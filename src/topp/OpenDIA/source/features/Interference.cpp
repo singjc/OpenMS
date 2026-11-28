@@ -127,9 +127,15 @@ namespace OpenMS::OpenDIA
     return names;
   }
 
+  const std::array<const char*, InterferenceResolver::FEATURES>& InterferenceResolver::claimFeatureNames()
+  {
+    static const std::array<const char*, FEATURES> names = {"cc_explained", "cc_libcos_resid", "cc_dlibcos", "cc_nclaim"};
+    return names;
+  }
+
   std::vector<float> InterferenceResolver::compute(const std::vector<Precursor>& precursors, const std::vector<Window>& windows,
                                                    double fragment_tolerance_ppm, double rt_bin_seconds, int threads, Statistics* stats,
-                                                   double im_link_width)
+                                                   double im_link_width, const ClaimFilter* claims)
   {
     if (!std::isfinite(fragment_tolerance_ppm) || !(fragment_tolerance_ppm > 0.0) || !std::isfinite(rt_bin_seconds) ||
         !(rt_bin_seconds > 0.0) || threads < 1 || !std::isfinite(im_link_width) || im_link_width < 0.0)
@@ -138,6 +144,17 @@ namespace OpenMS::OpenDIA
     }
     const double tol = fragment_tolerance_ppm * 1e-6;
     const std::size_t n = windows.size();
+    if (claims && (!claims->rank || !claims->own || !claims->family || claims->rank->size() != n || claims->own->size() != n ||
+                   claims->family->size() != n))
+    {
+      throw std::invalid_argument("InterferenceResolver: the claim filter needs rank, own and family sized like the windows.");
+    }
+    // A claimant b may claim from a (claim competition); always true without a filter.
+    const auto claimant = [&](std::uint32_t b) { return !claims || std::isfinite((*claims->rank)[b]); };
+    const auto may_claim = [&](std::uint32_t b, std::uint32_t a)
+    {
+      return !claims || ((*claims->rank)[b] > (*claims->own)[a] && (*claims->family)[b] != (*claims->family)[a]);
+    };
     for (const auto& w : windows)
     {
       if (w.precursor >= precursors.size()) throw std::invalid_argument("InterferenceResolver: window precursor index out of range.");
@@ -225,6 +242,7 @@ namespace OpenMS::OpenDIA
       for (std::size_t q = g; q < h; ++q)
       {
         const Window& b = windows[order[q]];
+        if (!claimant(order[q])) continue;  // with a claim filter only claimants are indexed
         widest = std::max(widest, b.rt_end - b.rt_start);
         const SortedFragments& sb = sorted[b.precursor];
         for (std::size_t k = 0; k < sb.count; ++k)
@@ -322,6 +340,7 @@ namespace OpenMS::OpenDIA
             {
               if (it->precursor == a.precursor || it->rt_end < a.rt_start) continue;
               if (test_im && it->im > 0.0 && std::abs(pa.im - it->im) > im_link_width) continue;
+              if (!may_claim(order[it->pos], ai)) continue;
               const std::uint32_t q = it->pos - static_cast<std::uint32_t>(g);
               if (seen[q]) continue;  // the same window found through another fragment
               seen[q] = 1;

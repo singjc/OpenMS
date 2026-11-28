@@ -30,6 +30,7 @@
 #include <charconv>
 #include <chrono>
 #include <cmath>
+#include <limits>
 #include <fstream>
 #include <map>
 #include <mutex>
@@ -785,10 +786,31 @@ namespace OpenMS::OpenDIA
       return result;
     }
     // Release the first pass before the second.
+    // Claim competition: per library precursor, the first pass's pooled paired TDC pair winners at q <= claim_q (targets
+    // and decoys by the same rule) rank by their first-pass score; every other precursor gets NaN (no claimant).
+    std::vector<double> claim_rank;
+    if (options_.claim_competition)
+    {
+      // Two values per precursor: [2 pi] the rank, [2 pi + 1] the first-pass apex (run seconds) of the claiming peak.
+      claim_rank.assign(2 * lib.precursors.size(), std::numeric_limits<double>::quiet_NaN());
+      std::size_t claim_t = 0, claim_d = 0;
+      for (std::uint32_t pi = 0; pi < lib.precursors.size(); ++pi)
+      {
+        if (best[pi] == UINT32_MAX) continue;
+        const auto& w = result.windows[best[pi]];
+        if (!(w.q_value <= options_.claim_q)) continue;
+        claim_rank[2 * pi] = w.score;
+        claim_rank[2 * pi + 1] = w.peak.rt_apex;
+        (lib.precursors[pi].decoy ? claim_d : claim_t) += 1;
+      }
+      say("Claim competition: first-pass claimants target=" + std::to_string(claim_t) + " decoy=" + std::to_string(claim_d) +
+          " at q <= " + std::to_string(options_.claim_q));
+    }
     std::vector<RunWindow>().swap(result.windows);
     std::vector<float>().swap(result.features);
     result.feature_names.clear();
-    searchAndScore_(path, result, anchors, refined.first, refined.second, say, t_run);
+    searchAndScore_(path, result, anchors, refined.first, refined.second, say, t_run,
+                    options_.claim_competition ? &claim_rank : nullptr);
     export_maps();
     return result;
   }
@@ -850,7 +872,8 @@ namespace OpenMS::OpenDIA
 
   void RunAnalysis::searchAndScore_(const std::string& path, RunResult& result,
                                     const std::vector<std::pair<std::string, double>>& anchors, const std::vector<double>& rt_correction,
-                                    double rt_tolerance_s, const Log& say, std::chrono::steady_clock::time_point t_run)
+                                    double rt_tolerance_s, const Log& say, std::chrono::steady_clock::time_point t_run,
+                                    const std::vector<double>* claim_rank)
   {
     auto& lib = library_;
     const CalibrationRT& cal = result.calibration;
@@ -925,6 +948,32 @@ namespace OpenMS::OpenDIA
     // the grid profile is used by the interference features, computed inside the group.
     std::vector<FragmentGrid::Values> core_areas(n);
     std::vector<float> interference(n * InterferenceResolver::FEATURES, 0.0f);
+    // Claim competition (second pass only): per window its precursor's first-pass claimant rank (NaN = not a claimant)
+    // and peptide family. A precursor's own rank is also the bar a claimant must beat.
+    const bool claims_on = claim_rank != nullptr;
+    std::vector<float> claim_block(claims_on ? n * InterferenceResolver::FEATURES : 0, 0.0f);
+    std::vector<double> window_rank, window_own;
+    std::vector<std::uint64_t> window_family;
+    if (claims_on)
+    {
+      window_rank.resize(n);
+      window_family.resize(n);
+      window_own.resize(n);
+      std::size_t claim_windows = 0;
+      for (std::size_t i = 0; i < n; ++i)
+      {
+        const auto pi = windows[i].precursor;
+        const double rank = (*claim_rank)[2 * pi], apex = (*claim_rank)[2 * pi + 1];
+        // A precursor's own rank bars weaker claimants on all its windows; only its window at the first-pass apex
+        // (within anchor_apex_s) claims. Non-claimants have own rank -inf, so any claimant outranks them.
+        window_own[i] = std::isfinite(rank) ? rank : -std::numeric_limits<double>::infinity();
+        window_rank[i] = std::isfinite(rank) && std::abs(windows[i].peak.rt_apex - apex) <= options_.anchor_apex_s
+                           ? rank : std::numeric_limits<double>::quiet_NaN();
+        claim_windows += std::isfinite(window_rank[i]);
+        window_family[i] = lib.precursors[pi].family_seed;
+      }
+      say("Claim competition: claimant windows=" + std::to_string(claim_windows) + " of " + std::to_string(n));
+    }
     std::vector<TracePrecursor> trace_precursors(local_precursors.size());
     for (std::size_t l = 0; l < local_precursors.size(); ++l)
     {
@@ -1185,10 +1234,28 @@ namespace OpenMS::OpenDIA
       const auto group_interference = InterferenceResolver::compute(rp, gw, cal.ms2_tolerance_ppm,
                                                                     2.0 * options_.grid_half_width_s / InterferenceResolver::BINS, group_threads,
                                                                     nullptr, cal.has_im ? 2.0 * cal.im_tolerance : 0.0);
-      st.interference_s = seconds(t_i);
       for (std::size_t j = 0; j < members.size(); ++j)
         for (std::size_t k = 0; k < InterferenceResolver::FEATURES; ++k)
           interference[members[j] * InterferenceResolver::FEATURES + k] = group_interference[j * InterferenceResolver::FEATURES + k];
+      if (claims_on)
+      {
+        std::vector<double> gr(members.size()), go(members.size());
+        std::vector<std::uint64_t> gf(members.size());
+        for (std::size_t j = 0; j < members.size(); ++j)
+        {
+          gr[j] = window_rank[members[j]];
+          go[j] = window_own[members[j]];
+          gf[j] = window_family[members[j]];
+        }
+        const InterferenceResolver::ClaimFilter cf{&gr, &go, &gf};
+        const auto group_claims = InterferenceResolver::compute(rp, gw, cal.ms2_tolerance_ppm,
+                                                                2.0 * options_.grid_half_width_s / InterferenceResolver::BINS, group_threads,
+                                                                nullptr, cal.has_im ? 2.0 * cal.im_tolerance : 0.0, &cf);
+        for (std::size_t j = 0; j < members.size(); ++j)
+          for (std::size_t k = 0; k < InterferenceResolver::FEATURES; ++k)
+            claim_block[members[j] * InterferenceResolver::FEATURES + k] = group_claims[j * InterferenceResolver::FEATURES + k];
+      }
+      st.interference_s = seconds(t_i);
     };
     {
       std::vector<std::exception_ptr> errors(group_count);
@@ -1260,7 +1327,9 @@ namespace OpenMS::OpenDIA
 
     // 5. Features.
     const auto t_features = std::chrono::steady_clock::now();
-    const auto names = runFeatureNames();
+    auto names = runFeatureNames();
+    if (claims_on)
+      for (const char* s : InterferenceResolver::claimFeatureNames()) names.emplace_back(s);
     const std::size_t d = names.size();
     result.feature_names = names;
     // Capacity for the sibling columns added after the first scorer pass, so widening never reallocates (untouched
@@ -1304,6 +1373,8 @@ namespace OpenMS::OpenDIA
         for (std::size_t k = 0; k < InterferenceResolver::FEATURES; ++k) f[o++] = interference[i * InterferenceResolver::FEATURES + k];
         for (std::size_t k = 0; k < EVIDENCE_FEATURES; ++k) f[o++] = evidence_block[i * EVIDENCE_FEATURES + k];
         for (std::size_t k = 0; k < MATCHED_FILTER_FEATURES; ++k) f[o++] = mf_block[i * MATCHED_FILTER_FEATURES + k];
+        if (claims_on)
+          for (std::size_t k = 0; k < InterferenceResolver::FEATURES; ++k) f[o++] = claim_block[i * InterferenceResolver::FEATURES + k];
       }
     }
     say("Features: " + std::to_string(d) + " per window, noise=" + std::to_string(noise) + " seconds=" + std::to_string(seconds(t_features)) +
@@ -1314,6 +1385,7 @@ namespace OpenMS::OpenDIA
     std::vector<std::array<float, FragmentGrid::EVIDENCE>>().swap(grid_evidence);
     std::vector<FragmentGrid::Values>().swap(core_areas);
     std::vector<float>().swap(interference);
+    std::vector<float>().swap(claim_block);
     std::vector<FragmentGridCollector::Precursor>().swap(grid_precursors);
     std::vector<InterferenceResolver::Precursor>().swap(resolver_precursors);
     std::vector<float>().swap(boundary);

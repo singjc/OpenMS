@@ -164,6 +164,12 @@ namespace OpenMS::OpenDIA
     std::uint64_t peakmaps_run_id = 0;
     /// PLAN_SURVEY V2/V3: XicPickerOptions::normalized_coelution in the FASTA survey search only (RunAnalysis::survey).
     bool survey_normalized_coelution = false;
+    /// PLAN_CLAIM_COMPETITION (experimental, off by default): in the second (RT-refined) pass, add four claim-competition
+    /// features (cc_*). Claimants are the first-pass pair winners at pooled q <= claim_q, target or decoy alike, ranked by
+    /// their first-pass score; a claimant claims only from lower-ranked precursors of other peptide families. Needs
+    /// rt_refine; without a second pass the features are not added.
+    bool claim_competition = false;
+    double claim_q = 0.01;
   };
 
   /// One scored candidate window of the run (the population), with its features and result.
@@ -247,7 +253,8 @@ namespace OpenMS::OpenDIA
     /// the calibrated library RT.
     void searchAndScore_(const std::string& path, RunResult& result,
                          const std::vector<std::pair<std::string, double>>& anchors, const std::vector<double>& rt_correction,
-                         double rt_tolerance_s, const Log& say, std::chrono::steady_clock::time_point t_run);
+                         double rt_tolerance_s, const Log& say, std::chrono::steady_clock::time_point t_run,
+                         const std::vector<double>* claim_rank = nullptr);
     /// Fit the ridge RT correction on @p train (library precursor indices, targets @p y in seconds, CV folds @p folds).
     /// Returns the per-precursor correction and the narrowed RT tolerance, or an empty correction when there are fewer
     /// than rt_refine_min_ids training rows.
