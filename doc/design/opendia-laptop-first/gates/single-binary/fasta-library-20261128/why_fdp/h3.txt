@@ -1,0 +1,16 @@
+== FbV1_g1
+4592131442
+score          T=14757 T_e=124 D_e=68 FDP_c=0.0168 top0.1%_null_target_share=0.591 (n=369)
+network_score  T=13933 T_e=113 D_e=68 FDP_c=0.0162 top0.1%_null_target_share=0.553 (n=369)
+== FbP_g1
+4095713214
+score          T=11307 T_e=83 D_e=51 FDP_c=0.0147 top0.1%_null_target_share=0.558 (n=346)
+network_score  T=10785 T_e=81 D_e=57 FDP_c=0.0150 top0.1%_null_target_share=0.538 (n=346)
+== FbV1_s1
+4607152906
+score          T=14774 T_e=118 D_e=64 FDP_c=0.0160 top0.1%_null_target_share=0.602 (n=369)
+network_score  T=13908 T_e=117 D_e=65 FDP_c=0.0168 top0.1%_null_target_share=0.547 (n=369)
+== FbV1_s2
+4608832023
+score          T=14760 T_e=119 D_e=58 FDP_c=0.0161 top0.1%_null_target_share=0.604 (n=369)
+network_score  T=13689 T_e=106 D_e=66 FDP_c=0.0155 top0.1%_null_target_share=0.537 (n=369)
