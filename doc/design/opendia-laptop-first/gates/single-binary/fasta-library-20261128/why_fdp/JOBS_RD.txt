@@ -1,2 +1,3 @@
 residual diag dry run (label-blind gate): 45490520
 residual diag main: 45494485
+residual diag main3 (adds C-only/D-only groups, full SMD, per-pair dump; counts identical): 45499697

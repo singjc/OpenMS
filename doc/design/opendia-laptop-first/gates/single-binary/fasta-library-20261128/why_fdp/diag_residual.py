@@ -208,14 +208,14 @@ def run(arm, path, lib, survey, feats):
                            "shared_hist": {str(k): sum(z["shared_of_6"] == k for z in a) for k in range(7)}}
     if survey != "-":
         res["Q3"] = {}
-        for grp, cs in (("all", CATS), ("A+B", ["A", "B_lib", "B_cut"]), ("C+D", ["C", "D"])):
+        for grp, cs in (("all", CATS), ("A+B", ["A", "B_lib", "B_cut"]), ("C+D", ["C", "D"]), ("C", ["C"]), ("D", ["D"])):
             for side in ("T", "D"):
                 v = [e["survey_t_gt_d"] for e in per if e["cat"] in cs and e["decoy_won"] == (side == "D")
                      and e["survey_t_gt_d"] is not None]
                 res["Q3"][f"{grp}_{side}"] = {"n": len(v), "survey_target_higher": sum(v) / len(v) if v else None}
     if feats != "-":
         res["Q2"] = {}
-        for grp, cs in (("A+B", ["A", "B_lib", "B_cut"]), ("C+D", ["C", "D"]), ("all", CATS)):
+        for grp, cs in (("A+B", ["A", "B_lib", "B_cut"]), ("C+D", ["C", "D"]), ("C", ["C"]), ("D", ["D"]), ("all", CATS)):
             ft = np.array([e["features"] for e in per if "features" in e and e["cat"] in cs and not e["decoy_won"]])
             fd = np.array([e["features"] for e in per if "features" in e and e["cat"] in cs and e["decoy_won"]])
             if len(ft) < 3 or len(fd) < 3:
@@ -226,11 +226,13 @@ def run(arm, path, lib, survey, feats):
             res["Q2"][grp] = {"n_T": len(ft), "n_D": len(fd),
                               "top_smd": [[names[k], round(float(smd[k]), 3), round(float(ft[:, k].mean()), 4),
                                            round(float(fd[:, k].mean()), 4)] for k in order[:12]],
+                              "smd_all": {names[k]: round(float(smd[k]), 3) for k in range(len(names))},
                               "i_nclaim_pos_T": float((ft[:, names.index("i_nclaim")] > 0).mean()),
                               "i_nclaim_pos_D": float((fd[:, names.index("i_nclaim")] > 0).mean()),
                               "i_explained_T": float(ft[:, names.index("i_explained")].mean()),
                               "i_explained_D": float(fd[:, names.index("i_explained")].mean())}
     out = {k: v for k, v in res.items() if k != "feature_names"}
+    out["pairs"] = [{k: v for k, v in e.items() if k != "features"} for e in per]
     print(arm, json.dumps({k: out[k] for k in ("T", "D", "by_cat")}), flush=True)
     return out
 
