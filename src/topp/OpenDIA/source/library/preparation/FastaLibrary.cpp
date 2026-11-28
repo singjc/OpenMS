@@ -618,23 +618,31 @@ namespace OpenMS::OpenDIA::Preparation
       std::vector<std::string> proteins;
       double mz = 0.0, rt = 0.0, im = -1.0;
       int charge = 0;
+      bool panel = false;
     };
     // The kept precursors of the survey library (both members of a kept pair), one record each.
+    // The panel pairs (the leading survey precursors) that are kept come first in the final library: they are its
+    // calibration pairs, as in the survey. The kept set itself is unchanged (keep alone decides).
+    const std::size_t lead = surveyPanelPrecursors(survey);
     struct Collector final : LibraryVisitor
     {
       const std::function<bool(std::size_t)>& keep;
+      const std::size_t lead;
       std::vector<Record> records;
-      std::size_t last = SIZE_MAX;
-      explicit Collector(const std::function<bool(std::size_t)>& k) : keep(k) {}
-      void reset() override { records.clear(); last = SIZE_MAX; }
+      std::size_t last = SIZE_MAX, seen = 0;
+      Collector(const std::function<bool(std::size_t)>& k, std::size_t l) : keep(k), lead(l) {}
+      void reset() override { records.clear(); last = SIZE_MAX; seen = 0; }
       void fragment(const FragmentView&, const PrecursorView& c) override
       {
         std::size_t id = 0;
         const auto r = std::from_chars(c.id.data(), c.id.data() + c.id.size(), id);
         if (r.ec != std::errc() || r.ptr != c.id.data() + c.id.size()) invalid("FASTA survey library precursor IDs must be decimal", std::string(c.id));
-        if (id == last || !keep(id / 2)) return;
+        if (id == last) return;
         last = id;
+        const bool panel = seen++ < lead;
+        if (!keep(id / 2)) return;
         Record rec;
+        rec.panel = panel;
         rec.id = id;
         rec.sequence = c.sequence;
         for (const auto p : *c.proteins) rec.proteins.emplace_back(p);
@@ -643,11 +651,12 @@ namespace OpenMS::OpenDIA::Preparation
         rec.charge = c.charge;
         records.push_back(std::move(rec));
       }
-    } collector(keep);
+    } collector(keep, lead);
     // Precursor m/z is recomputed from the sequence and the decoy flag is implied by the ID (odd = decoy).
     visitParquetLibrary(survey, collector);
     auto& records = collector.records;
-    std::sort(records.begin(), records.end(), [](const Record& a, const Record& b) { return a.id < b.id; });
+    // Panel pairs first (as in the survey library), then by ID.
+    std::sort(records.begin(), records.end(), [](const Record& a, const Record& b) { return a.panel != b.panel ? a.panel : a.id < b.id; });
     // Complete pairs only.
     std::vector<Record> pairs;
     pairs.reserve(records.size());
@@ -664,9 +673,16 @@ namespace OpenMS::OpenDIA::Preparation
     std::vector<Record>().swap(records);
     FinalLibraryStats stats;
     stats.pairs_in = pairs.size() / 2;
-    say(log, "FASTA final library: predicting MS2 for " + std::to_string(stats.pairs_in) + " pairs");
-
-    ParquetLibraryWriter scoring(path, metadata), search(search_path, metadata);
+    // Panel pairs come first. Each has >= 5 of its top 6 predicted fragments under the same model and m/z range
+    // (writeSurveyLibrary), so it always keeps >= 3 here; the loop checks that.
+    std::size_t panel_in = 0;
+    while (2 * panel_in < pairs.size() && pairs[2 * panel_in].panel) ++panel_in;
+    stats.panel_pairs = panel_in;
+    say(log, "FASTA final library: predicting MS2 for " + std::to_string(stats.pairs_in) + " pairs (" + std::to_string(panel_in) +
+             " calibration panel pairs first)");
+    auto meta = metadata;
+    meta.emplace_back(PANEL_KEY, std::to_string(2 * panel_in));
+    ParquetLibraryWriter scoring(path, meta), search(search_path, meta);
     PeptDeepMS2Inference model(modelPath(settings, "peptdeep_ms2_dynamic.onnx"), settings.threads);
     constexpr std::size_t CHUNK = 50000;  // precursors (even: pairs stay together)
     std::vector<std::string> sequences;
@@ -691,7 +707,12 @@ namespace OpenMS::OpenDIA::Preparation
           pairs[i + m].mz = ladder.precursor(pairs[i + m].charge);
           ions[m] = predictedFragments(ladder, pairs[i + m].charge, ms2[i + m - begin], fragments.min_mz, fragments.max_mz, fragments.count);
         }
-        if (ions[0].size() < fragments.min_count || ions[1].size() < fragments.min_count) continue;
+        if (ions[0].size() < fragments.min_count || ions[1].size() < fragments.min_count)
+        {
+          if (pairs[i].panel)
+            invalid("FASTA calibration panel pair lost fragments in the final library (min_count above 5?)", pairs[i].sequence);
+          continue;
+        }
         for (std::size_t m = 0; m < 2; ++m)
         {
           const auto& r = pairs[i + m];

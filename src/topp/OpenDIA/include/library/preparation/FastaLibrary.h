@@ -179,18 +179,20 @@ namespace OpenMS::OpenDIA::Preparation
                           const std::vector<std::pair<std::string, std::string>>& metadata,
                           const std::function<void(const std::string&)>& log = {});
 
-  /// Leading panel precursors of a survey library (0 if the footer key is missing).
+  /// Leading panel precursors of a survey or final FASTA library (0 if the footer key is missing).
   std::size_t surveyPanelPrecursors(const std::string& path);
 
   struct FinalLibraryStats
   {
-    std::size_t pairs_in = 0, pairs_out = 0, fragments = 0;
+    std::size_t pairs_in = 0, pairs_out = 0, fragments = 0, panel_pairs = 0;
   };
 
   /**
     @brief Write the final library from a survey library: PeptDeep MS2 for both members of every pair k with
     @p keep(k) (precursor IDs 2k and 2k + 1), FragmentOptions::count fragments into @p path and the top 6 into @p search_path (same
     IDs). Pairs with a member below FragmentOptions::min_count fragments are dropped.
+    The kept panel pairs of the survey come first; the footer key opendia.fasta.panel_precursors holds their precursor
+    count, so the final search calibrates on them only (as the survey does).
   */
   FinalLibraryStats writeFinalLibrary(const std::string& survey, const std::function<bool(std::size_t)>& keep,
                                       const PredictionSettings& settings, const FragmentOptions& fragments, const std::string& path,

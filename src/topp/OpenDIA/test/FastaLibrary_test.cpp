@@ -301,6 +301,16 @@ namespace
     const auto final_lib = OpenDIA::readParquetLibrary(library);
     const auto search_lib = OpenDIA::readParquetLibrary(search);
     require(final_lib.compounds.size() == 2 * stats.pairs_out && search_lib.compounds.size() == final_lib.compounds.size(), "same precursors");
+    // Kept panel pairs lead the final library, and its footer counts them.
+    std::set<std::string> survey_panel;
+    for (std::size_t i = 0; i < lead; ++i) survey_panel.insert(survey_lib.compounds[i].id);
+    std::size_t kept_panel = 0;
+    for (const auto& id : survey_panel) kept_panel += std::stoull(id) / 2 % 2 == 0;
+    require(kept_panel > 0, "the test keeps a panel pair");
+    require(P::surveyPanelPrecursors(library) == kept_panel && P::surveyPanelPrecursors(search) == kept_panel &&
+            stats.panel_pairs * 2 == kept_panel, "final panel count");
+    for (std::size_t i = 0; i < final_lib.compounds.size(); ++i)
+      require((i < kept_panel) == (survey_panel.count(final_lib.compounds[i].id) == 1), "kept panel pairs lead the final library");
     std::map<std::string, std::size_t> fragments_of;
     for (const auto& t : final_lib.transitions)
     {

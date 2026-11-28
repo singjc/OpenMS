@@ -210,7 +210,7 @@ namespace OpenMS::OpenDIA
     // 3. Final library for the selected pairs.
     paths.library = stem + ".library.parquet";
     paths.search = stem + ".library.search.parquet";
-    const std::string final_key = (survey_key.empty() ? candidates_key : survey_key) + "final=1\nprefilter_pairs=" +
+    const std::string final_key = (survey_key.empty() ? candidates_key : survey_key) + "final=2\nprefilter_pairs=" +
                                   std::to_string(options.prefilter_pairs) + "\nfragments=" + std::to_string(f.count) + "\nmin_fragments=" +
                                   std::to_string(f.min_count) + "\n";
     if (cached(paths.library, final_key) && cached(paths.search, final_key))

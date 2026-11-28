@@ -543,6 +543,13 @@ protected:
     writeLogInfo_("Reading library " + lib_path);
     OpenDIA::AnalysisLibrary library =
       OpenDIA::AnalysisLibrary::read(lib_path, scoring_path, [this](const std::string& line) { writeLogInfo_(line); });
+    if (!fasta.empty())
+    {
+      // As in the survey: only the panel pairs (the leading precursors of the FASTA library) calibrate.
+      const std::size_t panel = OpenDIA::Preparation::surveyPanelPrecursors(lib_path);
+      std::erase_if(library.calibration_pairs, [&](const auto& pair) { return pair.first >= panel; });
+      writeLogInfo_("FASTA library: calibration pairs=" + std::to_string(library.calibration_pairs.size()));
+    }
     std::size_t library_rss = 0;
     SysInfo::getProcessMemoryConsumption(library_rss);
     writeLogInfo_("Library: precursors=" + std::to_string(library.precursors.size()) + " pairs=" + std::to_string(library.pairs) +
