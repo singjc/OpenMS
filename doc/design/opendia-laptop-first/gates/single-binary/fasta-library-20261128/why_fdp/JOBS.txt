@@ -1,0 +1,2 @@
+Submitted 2026-11-28T16:04:56Z, after PLAN_PREFILTER_FDP (67cea0d45b) and before results:
+FbV1_g1 45366000, FbP_g1 45366001, FbV1_s1 45366002, FbV1_s2 45366003. Codon sha256 check: FASTAs and SIF v4 OK.
