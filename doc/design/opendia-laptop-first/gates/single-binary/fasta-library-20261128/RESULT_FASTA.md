@@ -50,3 +50,11 @@ The design rule fixed K* = 800,000, the fallback, since no K reached recall 0.95
 - `v2/ratios.json`: r0 and the library ratios, computed on codon by `codon_v2/ratio_v2.sh` with the same function.
 - `v2/missed_composition.json`, `v2/logs/`: per-arm logs and `/usr/bin/time`.
 - `codon_v2/`: sbatch, submit, SIF hash, container build, the criterion 1 recheck.
+
+## Diagnostic: why the prefilter drops real peptides (after the results, no rule; `why/why.json`)
+"True" here means F's targets at q ≤ 0.01 (25,121; FDP_c about 1-1.6 %). P's survey statistic S is the largest co-elution over 6 theoretical survey fragments, the sum of positive Pearson r, range 0-6.
+- **40 % of F's IDs are cut** (10,140), and nearly all of them have S > 0 (only 0.9 % have no survey candidate). They are seen, but score low. Their median S is 1.43, against 1.95 at the K* cut and 2.97 for the kept IDs. Most absent candidates sit at S 1.0-2.0 too (median of all pairs 1.42).
+- **Their survey signal is at noise level.** In the cut group, the target's co-elution beats its own decoy's only 58 % of the time, against 85 % for the kept group and 42 % over all pairs.
+- **Precursor charge is the strongest factor.** 70 % of the cut IDs are charge 3 or 4, against 30 % of the kept IDs. The survey fragments are y ions at charge 1 only, which fit high-charge precursors badly. Missed cleavages, oxidation, length and predicted-RT position do not differ.
+- The cut IDs are harder ones: 29 % are in the empirical library's IDs, against 61 % of the kept. F still scores them confidently, with median discriminant 15.8 against 16.5.
+- Keeping 95 % of F's IDs would need K ≈ 2.49M of 3.43M pairs (90 %: 2.20M, 80 %: 1.70M). The current statistic cannot reach 0.97 at any useful K.

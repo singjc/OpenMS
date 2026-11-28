@@ -1,0 +1,134 @@
+{
+ "K": 800000,
+ "S_at_cut": 1.95054487,
+ "pairs": 3433234,
+ "pairs_S_gt_0": 2821979,
+ "all_pairs": {
+  "S_median": 1.4157574849999999,
+  "S_zero_share": 0.17804058797040925,
+  "target_beats_decoy_share": 0.41905008513838554,
+  "decoy_sets_S_share": 0.40290903562064223
+ },
+ "F_true_ids_kept_by_prefilter": {
+  "n": 14981,
+  "S_median": 2.96957577,
+  "S_quartiles": [
+   2.40155081,
+   3.84935718
+  ],
+  "S_zero_share": 0.0,
+  "target_beats_decoy_share": 0.8520793004472331,
+  "decoy_sets_S_share": 0.14792069955276685,
+  "target_coelution_median": 2.90937091,
+  "decoy_coelution_median": 1.47252672,
+  "rank_median": 86053.0,
+  "rank_quartiles": [
+   10321.0,
+   332242.0
+  ],
+  "charge": {
+   "2": 10519,
+   "3": 3665,
+   "4": 797
+  },
+  "length_median": 13.0,
+  "missed_cleavage": {
+   "0": 13491,
+   "1": 1490
+  },
+  "oxidation_share": 0.04952940391162139,
+  "predicted_rt_quantile_median": 0.6196341408712601,
+  "predicted_rt_edge_share_(<5%_or_>95%)": 0.021360389827114346,
+  "in_empirical_library_ids": 0.6073693344903545,
+  "F_discriminant_median": 16.5471134185791
+ },
+ "F_true_ids_dropped_by_prefilter": {
+  "n": 10140,
+  "S_median": 1.4317265149999998,
+  "S_quartiles": [
+   1.102165695,
+   1.7013296725
+  ],
+  "S_zero_share": 0.009072978303747535,
+  "target_beats_decoy_share": 0.5810650887573965,
+  "decoy_sets_S_share": 0.40986193293885603,
+  "target_coelution_median": 1.215246285,
+  "decoy_coelution_median": 1.0210436600000001,
+  "rank_median": 1689030.5,
+  "rank_quartiles": [
+   1209309.75,
+   2196308.0
+  ],
+  "charge": {
+   "2": 3087,
+   "3": 4600,
+   "4": 2453
+  },
+  "length_median": 14.0,
+  "missed_cleavage": {
+   "0": 8789,
+   "1": 1351
+  },
+  "oxidation_share": 0.05069033530571992,
+  "predicted_rt_quantile_median": 0.62633511144303,
+  "predicted_rt_edge_share_(<5%_or_>95%)": 0.0247534516765286,
+  "in_empirical_library_ids": 0.29053254437869824,
+  "F_discriminant_median": 15.815042495727539
+ },
+ "S_histogram_edges": [
+  0,
+  0.5,
+  1,
+  1.5,
+  2,
+  2.5,
+  3,
+  3.5,
+  4,
+  5,
+  6
+ ],
+ "S_histogram_kept": [
+  0,
+  0,
+  0,
+  507,
+  3976,
+  3144,
+  2356,
+  1733,
+  2252,
+  1013
+ ],
+ "S_histogram_dropped": [
+  358,
+  1661,
+  3634,
+  4487,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0
+ ],
+ "S_histogram_all_pairs": [
+  700200,
+  415377,
+  748732,
+  842443,
+  459102,
+  187379,
+  56128,
+  16402,
+  6290,
+  1181
+ ],
+ "K_needed_for_F_recall": {
+  "0.5": 469171,
+  "0.8": 1695160,
+  "0.9": 2203866,
+  "0.95": 2493605
+ },
+ "F_ids_with_S_0": 92
+}
