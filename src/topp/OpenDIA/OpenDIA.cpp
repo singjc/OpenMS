@@ -196,8 +196,8 @@ protected:
     setMaxInt_("fragments", 99);
     registerDoubleOption_("fragment_min_mz", "<m/z>", 200.0, "FASTA library: minimum fragment m/z", false);
     registerDoubleOption_("fragment_max_mz", "<m/z>", 1800.0, "FASTA library: maximum fragment m/z", false);
-    registerIntOption_("prefilter_pairs", "<n>", 0, "FASTA library: target-decoy pairs kept by the survey prefilter and predicted "
-                       "(0 = no prefilter, every candidate pair is predicted)", false);
+    registerIntOption_("prefilter_pairs", "<n>", 800000, "FASTA library: target-decoy pairs kept by the survey prefilter and predicted "
+                       "(0 = no prefilter, every candidate pair is predicted; default K* of DESIGN_K)", false);
     setMinInt_("prefilter_pairs", 0);
     registerStringOption_("instrument", "<name>", "auto", "FASTA library: PeptDeep instrument (auto: timsTOF for .d runs, SciexTOF for "
                           ".wiff, QE otherwise)", false);
