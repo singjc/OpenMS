@@ -17,11 +17,15 @@ for arm, (src, name) in {"P": (v4, "Pp"), "Pe": (v4, "Pep"), "H": (v4, "Hp"), "F
         os.symlink(os.path.abspath(f"{src}/{d}/{name}"), f"{runs}/{arm}")
         os.symlink(os.path.abspath(f"{src}/{d}/{name}.time"), f"{runs}/{arm}.time")
 r4, r2 = json.load(open(rat4)), json.load(open(rat2))
-json.dump({"candidates_Pe": r4["candidates_Pep"], "library_Pe": r4["library_Pep"],
-           "candidates_Fe": r2["candidates_Fe"], "library_Fe": r2["library_Fe"]}, open(f"{cache}/ratios.json", "w"))
+# Wiring fix (written after the ratios, before any FDP was computed): under V1 the survey library drops pairs without
+# predicted survey fragments, so Pe''s candidate set differs slightly from Fe's (r0 0.5902 vs 0.5894) and the frozen
+# assert candidates_Fe == candidates_Pe would fire. Pe' uses its own candidates for r0 (eval_fasta's rule); Fe is
+# re-evaluated below with its own r0 (v2), which reproduces FDP_c(Fe) = 0.0163.
+json.dump({"candidates_Pe": r4["candidates_Pep"], "library_Pe": r4["library_Pep"]}, open(f"{cache}/ratios.json", "w"))
 subprocess.run([sys.executable, f"{here}/eval_fasta.py", runs, cache, f"{work}/eval_frozen.json"], check=True,
                stdout=subprocess.DEVNULL)
 R = json.load(open(f"{work}/eval_frozen.json"))
+R["candidates_Fe"], R["final_library_ratio_Fe_sensitivity"] = r2["candidates_Fe"], r2["library_Fe"]
 
 # AMEND_SURVEY_POOL: FDP_c(r_lib) for Pe', same procedure as eval_fasta.evaluate with k = 1 + 1/r_lib.
 sys.argv = ["eval_fasta.py", runs, cache, os.devnull]
@@ -31,7 +35,17 @@ exec(compile(src, "eval_fasta.py", "exec"), ns)
 r_lib = R["final_library_ratio_Pe_sensitivity"]["ratio"]
 pe_lib = ns["evaluate"]("Pe", 1 + 1 / r_lib)
 R["Pe_r_lib"] = {"r_lib": r_lib, **pe_lib}
+R["Fe"] = ns["evaluate"]("Fe", 1 + 1 / r2["candidates_Fe"]["ratio"])
+R["Fe_r_lib"] = {"r_lib": r2["library_Fe"]["ratio"], **ns["evaluate"]("Fe", 1 + 1 / r2["library_Fe"]["ratio"])}
 fe = R["Fe"]["FDP_c"]
+c3 = R["criteria"]["3_ids"]
+c3["N_at_FDPc_Fe"] = R["Fe"]["N_at_FDPc_1pct"]
+c3["ratio_Pe_Fe"] = c3["N_at_FDPc_Pe"] / c3["N_at_FDPc_Fe"]
+c3["pass_N_at_FDPc"] = c3["N_at_FDPc_Pe"] >= 0.97 * c3["N_at_FDPc_Fe"]
+c3["pass"] = c3["pass_N"] and c3["pass_N_at_FDPc"]
+c3["N_at_FDPc_rlib_Pe"] = pe_lib["N_at_FDPc_1pct"]
+c3["pass_N_at_FDPc_rlib"] = pe_lib["N_at_FDPc_1pct"] >= 0.97 * c3["N_at_FDPc_Fe"]
+R["criteria"]["2_fdr"] = {"FDP_c_Pe": R["Pe"]["FDP_c"], "FDP_c_Fe": fe, "pass": R["Pe"]["FDP_c"] <= fe + 0.003}
 R["criteria"]["2_fdr_amended"] = {
     "FDP_c_r0_Pe": R["Pe"]["FDP_c"], "FDP_c_rlib_Pe": pe_lib["FDP_c"], "FDP_c_Fe": fe,
     "pass_r0": R["Pe"]["FDP_c"] <= fe + 0.003, "pass_rlib": pe_lib["FDP_c"] <= fe + 0.003,

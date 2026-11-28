@@ -1,0 +1,129 @@
+{
+ "arms_present": [
+  "F",
+  "Fe",
+  "H",
+  "P",
+  "Pe"
+ ],
+ "candidates_Pe": {
+  "entrapment_targets": 2010917,
+  "human_targets": 3406940,
+  "ratio": 0.5902413896340998
+ },
+ "final_library_ratio_Pe_sensitivity": {
+  "entrapment_targets": 101674,
+  "human_targets": 638605,
+  "ratio": 0.15921265884232036
+ },
+ "r0": 0.5902413896340998,
+ "F": {
+  "N": 25121,
+  "wall_s": 3981.0,
+  "maxrss_gb": 35.998992919921875
+ },
+ "Fe": {
+  "N": 9270,
+  "wall_s": 7453.0,
+  "maxrss_gb": 57.40507125854492,
+  "N_e": 56,
+  "FDP_c": 0.01629066617888565,
+  "N_at_FDPc_1pct": 8543,
+  "N_human": 9214
+ },
+ "H": {
+  "N": 47513,
+  "wall_s": 1919.52,
+  "maxrss_gb": 23.675334930419922
+ },
+ "P": {
+  "N": 24924,
+  "wall_s": 1687.91,
+  "maxrss_gb": 15.867969512939453
+ },
+ "Pe": {
+  "N": 23546,
+  "wall_s": 2169.29,
+  "maxrss_gb": 25.448097229003906,
+  "N_e": 82,
+  "FDP_c": 0.009382749141074972,
+  "N_at_FDPc_1pct": 23639,
+  "N_human": 23464
+ },
+ "criteria": {
+  "2_fdr": {
+   "FDP_c_Pe": 0.009382749141074972,
+   "FDP_c_Fe": 0.01629066617888565,
+   "pass": true
+  },
+  "3_ids": {
+   "N_P": 24924,
+   "N_F": 25121,
+   "ratio_P_F": 0.9921579554954022,
+   "pass_N": true,
+   "N_at_FDPc_Pe": 23639,
+   "N_at_FDPc_Fe": 8543,
+   "ratio_Pe_Fe": 2.76706075149245,
+   "pass_N_at_FDPc": true,
+   "pass": true,
+   "N_at_FDPc_rlib_Pe": 21371,
+   "pass_N_at_FDPc_rlib": true
+  },
+  "4_cost": {
+   "wall_P_s": 1687.91,
+   "wall_F_s": 3981.0,
+   "ratio": 0.4239914594323035,
+   "pass": true
+  },
+  "goal_N_P_ge_24669": {
+   "N_P": 24924,
+   "met": true
+  },
+  "2_fdr_amended": {
+   "FDP_c_r0_Pe": 0.009382749141074972,
+   "FDP_c_rlib_Pe": 0.025356086967913187,
+   "FDP_c_Fe": 0.01629066617888565,
+   "pass_r0": true,
+   "pass_rlib": false,
+   "pass": false,
+   "N_at_FDPc_rlib_Pe": 21371
+  },
+  "H_prime": {
+   "N_Hp": 47513,
+   "N_H_v2": 37830,
+   "N_FH": 52847,
+   "ratio_Hp_FH": 0.8990671182848601
+  }
+ },
+ "candidates_Fe": {
+  "entrapment_targets": 2023491,
+  "human_targets": 3433231,
+  "ratio": 0.5893838777524728
+ },
+ "final_library_ratio_Fe_sensitivity": {
+  "entrapment_targets": 1835712,
+  "human_targets": 3031266,
+  "ratio": 0.6055925148106435
+ },
+ "Pe_r_lib": {
+  "r_lib": 0.15921265884232036,
+  "N": 23546,
+  "wall_s": 2169.29,
+  "maxrss_gb": 25.448097229003906,
+  "N_e": 82,
+  "FDP_c": 0.025356086967913187,
+  "N_at_FDPc_1pct": 21371,
+  "N_human": 23464
+ },
+ "Fe_r_lib": {
+  "r_lib": 0.6055925148106435,
+  "N": 9270,
+  "wall_s": 7453.0,
+  "maxrss_gb": 57.40507125854492,
+  "N_e": 56,
+  "FDP_c": 0.016016334450217853,
+  "N_at_FDPc_1pct": 8563,
+  "N_human": 9214
+ },
+ "mapping": "P=Pp, Pe=Pep, H=Hp (v4, V1+pool); F, Fe from v2"
+}

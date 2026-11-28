@@ -1,0 +1,12 @@
+{
+ "candidates_Pep": {
+  "entrapment_targets": 2010917,
+  "human_targets": 3406940,
+  "ratio": 0.5902413896340998
+ },
+ "library_Pep": {
+  "entrapment_targets": 101674,
+  "human_targets": 638605,
+  "ratio": 0.15921265884232036
+ }
+}
