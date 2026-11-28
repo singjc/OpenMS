@@ -1,0 +1,9 @@
+loading reference FbF
+FbF {"accepted_null_pairs": 86, "missing_fragments": 0, "parent_mapped": 86}
+FbV1 {"accepted_null_pairs": 189, "missing_fragments": 0, "parent_mapped": 189, "survey_joined": 189}
+FbV1_s1 {"accepted_null_pairs": 182, "missing_fragments": 0, "parent_mapped": 182, "survey_joined": 182, "features_joined": 182}
+FbV1_s2 {"accepted_null_pairs": 177, "missing_fragments": 0, "parent_mapped": 177, "survey_joined": 177, "features_joined": 177}
+FbV1_g1 {"accepted_null_pairs": 192, "missing_fragments": 0, "parent_mapped": 192, "survey_joined": 192, "features_joined": 192}
+FbP {"accepted_null_pairs": 136, "missing_fragments": 0, "parent_mapped": 136, "survey_joined": 136}
+FbP_g1 {"accepted_null_pairs": 134, "missing_fragments": 0, "parent_mapped": 134, "survey_joined": 134, "features_joined": 134}
+FbPp {"accepted_null_pairs": 247, "missing_fragments": 0, "parent_mapped": 247, "survey_joined": 247}
