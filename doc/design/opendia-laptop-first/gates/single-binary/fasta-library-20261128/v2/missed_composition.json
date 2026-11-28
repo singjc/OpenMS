@@ -1,0 +1,9 @@
+{
+ "F_ids": 25121,
+ "P_ids": 15917,
+ "both": 14005,
+ "P_only": 1912,
+ "F_only": 11116,
+ "F_only_not_in_P_library": 10141,
+ "F_only_in_P_library_not_accepted": 975
+}

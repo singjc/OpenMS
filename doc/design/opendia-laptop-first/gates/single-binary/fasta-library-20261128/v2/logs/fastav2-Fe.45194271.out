@@ -1,0 +1,15 @@
+node hl-codon-cn-071.ebi.ac.uk cpu AMD EPYC 9555 64-Core Processor arm Fe
+8ce130185fb69cb3500e2f61201519ec08817e4327deb36b17c79479d92f3e5e  /nfs/research/juan/singj/opendia/fasta-20261128/opendia-fasta-v2-20261128.sif
+91f91e499176cf20f555fce9c729953e7c2adcff50626941c323b5c5fd93fe47  /nfs/research/juan/singj/opendia/fasta-20261128/fasta/human_entrapment.fasta
+Fe exit=0 2:04:13 maxrss_kb=60193580
+FASTA library: /nfs/research/juan/singj/opendia/fasta-20261128/fasta/human_entrapment.fasta instrument=timsTOF nce=30.000000 im=on prefilter_pairs=0
+FASTA: proteins=679427 peptides=1976895 skipped_nonstandard=69 seconds=1.773550
+FASTA candidates: target_peptidoforms=2644755 pairs=5456722 target_peptides=1935597 dropped_no_decoy=2117 dropped_collision=781 seconds=9.653092
+FASTA RT: peptidoforms=5197434 seconds=68.221454
+FASTA 1/K0: precursors=10913444 seconds=142.313536
+FASTA survey library: /nfs/research/juan/singj/opendia/fasta-20261128/cache_v2/Fe/human_entrapment.candidates.parquet precursors=10913444 panel_pairs=38856 dropped_without_fragments=0 seconds=40.330554
+FASTA final library: predicting MS2 for 5456722 pairs (38856 calibration panel pairs first)
+FASTA final library: /nfs/research/juan/singj/opendia/fasta-20261128/cache_v2/Fe/human_entrapment.library.parquet pairs=4866978 (dropped below 3 fragments: 589744) fragments=101041593 seconds=928.603857
+FASTA library: calibration pairs=38856
+  Calibration: passes=1 used anchors=342 rss_mb=8961 peak_mb=11195
+Combined: 9270 target precursors at global q <= 0.010000, 9270 run-level rows; seconds=7441.917771

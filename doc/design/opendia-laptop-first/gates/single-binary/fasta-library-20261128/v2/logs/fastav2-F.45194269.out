@@ -1,0 +1,15 @@
+node hl-codon-cn-054.ebi.ac.uk cpu AMD EPYC 9555 64-Core Processor arm F
+8ce130185fb69cb3500e2f61201519ec08817e4327deb36b17c79479d92f3e5e  /nfs/research/juan/singj/opendia/fasta-20261128/opendia-fasta-v2-20261128.sif
+b205ed9970fee62413e2f192c6fb82daab86e4a5897ef521f907ecbfcd7b3e63  /nfs/research/juan/singj/opendia/fasta-20261128/fasta/uniprotkb_Human_AND_reviewed_true_AND_m_2026_02_26.fasta
+F exit=0 1:06:21 maxrss_kb=37747680
+FASTA library: /nfs/research/juan/singj/opendia/fasta-20261128/fasta/uniprotkb_Human_AND_reviewed_true_AND_m_2026_02_26.fasta instrument=timsTOF nce=30.000000 im=on prefilter_pairs=0
+FASTA: proteins=20431 peptides=1317899 skipped_nonstandard=69 seconds=0.974921
+FASTA candidates: target_peptidoforms=1725322 pairs=3433234 target_peptides=1277753 dropped_no_decoy=1235 dropped_collision=772 seconds=5.983614
+FASTA RT: peptidoforms=3362038 seconds=39.851739
+FASTA 1/K0: precursors=6866468 seconds=86.278221
+FASTA survey library: /nfs/research/juan/singj/opendia/fasta-20261128/cache_v2/F/uniprotkb_Human_AND_reviewed_true_AND_m_2026_02_26.candidates.parquet precursors=6866468 panel_pairs=38372 dropped_without_fragments=0 seconds=26.275103
+FASTA final library: predicting MS2 for 3433234 pairs (38372 calibration panel pairs first)
+FASTA final library: /nfs/research/juan/singj/opendia/fasta-20261128/cache_v2/F/uniprotkb_Human_AND_reviewed_true_AND_m_2026_02_26.library.parquet pairs=3031269 (dropped below 3 fragments: 401965) fragments=62122119 seconds=567.995225
+FASTA library: calibration pairs=38372
+  Calibration: passes=1 used anchors=608 rss_mb=5935 peak_mb=8112
+Combined: 25121 target precursors at global q <= 0.010000, 25121 run-level rows; seconds=3972.693908

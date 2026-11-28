@@ -1,0 +1,11 @@
+node hl-codon-cn-082.ebi.ac.uk cpu AMD EPYC 9555 64-Core Processor arm P2
+8ce130185fb69cb3500e2f61201519ec08817e4327deb36b17c79479d92f3e5e  /nfs/research/juan/singj/opendia/fasta-20261128/opendia-fasta-v2-20261128.sif
+b205ed9970fee62413e2f192c6fb82daab86e4a5897ef521f907ecbfcd7b3e63  /nfs/research/juan/singj/opendia/fasta-20261128/fasta/uniprotkb_Human_AND_reviewed_true_AND_m_2026_02_26.fasta
+P2 exit=0 14:11.33 maxrss_kb=13028148
+FASTA library: /nfs/research/juan/singj/opendia/fasta-20261128/fasta/uniprotkb_Human_AND_reviewed_true_AND_m_2026_02_26.fasta instrument=timsTOF nce=30.000000 im=on prefilter_pairs=800000
+FASTA library: reusing /nfs/research/juan/singj/opendia/fasta-20261128/cache_v2/P/uniprotkb_Human_AND_reviewed_true_AND_m_2026_02_26.candidates.parquet
+FASTA survey: reusing /nfs/research/juan/singj/opendia/fasta-20261128/cache_v2/P/uniprotkb_Human_AND_reviewed_true_AND_m_2026_02_26.survey.tsv
+FASTA library: reusing /nfs/research/juan/singj/opendia/fasta-20261128/cache_v2/P/uniprotkb_Human_AND_reviewed_true_AND_m_2026_02_26.library.parquet
+FASTA library: calibration pairs=13186
+  Calibration: passes=1 used anchors=540 rss_mb=1443 peak_mb=2901
+Combined: 16025 target precursors at global q <= 0.010000, 16025 run-level rows; seconds=845.278400

@@ -1,0 +1,19 @@
+node hl-codon-cn-069.ebi.ac.uk cpu AMD EPYC 9555 64-Core Processor arm Pe
+8ce130185fb69cb3500e2f61201519ec08817e4327deb36b17c79479d92f3e5e  /nfs/research/juan/singj/opendia/fasta-20261128/opendia-fasta-v2-20261128.sif
+91f91e499176cf20f555fce9c729953e7c2adcff50626941c323b5c5fd93fe47  /nfs/research/juan/singj/opendia/fasta-20261128/fasta/human_entrapment.fasta
+Pe exit=0 25:49.51 maxrss_kb=27303332
+FASTA library: /nfs/research/juan/singj/opendia/fasta-20261128/fasta/human_entrapment.fasta instrument=timsTOF nce=30.000000 im=on prefilter_pairs=800000
+FASTA: proteins=679427 peptides=1976895 skipped_nonstandard=69 seconds=1.799158
+FASTA candidates: target_peptidoforms=2644755 pairs=5456722 target_peptides=1935597 dropped_no_decoy=2117 dropped_collision=781 seconds=9.796990
+FASTA RT: peptidoforms=5197434 seconds=62.890209
+FASTA 1/K0: precursors=10913444 seconds=138.446121
+FASTA survey library: /nfs/research/juan/singj/opendia/fasta-20261128/cache_v2/Pe/human_entrapment.candidates.parquet precursors=10913444 panel_pairs=38856 dropped_without_fragments=0 seconds=40.167285
+FASTA survey: library precursors=10913444 calibration pairs=38856
+FASTA survey: run 1/1: /nfs/research/juan/singj/opendia/entlib-hela-20261118/data/20200505_Evosep_200SPD_SG06-16_MLHeLa_200ng_py8_S3-A1_1_2737.d
+  Calibration: passes=1 used anchors=342 rss_mb=11439 peak_mb=13800
+FASTA prefilter: kept 800000 of 5456722 pairs (4431871 with a survey candidate)
+FASTA final library: predicting MS2 for 800000 pairs (9157 calibration panel pairs first)
+FASTA final library: /nfs/research/juan/singj/opendia/fasta-20261128/cache_v2/Pe/human_entrapment.library.parquet pairs=731756 (dropped below 3 fragments: 68244) fragments=15162032 seconds=141.711008
+FASTA library: calibration pairs=9157
+  Calibration: passes=1 used anchors=314 rss_mb=2765 peak_mb=26663
+Combined: 13501 target precursors at global q <= 0.010000, 13501 run-level rows; seconds=1542.822252

@@ -1,0 +1,111 @@
+{
+ "arms_present": [
+  "F",
+  "Fe",
+  "H",
+  "P",
+  "P1",
+  "P2",
+  "Pe"
+ ],
+ "candidates_Pe": {
+  "entrapment_targets": 2023491,
+  "human_targets": 3433231,
+  "ratio": 0.5893838777524728
+ },
+ "final_library_ratio_Pe_sensitivity": {
+  "entrapment_targets": 270139,
+  "human_targets": 461617,
+  "ratio": 0.5852015848636424
+ },
+ "candidates_Fe": {
+  "entrapment_targets": 2023491,
+  "human_targets": 3433231,
+  "ratio": 0.5893838777524728
+ },
+ "final_library_ratio_Fe_sensitivity": {
+  "entrapment_targets": 1835712,
+  "human_targets": 3031266,
+  "ratio": 0.6055925148106435
+ },
+ "r0": 0.5893838777524728,
+ "F": {
+  "N": 25121,
+  "wall_s": 3981.0,
+  "maxrss_gb": 35.998992919921875
+ },
+ "Fe": {
+  "N": 9270,
+  "wall_s": 7453.0,
+  "maxrss_gb": 57.40507125854492,
+  "N_e": 56,
+  "FDP_c": 0.01629066617888565,
+  "N_at_FDPc_1pct": 8543,
+  "N_human": 9214
+ },
+ "H": {
+  "N": 37830,
+  "wall_s": 1798.05,
+  "maxrss_gb": 23.78060531616211
+ },
+ "P": {
+  "N": 15917,
+  "wall_s": 1311.44,
+  "maxrss_gb": 16.43886947631836
+ },
+ "P1": {
+  "N": 16030,
+  "wall_s": 901.17,
+  "maxrss_gb": 12.350643157958984
+ },
+ "P2": {
+  "N": 16025,
+  "wall_s": 851.33,
+  "maxrss_gb": 12.424610137939453
+ },
+ "Pe": {
+  "N": 13501,
+  "wall_s": 1549.51,
+  "maxrss_gb": 26.03848648071289,
+  "N_e": 67,
+  "FDP_c": 0.01338256671072525,
+  "N_at_FDPc_1pct": 13132,
+  "N_human": 13434
+ },
+ "criteria": {
+  "2_fdr": {
+   "FDP_c_Pe": 0.01338256671072525,
+   "FDP_c_Fe": 0.01629066617888565,
+   "pass": true
+  },
+  "3_ids": {
+   "N_P": 15917,
+   "N_F": 25121,
+   "ratio_P_F": 0.6336133115719915,
+   "pass_N": false,
+   "N_at_FDPc_Pe": 13132,
+   "N_at_FDPc_Fe": 8543,
+   "ratio_Pe_Fe": 1.5371649303523351,
+   "pass_N_at_FDPc": true,
+   "pass": false
+  },
+  "4_cost": {
+   "wall_P_s": 1311.44,
+   "wall_F_s": 3981.0,
+   "ratio": 0.32942476764632006,
+   "pass": true
+  },
+  "goal_N_P_ge_24669": {
+   "N_P": 15917,
+   "met": false
+  },
+  "seed_spread_P": {
+   "N": [
+    15917,
+    16030,
+    16025
+   ],
+   "range": 113
+  }
+ }
+}

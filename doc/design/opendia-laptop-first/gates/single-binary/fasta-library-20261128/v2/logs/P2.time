@@ -1,0 +1,23 @@
+	Command being timed: "singularity exec --cleanenv --no-home --home /tmp/fasta-45194274:/tmp --env TMPDIR=/tmp --bind /nfs/research/juan/singj/opendia --bind /tmp/fasta-45194274:/tmp /nfs/research/juan/singj/opendia/fasta-20261128/opendia-fasta-v2-20261128.sif OpenDIA -in /nfs/research/juan/singj/opendia/entlib-hela-20261118/data/20200505_Evosep_200SPD_SG06-16_MLHeLa_200ng_py8_S3-A1_1_2737.d -fasta /nfs/research/juan/singj/opendia/fasta-20261128/fasta/uniprotkb_Human_AND_reviewed_true_AND_m_2026_02_26.fasta -library_cache /nfs/research/juan/singj/opendia/fasta-20261128/cache_v2/P -out_dir /nfs/research/juan/singj/opendia/fasta-20261128/runs_v2/P2 -threads 16 -seed 2 -legacy_outputs -trace_tensor_gb 200 -spectrum_cache_dir /tmp"
+	User time (seconds): 3401.16
+	System time (seconds): 31.44
+	Percent of CPU this job got: 403%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 14:11.33
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 13028148
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 504
+	Minor (reclaiming a frame) page faults: 4687010
+	Voluntary context switches: 6302069
+	Involuntary context switches: 25054
+	Swaps: 0
+	File system inputs: 93258
+	File system outputs: 9412000
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0

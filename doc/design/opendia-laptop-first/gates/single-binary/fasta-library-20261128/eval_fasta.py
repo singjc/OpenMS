@@ -58,8 +58,10 @@ def library_ratio(path):
 
 
 def winners(arm):
-    rows = [r for r in csv.DictReader(open(f"{runs}/{arm}/precursors.tsv"), delimiter="\t")
-            if r["decoy"] == "false"]
+    import gzip
+    slim = f"{runs}/{arm}/precursors.slim.tsv.gz"
+    f = gzip.open(slim, "rt") if glob.glob(slim) else open(f"{runs}/{arm}/precursors.tsv")
+    rows = [r for r in csv.DictReader(f, delimiter="\t") if r["decoy"] == "false"]
     rows.sort(key=lambda r: -float(r["discriminant_score"]))
     rows.sort(key=lambda r: float(r["run_q_value"]))
     return rows
@@ -83,11 +85,18 @@ def evaluate(arm, k=None):
     return res
 
 
-arms = {a for a in ("P", "F", "Pe", "Fe", "P1", "P2", "H") if glob.glob(f"{runs}/{a}/precursors.tsv")}
+arms = {a for a in ("P", "F", "Pe", "Fe", "P1", "P2", "H")
+        if glob.glob(f"{runs}/{a}/precursors.tsv") or glob.glob(f"{runs}/{a}/precursors.slim.tsv.gz")}
 R = {"arms_present": sorted(arms)}
+ratios = glob.glob(f"{cache}/ratios.json")  # library_ratio, computed where the caches live (same function)
+if ratios:
+    pre = json.load(open(ratios[0]))
+    for a in ("Pe", "Fe"):
+        if f"candidates_{a}" in pre: R[f"candidates_{a}"] = pre[f"candidates_{a}"]
+        if f"library_{a}" in pre: R[f"final_library_ratio_{a}_sensitivity"] = pre[f"library_{a}"]
 for a in ("Pe", "Fe"):
     c = glob.glob(f"{cache}/{a}/*.candidates.parquet")
-    if c:
+    if c and f"candidates_{a}" not in R:
         R[f"candidates_{a}"] = library_ratio(c[0])
 if "candidates_Pe" in R:
     r0 = R["candidates_Pe"]["ratio"]
@@ -96,7 +105,7 @@ if "candidates_Pe" in R:
     R["r0"] = r0
     k = 1 + 1 / r0
     lib = glob.glob(f"{cache}/Pe/*.library.parquet")
-    if lib:
+    if lib and "final_library_ratio_Pe_sensitivity" not in R:
         R["final_library_ratio_Pe_sensitivity"] = library_ratio(lib[0])
 for a in sorted(arms):
     R[a] = evaluate(a, k if a in ("Pe", "Fe") and "r0" in R else None)

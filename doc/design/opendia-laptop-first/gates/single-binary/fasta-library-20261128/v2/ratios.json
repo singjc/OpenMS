@@ -1,0 +1,22 @@
+{
+ "candidates_Pe": {
+  "entrapment_targets": 2023491,
+  "human_targets": 3433231,
+  "ratio": 0.5893838777524728
+ },
+ "library_Pe": {
+  "entrapment_targets": 270139,
+  "human_targets": 461617,
+  "ratio": 0.5852015848636424
+ },
+ "candidates_Fe": {
+  "entrapment_targets": 2023491,
+  "human_targets": 3433231,
+  "ratio": 0.5893838777524728
+ },
+ "library_Fe": {
+  "entrapment_targets": 1835712,
+  "human_targets": 3031266,
+  "ratio": 0.6055925148106435
+ }
+}
