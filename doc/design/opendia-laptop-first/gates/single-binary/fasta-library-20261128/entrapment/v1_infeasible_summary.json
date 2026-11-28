@@ -1,0 +1,11 @@
+{
+ "seed": 20261128,
+ "human_proteins": 20431,
+ "human_peptides": 1317899,
+ "foreign_proteins": 27299,
+ "foreign_dropped_hamming_le2": 26326,
+ "foreign_survivors": 973,
+ "entrapment_proteins": 973,
+ "entrapment_peptides": 8875,
+ "peptide_ratio": 0.0067342034556517605
+}
