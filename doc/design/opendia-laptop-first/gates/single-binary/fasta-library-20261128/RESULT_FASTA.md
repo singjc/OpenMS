@@ -58,3 +58,9 @@ The design rule fixed K* = 800,000, the fallback, since no K reached recall 0.95
 - **Precursor charge is the strongest factor.** 70 % of the cut IDs are charge 3 or 4, against 30 % of the kept IDs. The survey fragments are y ions at charge 1 only, which fit high-charge precursors badly. Missed cleavages, oxidation, length and predicted-RT position do not differ.
 - The cut IDs are harder ones: 29 % are in the empirical library's IDs, against 61 % of the kept. F still scores them confidently, with median discriminant 15.8 against 16.5.
 - Keeping 95 % of F's IDs would need K ≈ 2.49M of 3.43M pairs (90 %: 2.20M, 80 %: 1.70M). The current statistic cannot reach 0.97 at any useful K.
+- **Offline re-ranking** (`why/rerank.json`, exploratory, no rule). These are pair-level statistics that use only S = max(T, D) of pairs plus label-free attributes, so they stay target-decoy symmetric. Recall of F's IDs at 800k:
+  - current S: 0.596;
+  - max over charge siblings: 0.689 (charge 3-4: 0.39 → 0.64);
+  - S plus protein top-3 evidence: 0.691;
+  - family quantile plus protein: 0.695.
+  The label-free excess of target wins over all pairs is 55,416, and 18,744 of it is kept at 800k. Re-ranking alone does not approach 0.97, so the per-candidate survey signal itself must improve.
