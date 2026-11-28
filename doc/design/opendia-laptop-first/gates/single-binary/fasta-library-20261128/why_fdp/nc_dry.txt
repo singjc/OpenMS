@@ -1,0 +1,11 @@
+FbF {"tool_N": 8074, "candidates": 10585, "anchors": 8074, "missing_fragments": 0, "recomputed_N": 8074}
+FbV1 {"tool_N": 14994, "candidates": 18486, "anchors": 14994, "missing_fragments": 0, "recomputed_N": 14994}
+FbV1_s1 {"tool_N": 14774, "candidates": 18521, "anchors": 14774, "missing_fragments": 0, "recomputed_N": 14774}
+FbV1_s2 {"tool_N": 14760, "candidates": 18447, "anchors": 14760, "missing_fragments": 0, "recomputed_N": 14760}
+FbV1_g1 {"tool_N": 14757, "candidates": 18277, "anchors": 14757, "missing_fragments": 0, "recomputed_N": 14757}
+FbP {"tool_N": 11120, "candidates": 14028, "anchors": 11120, "missing_fragments": 0, "recomputed_N": 11120}
+FbP_g1 {"tool_N": 11307, "candidates": 13988, "anchors": 11307, "missing_fragments": 0, "recomputed_N": 11307}
+FbPp {"tool_N": 20258, "candidates": 24999, "anchors": 20258, "missing_fragments": 0, "recomputed_N": 20258}
+Fe {"tool_N": 9270, "candidates": 27633, "anchors": 9270, "missing_fragments": 0, "recomputed_N": 9270}
+Pe {"tool_N": 13501, "candidates": 16764, "anchors": 13501, "missing_fragments": 0, "recomputed_N": 13501}
+Pep {"tool_N": 23546, "candidates": 29294, "anchors": 23546, "missing_fragments": 0, "recomputed_N": 23546}

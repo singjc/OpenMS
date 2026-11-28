@@ -1,0 +1,2 @@
+nc dry run (label-blind, G0): 45461949
+nc main run (S = 1/3, 1/2, 2/3): 45474615
