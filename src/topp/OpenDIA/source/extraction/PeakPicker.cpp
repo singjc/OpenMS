@@ -318,14 +318,31 @@ namespace OpenMS::OpenDIA
       const std::size_t lo = std::min(elution_left, peak.apex > h ? peak.apex - h : 0);
       const std::size_t hi = std::max(elution_right, std::min(scans - 1, peak.apex + h));
       const double length = static_cast<double>(hi - lo + 1);
+      // V2: per-fragment scale 1 / max over the window (1 when off), and the consensus of the scaled traces.
+      double scale[64];
+      const bool normalized = options.normalized_coelution && fragments <= 64;
+      for (std::size_t k = 0; k < fragments && normalized; ++k)
+      {
+        float top = 0.0f;
+        for (std::size_t s = lo; s <= hi; ++s) top = std::max(top, value(s, k));
+        scale[k] = top > 0.0f ? 1.0 / top : 0.0;
+      }
+      const auto x_of = [&](std::size_t s, std::size_t k) { return normalized ? value(s, k) * scale[k] : static_cast<double>(value(s, k)); };
+      const auto total_of = [&](std::size_t s)
+      {
+        if (!normalized) return raw[s];
+        double t = 0.0;
+        for (std::size_t k = 0; k < fragments; ++k) t += value(s, k) * scale[k];
+        return t;
+      };
       for (std::size_t k = 0; k < fragments && hi - lo >= 2; ++k)
       {
         double sx = 0.0, so = 0.0, sxx = 0.0, soo = 0.0, sxo = 0.0;
         std::size_t profile = 0;
         for (std::size_t s = lo; s <= hi; ++s)
         {
-          const double x = value(s, k);
-          const double o = raw[s] - x;
+          const double x = x_of(s, k);
+          const double o = total_of(s) - x;
           profile += x > 0.0;
           sx += x;
           so += o;

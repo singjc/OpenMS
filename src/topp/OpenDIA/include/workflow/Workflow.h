@@ -162,6 +162,8 @@ namespace OpenMS::OpenDIA
     double peakmaps_rt_padding_s = 15.0;
     bool peakmaps_include_decoys = false;
     std::uint64_t peakmaps_run_id = 0;
+    /// PLAN_SURVEY V2/V3: XicPickerOptions::normalized_coelution in the FASTA survey search only (RunAnalysis::survey).
+    bool survey_normalized_coelution = false;
   };
 
   /// One scored candidate window of the run (the population), with its features and result.
@@ -216,6 +218,8 @@ namespace OpenMS::OpenDIA
     struct Survey
     {
       std::vector<double> coelution;  ///< Per library precursor: the largest search candidate co-elution, 0 without a candidate.
+      /// The best (largest co-elution) candidate per precursor, for the PLAN_SURVEY feature dump; precursor = UINT32_MAX without one.
+      std::vector<SearchCandidate> best;
       std::string calibration_json;
       std::vector<std::string> log;
     };
@@ -235,7 +239,8 @@ namespace OpenMS::OpenDIA
     /// its library index.
     std::pair<std::vector<SearchCandidate>, std::vector<std::uint32_t>> search_(const std::string& path, const CalibrationRT& cal,
                                                                                 const std::vector<double>& rt_correction,
-                                                                                double rt_tolerance_s, const Log& say);
+                                                                                double rt_tolerance_s, const Log& say,
+                                                                                bool normalized_coelution = false);
     /// Opens the run-local spectrum cache when RunOptions::spectrum_cache_dir is set.
     void openCache_(const Log& say);
     /// Steps 2-6 into @p result (calibration set). @p rt_correction (seconds per precursor, empty = none) is added to

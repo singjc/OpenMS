@@ -110,6 +110,7 @@ namespace OpenMS::OpenDIA
                       join(c.variable_mods) + "\nmax_variable=" + std::to_string(c.max_variable_mods) + "\ninstrument=" + p.instrument +
                       "\nnce=" + number(p.nce) + "\nim=" + (p.predict_im ? "1" : "0") + "\nfragment_mz=" + number(f.min_mz) + "-" +
                       number(f.max_mz) + "\npanel_pairs=" + std::to_string(options.panel_pairs) + "\n" +
+                      (f.predicted_survey ? "predicted_survey=1\n" : "") +
                       modelKey(p, "peptdeep_rt_dynamic.onnx") + modelKey(p, "peptdeep_ms2_dynamic.onnx") +
                       (p.predict_im ? modelKey(p, "peptdeep_ccs_dynamic.onnx") : std::string()) + "openms=" + VersionInfo::getVersion() +
                       " " + VersionInfo::getRevision() + "\n";
@@ -139,7 +140,8 @@ namespace OpenMS::OpenDIA
                    number(run_options.search_valley_fraction) + "\nim_tolerance_scale=" + number(run_options.im_tolerance_scale) +
                    "\nmin_transitions=" + std::to_string(run_options.min_transitions) + "\nim_array_as_vssc=" +
                    (run_options.im_array_as_vssc ? "1" : "0") + "\npanel_targets=" + std::to_string(run_options.calibration.panel_targets) +
-                   "\nwindow_panel_targets=" + std::to_string(run_options.window_panel_targets) + "\n";
+                   "\nwindow_panel_targets=" + std::to_string(run_options.window_panel_targets) + "\n" +
+                   (run_options.survey_normalized_coelution ? "normalized_coelution=1\n" : "");
       for (const auto& run : runs)
       {
         std::error_code error;
@@ -174,6 +176,13 @@ namespace OpenMS::OpenDIA
           pairs = std::max(pairs, pair_of[i] + 1);
         }
         std::vector<double> best_target(pairs, 0.0), best_decoy(pairs, 0.0);
+        std::ofstream features;
+        if (options.survey_features)
+        {
+          features.open(stem + ".survey.features.tsv");
+          features.precision(9);
+          features << "run\tprecursor_id\tdecoy\tcharge\tcoelution\tsupport\tmatched_scans\tapex_rt_error_s\tfwhm_s\tapex_intensity\tarea\tpeaks_in_window\n";
+        }
         for (std::size_t r = 0; r < runs.size(); ++r)
         {
           say("FASTA survey: run " + std::to_string(r + 1) + "/" + std::to_string(runs.size()) + ": " + runs[r]);
@@ -183,6 +192,11 @@ namespace OpenMS::OpenDIA
           {
             auto& best = lib.precursors[i].decoy ? best_decoy[pair_of[i]] : best_target[pair_of[i]];
             best = std::max(best, s.coelution[i]);
+            const auto& c = s.best[i];
+            if (features.is_open() && c.precursor != UINT32_MAX)
+              features << r << '\t' << lib.precursors[i].id << '\t' << lib.precursors[i].decoy << '\t' << lib.precursors[i].charge << '\t'
+                       << c.coelution << '\t' << c.transition_support << '\t' << c.matched_scans << '\t' << c.apex_rt_error_seconds << '\t'
+                       << c.fwhm_seconds << '\t' << c.apex_intensity << '\t' << c.area << '\t' << c.peaks_in_window << '\n';
           }
         }
         std::vector<std::string> traml(pairs);

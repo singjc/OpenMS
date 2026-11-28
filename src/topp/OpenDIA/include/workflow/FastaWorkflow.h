@@ -25,6 +25,8 @@ namespace OpenMS::OpenDIA
     std::size_t prefilter_pairs = 0;               ///< K: pairs kept by the survey (0 = no prefilter).
     std::size_t panel_pairs = 40000;               ///< Calibration panel pairs of the survey library.
     bool survey_only = false;                      ///< Stop after the survey statistics (design stage).
+    /// PLAN_SURVEY: also write <stem>.survey.features.tsv, the best survey candidate's features per precursor and run.
+    bool survey_features = false;
   };
 
   struct FastaLibraryPaths

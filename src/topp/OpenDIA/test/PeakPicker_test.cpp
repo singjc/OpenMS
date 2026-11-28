@@ -174,6 +174,28 @@ int main()
       require(none.empty() && found == 0, "pickXicPeaks: an empty trace has no peak");
     }
 
+    // normalized_coelution (PLAN_SURVEY V2): one fragment carries a strong interferer that rises across the peak.
+    // Raw co-elution lets that trace dominate the consensus the weak co-eluting fragments are correlated with; scaled
+    // to their own maxima, the weak fragments correlate with each other and the peak scores higher.
+    {
+      const std::size_t n = 60;
+      std::vector<double> rts(n);
+      for (std::size_t s = 0; s < n; ++s) rts[s] = 100.0 + static_cast<double>(s);
+      auto data = gaussianGroup(n, 30.0, 2.0, 100.0);
+      for (std::size_t s = 0; s < n; ++s) data[s * F + 0] += 20.0f * static_cast<float>(s);  // ramp interferer, far above the peak
+      XicPickerOptions options;
+      options.max_peaks = 1;
+      std::size_t found = 0;
+      std::vector<double> scratch;
+      const auto raw = pickXicPeaks(data.data(), n, F, rts.data(), options, found, scratch);
+      options.normalized_coelution = true;
+      const auto scaled = pickXicPeaks(data.data(), n, F, rts.data(), options, found, scratch);
+      require(raw.size() == 1 && scaled.size() == 1, "normalized_coelution: one peak each");
+      require(scaled[0].left == raw[0].left && scaled[0].right == raw[0].right && scaled[0].area == raw[0].area,
+              "normalized_coelution: boundaries and area stay on the raw traces");
+      require(scaled[0].coelution > raw[0].coelution + 0.5, "normalized_coelution: the interferer no longer dominates");
+    }
+
     // min_profile_scans: two fragments nonzero on one common scan correlate with r = 1 over any window. With the
     // default (2 scans) that coincidence scores 0 and a real but imperfect 2-fragment elution ranks first.
     {

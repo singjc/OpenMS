@@ -210,6 +210,11 @@ protected:
     registerStringOption_("model_dir", "<dir>", "", "FASTA library: directory with peptdeep_{rt,ms2,ccs}_dynamic.onnx; empty uses the "
                           "installed models", false, true);
     registerFlag_("survey_only", "Advanced: FASTA library: stop after the survey and write <fasta stem>.survey.tsv (design stage)", true);
+    registerFlag_("survey_predicted", "Advanced: FASTA library: survey with the top 6 predicted fragments of every pair instead of theoretical "
+                  "y ions (MS2 prediction for every candidate; PLAN_SURVEY V1)", true);
+    registerFlag_("survey_normalized", "Advanced: FASTA library: survey co-elution on fragments scaled to their own maximum (PLAN_SURVEY V2)", true);
+    registerFlag_("survey_features", "Advanced: FASTA library: also write <fasta stem>.survey.features.tsv (best survey candidate per "
+                  "precursor and run)", true);
     registerInputFile_("scoring_lib", "<file>", "", "Optional library (PQP or OpenDIA .parquet) with up to 12 scoring fragments per precursor "
                        "(same precursor IDs); default: the search fragments", false);
     setValidFormats_("scoring_lib", {"pqp", "parquet"});
@@ -514,6 +519,9 @@ protected:
       fo.prefilter_pairs = static_cast<std::size_t>(getIntOption_("prefilter_pairs"));
       fo.panel_pairs = options.calibration.panel_targets;
       fo.survey_only = getFlag_("survey_only");
+      fo.fragments.predicted_survey = getFlag_("survey_predicted");
+      fo.survey_features = getFlag_("survey_features");
+      options.survey_normalized_coelution = getFlag_("survey_normalized");
       writeLogInfo_("FASTA library: " + fasta + " instrument=" + p.instrument + " nce=" + std::to_string(p.nce) + " im=" +
                     (p.predict_im ? "on" : "off") + " prefilter_pairs=" + std::to_string(fo.prefilter_pairs));
       const auto paths = OpenDIA::buildFastaLibrary(fo, inputs, options, [this](const std::string& line) { writeLogInfo_(line); });

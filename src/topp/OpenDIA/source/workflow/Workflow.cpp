@@ -637,7 +637,8 @@ namespace OpenMS::OpenDIA
 
   std::pair<std::vector<SearchCandidate>, std::vector<std::uint32_t>> RunAnalysis::search_(const std::string& path, const CalibrationRT& cal,
                                                                                            const std::vector<double>& rt_correction,
-                                                                                           double rt_tolerance_s, const Log& say)
+                                                                                           double rt_tolerance_s, const Log& say,
+                                                                                           bool normalized_coelution)
   {
     auto& lib = library_;
     const auto t_search = std::chrono::steady_clock::now();
@@ -653,6 +654,7 @@ namespace OpenMS::OpenDIA
       so.picker.max_peaks = options_.max_peaks;
       so.picker.valley_fraction = options_.search_valley_fraction;
       so.picker.boundary_half_widths = cal.boundary_half_widths;
+      so.picker.normalized_coelution = normalized_coelution;
       so.min_transitions = options_.min_transitions;
       // Candidates are kept in memory.
       StreamSearch search(makeQueries(lib, cal, rt_correction), so);
@@ -685,12 +687,22 @@ namespace OpenMS::OpenDIA
     } cache_scope{cache_};
     openCache_(say);
     calibrate_(path, result, say, t_run);
-    const auto [candidates, search_to_library] = search_(path, result.calibration, {}, result.calibration.tolerance_s, say);
+    const auto [candidates, search_to_library] =
+      search_(path, result.calibration, {}, result.calibration.tolerance_s, say, options_.survey_normalized_coelution);
     Survey survey;
     survey.coelution.assign(library_.precursors.size(), 0.0);
+    SearchCandidate none;
+    none.precursor = UINT32_MAX;
+    survey.best.assign(library_.precursors.size(), none);
     for (const auto& c : candidates)
     {
-      auto& best = survey.coelution[search_to_library[c.precursor]];
+      const auto i = search_to_library[c.precursor];
+      auto& best = survey.coelution[i];
+      if (c.coelution > best || survey.best[i].precursor == UINT32_MAX)
+      {
+        survey.best[i] = c;
+        survey.best[i].precursor = i;
+      }
       best = std::max(best, c.coelution);
     }
     survey.calibration_json = std::move(result.calibration_json);

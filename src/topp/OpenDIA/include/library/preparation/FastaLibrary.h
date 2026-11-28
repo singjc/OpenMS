@@ -163,6 +163,9 @@ namespace OpenMS::OpenDIA::Preparation
     double max_mz = 1800.0;
     std::size_t count = 12;        ///< Final library fragments per precursor (at most 99).
     std::size_t min_count = 3;     ///< A pair is dropped if a member has fewer.
+    /// PLAN_SURVEY V1/V3: survey fragments are the top 6 PeptDeep fragments of every pair instead of theoretical
+    /// y ions (slower: MS2 for every candidate). Default off.
+    bool predicted_survey = false;
   };
 
   /// Library RT (100 x PeptDeep RT) for every peptidoform and, with @p settings.predict_im, 1/K0 for every precursor.

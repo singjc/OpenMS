@@ -90,6 +90,10 @@ namespace OpenMS::OpenDIA
     /// reported boundaries, area and FWHM only; co-elution, and so the peak ranking, uses the uncapped region. 0: no cap.
     /// OpenDIACalibrate estimates it from the anchors (estimateBoundaryHalfWidths).
     double boundary_half_widths = 0.0;
+    /// PLAN_SURVEY V2/V3: co-elution on fragments scaled to their own maximum over the correlation window, so one
+    /// intense interfering trace does not dominate the consensus each fragment is correlated with. Only the
+    /// co-elution value (and so the peak order) changes; boundaries, area and support stay on the raw traces.
+    bool normalized_coelution = false;
   };
 
   /** @brief One peak of a native-scan fragment trace set. Indices are scans of the trace. */

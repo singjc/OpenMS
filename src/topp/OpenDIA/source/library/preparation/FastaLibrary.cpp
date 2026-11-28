@@ -571,7 +571,50 @@ namespace OpenMS::OpenDIA::Preparation
       for (std::size_t m = 0; m < 2; ++m) add(2 * panel[i] + m, rows(2 * panel[i] + m, panel_ions[2 * i + m], PANEL_FRAGMENTS));
     }
     std::size_t dropped = 0;
-    for (std::size_t k = 0; k < candidates.pairs(); ++k)
+    if (fragments.predicted_survey)
+    {
+      // PLAN_SURVEY V1/V3: the top 6 predicted fragments for every pair (same model and rule as the final library,
+      // 6 instead of N), in batches; a pair whose member has none is dropped like a pair without theoretical ions.
+      PeptDeepMS2Inference model(modelPath(settings, "peptdeep_ms2_dynamic.onnx"), settings.threads);
+      constexpr std::size_t CHUNK = 50000;  // pairs
+      std::vector<std::size_t> todo;
+      for (std::size_t k = 0; k < candidates.pairs(); ++k)
+        if (!is_panel[k]) todo.push_back(k);
+      for (std::size_t begin = 0; begin < todo.size(); begin += CHUNK)
+      {
+        const std::size_t end = std::min(todo.size(), begin + CHUNK);
+        std::vector<std::string> sequences;
+        std::vector<int> charges;
+        for (std::size_t i = begin; i < end; ++i)
+          for (std::size_t m = 0; m < 2; ++m)
+          {
+            const auto& p = candidates.precursors[2 * todo[i] + m];
+            sequences.push_back(candidates.peptidoforms[p.peptidoform].sequence);
+            charges.push_back(p.charge);
+          }
+        const auto ms2 = predictMS2(model, sequences, charges, settings);
+        for (std::size_t i = begin; i < end; ++i)
+        {
+          const std::size_t k = todo[i];
+          std::vector<FragmentIon> ions[2];
+          for (std::size_t m = 0; m < 2; ++m)
+          {
+            const std::size_t j = 2 * (i - begin) + m;
+            ions[m] = predictedFragments(IonLadder(AASequence::fromString(sequences[j])), charges[j], ms2[j], fragments.min_mz,
+                                         fragments.max_mz, SEARCH_FRAGMENTS);
+          }
+          if (ions[0].empty() || ions[1].empty())
+          {
+            ++dropped;
+            continue;
+          }
+          for (std::size_t m = 0; m < 2; ++m) add(2 * k + m, rows(2 * k + m, ions[m], SEARCH_FRAGMENTS));
+        }
+        say(log, "FASTA survey library: predicted " + std::to_string(end) + "/" + std::to_string(todo.size()) + " pairs, seconds=" +
+                 std::to_string(since(start)));
+      }
+    }
+    for (std::size_t k = 0; k < candidates.pairs() && !fragments.predicted_survey; ++k)
     {
       if (is_panel[k]) continue;
       std::vector<FragmentIon> ions[2];
