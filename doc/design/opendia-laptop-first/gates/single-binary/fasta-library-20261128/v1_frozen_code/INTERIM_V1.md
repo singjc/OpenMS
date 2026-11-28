@@ -13,5 +13,5 @@ Written after these runs, and before any decision on a fix. This is not RESULT_F
 - Goal N(P) ≥ 24,669: **not met** (15,942, which is 0.58 × 27,410). This matches design recall 0.581 at K*.
 - **Cause of the F failure (diagnosis, not yet fixed).** PLAN_FASTA step 3 says the panel pairs are the only calibration pairs. The code applies this to the survey only (`erase_if` in FastaWorkflow). The final search is calibrated on every pair of the final library, and the calibrator picks 40,000 at an even RT stride. In F, these are mostly absent peptides, so calibration collapses (24 anchors). In P, the prefiltered library still gave 453 anchors.
 - Criteria 2-4 cannot be evaluated from v1. Criterion 1 passed (see `identity/`).
-- I cancelled Pe/Fe/H on noticing the deviation, before reading any of their results. Their logs are kept here.
+- I cancelled Pe/Fe/H on noticing the deviation. I read no entrapment counts or final results from them. Their logs did show intermediate scoring passes: Pe 13,556 and H 37,654 targets at q ≤ 0.01. The logs are kept here.
 - Full outputs are on codon in `fasta-20261128/v1_frozen_code/`.
