@@ -1,0 +1,243 @@
+{
+ "pairs": 5456722,
+ "truth_F": 25121,
+ "truth_in_Pe_candidates": 25121,
+ "r0_candidates": 0.5902413896340998,
+ "tradeoff": {
+  "base": {
+   "recall_F": 0.6231,
+   "r_sel": 0.5807,
+   "r_sel_over_r0": 0.984
+  },
+  "sibling_only": {
+   "recall_F": 0.7515,
+   "r_sel": 0.6036,
+   "r_sel_over_r0": 1.023
+  },
+  "sibling+0.1xprotein": {
+   "recall_F": 0.7848,
+   "r_sel": 0.4531,
+   "r_sel_over_r0": 0.768
+  },
+  "sibling+0.25xprotein": {
+   "recall_F": 0.8236,
+   "r_sel": 0.2975,
+   "r_sel_over_r0": 0.504
+  },
+  "sibling+0.5xprotein": {
+   "recall_F": 0.8562,
+   "r_sel": 0.1552,
+   "r_sel_over_r0": 0.263
+  },
+  "protein_only_0.5": {
+   "recall_F": 0.7731,
+   "r_sel": 0.1572,
+   "r_sel_over_r0": 0.266
+  }
+ },
+ "strata": {
+  "own<=800k": {
+   "lib_entrap": 56171,
+   "lib_human": 318001,
+   "r_b": 0.17663780931506504,
+   "N": 16624,
+   "N_e": 57,
+   "decoys_q01": 167,
+   "est_false": 379.6942194370761
+  },
+  "800k-1.6M": {
+   "lib_entrap": 8563,
+   "lib_human": 68872,
+   "r_b": 0.12433209431989778,
+   "N": 2383,
+   "N_e": 8,
+   "decoys_q01": 24,
+   "est_false": 72.34380474132898
+  },
+  "1.6M-3.2M": {
+   "lib_entrap": 15446,
+   "lib_human": 106464,
+   "r_b": 0.1450819056206793,
+   "N": 2993,
+   "N_e": 12,
+   "decoys_q01": 26,
+   "est_false": 94.71189952091156
+  },
+  ">3.2M": {
+   "lib_entrap": 21494,
+   "lib_human": 145268,
+   "r_b": 0.147961009995319,
+   "N": 1546,
+   "N_e": 5,
+   "decoys_q01": 17,
+   "est_false": 38.792686331069135
+  }
+ },
+ "N": 23546,
+ "FDP_stratified": 0.024868028965870453,
+ "fine_strata": [
+  {
+   "own_rank_from": 0,
+   "r_b": 0.4322,
+   "N": 7627,
+   "N_e": 25,
+   "decoys_q01": 48,
+   "est_false": 82.8
+  },
+  {
+   "own_rank_from": 37886,
+   "r_b": 0.5561,
+   "N": 1721,
+   "N_e": 18,
+   "decoys_q01": 17,
+   "est_false": 50.4
+  },
+  {
+   "own_rank_from": 76325,
+   "r_b": 0.475,
+   "N": 1202,
+   "N_e": 5,
+   "decoys_q01": 18,
+   "est_false": 15.5
+  },
+  {
+   "own_rank_from": 117199,
+   "r_b": 0.2801,
+   "N": 977,
+   "N_e": 4,
+   "decoys_q01": 15,
+   "est_false": 18.3
+  },
+  {
+   "own_rank_from": 164596,
+   "r_b": 0.1216,
+   "N": 870,
+   "N_e": 1,
+   "decoys_q01": 10,
+   "est_false": 9.2
+  },
+  {
+   "own_rank_from": 220138,
+   "r_b": 0.0403,
+   "N": 882,
+   "N_e": 0,
+   "decoys_q01": 12,
+   "est_false": 0.0
+  },
+  {
+   "own_rank_from": 284496,
+   "r_b": 0.0305,
+   "N": 761,
+   "N_e": 2,
+   "decoys_q01": 11,
+   "est_false": 67.7
+  },
+  {
+   "own_rank_from": 358339,
+   "r_b": 0.0324,
+   "N": 751,
+   "N_e": 0,
+   "decoys_q01": 12,
+   "est_false": 0.0
+  },
+  {
+   "own_rank_from": 449525,
+   "r_b": 0.0412,
+   "N": 825,
+   "N_e": 1,
+   "decoys_q01": 8,
+   "est_false": 25.3
+  },
+  {
+   "own_rank_from": 574550,
+   "r_b": 0.0664,
+   "N": 903,
+   "N_e": 1,
+   "decoys_q01": 13,
+   "est_false": 16.1
+  },
+  {
+   "own_rank_from": 771697,
+   "r_b": 0.1052,
+   "N": 1120,
+   "N_e": 3,
+   "decoys_q01": 13,
+   "est_false": 31.5
+  },
+  {
+   "own_rank_from": 1092460,
+   "r_b": 0.1345,
+   "N": 1142,
+   "N_e": 2,
+   "decoys_q01": 8,
+   "est_false": 16.9
+  },
+  {
+   "own_rank_from": 1510980,
+   "r_b": 0.1421,
+   "N": 1039,
+   "N_e": 8,
+   "decoys_q01": 10,
+   "est_false": 64.3
+  },
+  {
+   "own_rank_from": 1965956,
+   "r_b": 0.1463,
+   "N": 893,
+   "N_e": 4,
+   "decoys_q01": 8,
+   "est_false": 31.3
+  },
+  {
+   "own_rank_from": 2447562,
+   "r_b": 0.1454,
+   "N": 855,
+   "N_e": 2,
+   "decoys_q01": 5,
+   "est_false": 15.8
+  },
+  {
+   "own_rank_from": 2948788,
+   "r_b": 0.1498,
+   "N": 814,
+   "N_e": 2,
+   "decoys_q01": 11,
+   "est_false": 15.3
+  },
+  {
+   "own_rank_from": 3459804,
+   "r_b": 0.1508,
+   "N": 727,
+   "N_e": 1,
+   "decoys_q01": 11,
+   "est_false": 7.6
+  },
+  {
+   "own_rank_from": 3964950,
+   "r_b": 0.0997,
+   "N": 403,
+   "N_e": 3,
+   "decoys_q01": 4,
+   "est_false": 33.1
+  },
+  {
+   "own_rank_from": 4423963,
+   "r_b": 0.0,
+   "N": 26,
+   "N_e": 0,
+   "decoys_q01": 0,
+   "est_false": 0.0
+  },
+  {
+   "own_rank_from": 4744413,
+   "r_b": 0.413,
+   "N": 8,
+   "N_e": 0,
+   "decoys_q01": 0,
+   "est_false": 0.0
+  }
+ ],
+ "FDP_stratified_fine": 0.021281026609078768,
+ "decoys_q01_total": 234,
+ "note": "strata with r_b ~ 0 and N_e = 0 are not covered by entrapment"
+}
