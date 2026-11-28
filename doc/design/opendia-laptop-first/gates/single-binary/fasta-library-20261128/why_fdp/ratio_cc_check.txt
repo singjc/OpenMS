@@ -1,0 +1,1 @@
+ratio_cc.sh self-check (job 45511117) reproduces recorded r0: Fe 0.5893838777524728, Pe-prime 0.5902413896340998, FbV1 0.9994012382639613
